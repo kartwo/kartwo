@@ -28,6 +28,7 @@
 | 名称 | 用途 | 许可证 | 状态 |
 |---|---|---|---|
 | modernc.org/sqlite | 纯 Go SQLite 驱动（默认数据库） | BSD-3-Clause | 已引入 |
+| github.com/google/uuid | 外部 ID（UUIDv7）生成 | BSD-3-Clause | 已引入 |
 | 工具：sqlc | 由纯 SQL 生成类型安全数据层代码（构建期，不进二进制） | MIT | 已引入 |
 | 工具：golangci-lint | 静态检查（CI 门禁，不进二进制） | GPL-3.0（仅作为外部 CLI 调用，不链接进产物） | 已引入 |
 | 工具：govulncheck | 依赖漏洞扫描（CI 门禁，不进二进制） | BSD-3-Clause | 已引入 |
