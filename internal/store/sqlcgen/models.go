@@ -8,6 +8,15 @@ import (
 	"database/sql"
 )
 
+type AdminUser struct {
+	ID           int64  `db:"id" json:"id"`
+	PublicID     string `db:"public_id" json:"public_id"`
+	Username     string `db:"username" json:"username"`
+	PasswordHash string `db:"password_hash" json:"password_hash"`
+	CreatedAt    string `db:"created_at" json:"created_at"`
+	UpdatedAt    string `db:"updated_at" json:"updated_at"`
+}
+
 type Category struct {
 	ID        int64          `db:"id" json:"id"`
 	PublicID  string         `db:"public_id" json:"public_id"`
@@ -67,6 +76,15 @@ type ProductOptionValue struct {
 	Position  int64  `db:"position" json:"position"`
 	CreatedAt string `db:"created_at" json:"created_at"`
 	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
+type Session struct {
+	ID        int64  `db:"id" json:"id"`
+	Token     string `db:"token" json:"token"`
+	AdminID   int64  `db:"admin_id" json:"admin_id"`
+	CsrfToken string `db:"csrf_token" json:"csrf_token"`
+	ExpiresAt string `db:"expires_at" json:"expires_at"`
+	CreatedAt string `db:"created_at" json:"created_at"`
 }
 
 type Variant struct {
