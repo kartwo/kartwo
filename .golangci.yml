@@ -1,0 +1,27 @@
+# golangci-lint 配置 / Lint Configuration
+# 功能：统一静态检查规则（含安全相关 gosec），纳入 CI 门禁
+# 作者：仗键天涯(daxing) ｜ 邮箱：3442535897@qq.com ｜ 时间：2026-06-17 17:05:46
+version: "2"
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosec       # 安全相关静态检查
+    - bodyclose
+    - sqlclosecheck
+  exclusions:
+    rules:
+      # 生成代码不纳入 lint。
+      - path: internal/store/sqlcgen/
+        linters:
+          - errcheck
+          - gosec
+          - staticcheck
+          - unused
+      # 测试中读取临时目录路径属可控输入。
+      - path: _test\.go
+        linters:
+          - gosec

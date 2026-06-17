@@ -1,0 +1,23 @@
+# 二进制产物
+/kartwo
+/dist-bin/
+*.exe
+
+# 数据目录（数据即文件夹，绝不进 git）
+/data/
+
+# 本地工具链（go install 到此，不进 git）
+/.bin/
+
+# 密钥与本地配置（绝不进 git）
+*.env
+.env
+config.enc
+*.pem
+*.key
+
+# 编辑器/系统
+.DS_Store
+.idea/
+.vscode/
+*.swp

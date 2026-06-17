@@ -1,0 +1,80 @@
+# CI 安全门禁 / CI Security Gate
+# 功能：构建+测试+静态检查+漏洞扫描+密钥扫描；无高危方可合主干
+# 作者：仗键天涯(daxing) ｜ 邮箱：3442535897@qq.com ｜ 时间：2026-06-17 17:05:46
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 钉死版本，不用浮动 latest（与 go.mod 一致）。
+env:
+  GO_VERSION: "1.26.4"
+  SQLC_VERSION: "1.30.0"
+  GOLANGCI_LINT_VERSION: "v2.5.0"
+  GOVULNCHECK_VERSION: "v1.1.4"
+
+jobs:
+  build-test:
+    name: 构建与测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: false
+
+      - name: 校验 sqlc 生成代码无漂移
+        run: |
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@v${{ env.SQLC_VERSION }}
+          sqlc generate
+          git diff --exit-code --stat -- internal/store/sqlcgen || (echo "::error::sqlc 生成代码与提交不一致，请重新生成" && exit 1)
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: 单元测试
+        run: go test -race -count=1 ./...
+
+      - name: 构建单静态二进制
+        run: CGO_ENABLED=0 go build -o kartwo ./cmd/kartwo
+
+  lint:
+    name: 静态检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: false
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+
+  security:
+    name: 安全门禁（漏洞+密钥）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: false
+
+      - name: govulncheck（依赖漏洞扫描）
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }}
+          govulncheck ./...
+
+      - name: gitleaks（密钥泄漏扫描）
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,17 @@
+# sqlc 配置 / sqlc Configuration
+# 功能：由纯 SQL（migrations 为 schema、queries 为查询）生成类型安全 Go 代码
+# 作者：仗键天涯(daxing) ｜ 邮箱：3442535897@qq.com ｜ 时间：2026-06-17 17:05:46
+# 说明：数据层选型 = sqlc（见 DECISIONS.md）。引擎 sqlite 为 M0 默认实现；
+#       postgres 双驱动支持于后续里程碑按需新增同结构条目，不在 M0 落地。
+version: "2"
+sql:
+  - engine: "sqlite"
+    schema: "migrations"
+    queries: "internal/store/queries"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/store/sqlcgen"
+        emit_json_tags: true
+        emit_empty_slices: true
+        emit_db_tags: true
