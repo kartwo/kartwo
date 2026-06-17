@@ -4,9 +4,86 @@
 
 package sqlcgen
 
+import (
+	"database/sql"
+)
+
+type Category struct {
+	ID        int64          `db:"id" json:"id"`
+	PublicID  string         `db:"public_id" json:"public_id"`
+	Name      string         `db:"name" json:"name"`
+	Slug      string         `db:"slug" json:"slug"`
+	ParentID  sql.NullInt64  `db:"parent_id" json:"parent_id"`
+	Position  int64          `db:"position" json:"position"`
+	CreatedAt string         `db:"created_at" json:"created_at"`
+	UpdatedAt string         `db:"updated_at" json:"updated_at"`
+	DeletedAt sql.NullString `db:"deleted_at" json:"deleted_at"`
+}
+
+type Inventory struct {
+	VariantID int64  `db:"variant_id" json:"variant_id"`
+	Quantity  int64  `db:"quantity" json:"quantity"`
+	Reserved  int64  `db:"reserved" json:"reserved"`
+	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
 type Meta struct {
 	Key       string `db:"key" json:"key"`
 	Value     string `db:"value" json:"value"`
 	CreatedAt string `db:"created_at" json:"created_at"`
 	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
+type Product struct {
+	ID          int64          `db:"id" json:"id"`
+	PublicID    string         `db:"public_id" json:"public_id"`
+	Title       string         `db:"title" json:"title"`
+	Slug        string         `db:"slug" json:"slug"`
+	Description string         `db:"description" json:"description"`
+	Status      string         `db:"status" json:"status"`
+	CreatedAt   string         `db:"created_at" json:"created_at"`
+	UpdatedAt   string         `db:"updated_at" json:"updated_at"`
+	DeletedAt   sql.NullString `db:"deleted_at" json:"deleted_at"`
+}
+
+type ProductCategory struct {
+	ProductID  int64 `db:"product_id" json:"product_id"`
+	CategoryID int64 `db:"category_id" json:"category_id"`
+}
+
+type ProductOption struct {
+	ID        int64  `db:"id" json:"id"`
+	ProductID int64  `db:"product_id" json:"product_id"`
+	Name      string `db:"name" json:"name"`
+	Position  int64  `db:"position" json:"position"`
+	CreatedAt string `db:"created_at" json:"created_at"`
+	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
+type ProductOptionValue struct {
+	ID        int64  `db:"id" json:"id"`
+	OptionID  int64  `db:"option_id" json:"option_id"`
+	Value     string `db:"value" json:"value"`
+	Position  int64  `db:"position" json:"position"`
+	CreatedAt string `db:"created_at" json:"created_at"`
+	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
+type Variant struct {
+	ID         int64          `db:"id" json:"id"`
+	PublicID   string         `db:"public_id" json:"public_id"`
+	ProductID  int64          `db:"product_id" json:"product_id"`
+	Sku        sql.NullString `db:"sku" json:"sku"`
+	PriceCents int64          `db:"price_cents" json:"price_cents"`
+	OptionKey  string         `db:"option_key" json:"option_key"`
+	Position   int64          `db:"position" json:"position"`
+	CreatedAt  string         `db:"created_at" json:"created_at"`
+	UpdatedAt  string         `db:"updated_at" json:"updated_at"`
+	DeletedAt  sql.NullString `db:"deleted_at" json:"deleted_at"`
+}
+
+type VariantOptionValue struct {
+	VariantID int64 `db:"variant_id" json:"variant_id"`
+	OptionID  int64 `db:"option_id" json:"option_id"`
+	ValueID   int64 `db:"value_id" json:"value_id"`
 }
