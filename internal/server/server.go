@@ -13,14 +13,16 @@ import (
 
 	adminui "github.com/kartwo/kartwo/web/admin"
 
+	"github.com/kartwo/kartwo/internal/admin"
 	"github.com/kartwo/kartwo/internal/config"
 	"github.com/kartwo/kartwo/internal/store"
 )
 
 // New 构建带中间件的 HTTP Handler。
-func New(cfg *config.Config, st *store.Store, version string) http.Handler {
+func New(cfg *config.Config, st *store.Store, version string, adminHTTP *admin.HTTP) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(st, version))
+	adminHTTP.Register(mux) // /admin/api/*
 	mux.Handle("/", adminHandler())
 
 	return securityHeaders(cfg)(mux)

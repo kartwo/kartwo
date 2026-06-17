@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kartwo/kartwo/internal/admin"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/config"
 	"github.com/kartwo/kartwo/internal/migrate"
@@ -121,7 +122,8 @@ func runServe(logger *slog.Logger) error {
 	}
 	defer func() { _ = st.Close() }()
 
-	srv := server.New(cfg, st, Version)
+	adminHTTP := admin.NewHTTP(admin.New(st.DB), cfg.Env == "prod")
+	srv := server.New(cfg, st, Version, adminHTTP)
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           srv,
