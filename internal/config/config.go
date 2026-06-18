@@ -20,6 +20,9 @@ type Config struct {
 	DataDir  string // 数据目录，默认 ./data（数据即文件夹）
 	DBEngine string // 数据库引擎：sqlite（默认）| postgres（升级项，M0 未实现）
 	DBPath   string // SQLite 数据库文件路径（由 DataDir 派生）
+	ShopName string // 店铺名（店面展示/SEO），默认占位，向导完整化于 M4
+	Currency string // 币种代码（CNY/USD/EUR…），默认 CNY
+	BaseURL  string // 站点基址（用于 canonical/sitemap 绝对 URL）；空则按请求推导
 }
 
 // Load 从环境变量读取配置并填默认值。
@@ -30,6 +33,9 @@ func Load() (*Config, error) {
 		Addr:     getEnv("KARTWO_ADDR", ":8080"),
 		DataDir:  getEnv("KARTWO_DATA_DIR", "./data"),
 		DBEngine: getEnv("KARTWO_DB_ENGINE", "sqlite"),
+		ShopName: getEnv("KARTWO_SHOP_NAME", "Kartwo Store"),
+		Currency: getEnv("KARTWO_CURRENCY", "CNY"),
+		BaseURL:  getEnv("KARTWO_BASE_URL", ""),
 	}
 
 	switch cfg.Env {

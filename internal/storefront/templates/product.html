@@ -1,0 +1,41 @@
+{{define "content"}}
+{{$p := .Product}}
+<nav class="crumbs"><a href="/">全部商品</a> / {{$p.Title}}</nav>
+<div class="detail">
+  <div class="gallery">
+    {{if $p.Images}}
+      {{range $p.Images}}<img src="{{.Large}}" alt="{{$p.Title}}" loading="lazy" />{{end}}
+    {{else}}
+      <div class="ph" style="aspect-ratio:1/1;background:#f1f5f9;border-radius:12px"></div>
+    {{end}}
+  </div>
+  <div class="info">
+    <h1>{{$p.Title}}</h1>
+    <p class="price" style="font-size:1.3rem">
+      {{if eq $p.MinCents $p.MaxCents}}{{money $p.MinCents}}{{else}}{{money $p.MinCents}} – {{money $p.MaxCents}}{{end}}
+    </p>
+    <p>{{if $p.InStock}}<span class="stock-in">● 有货</span>{{else}}<span class="stock-out">● 暂时缺货</span>{{end}}</p>
+    {{if $p.Description}}<p class="muted">{{$p.Description}}</p>{{end}}
+
+    <div class="opts">
+      <h3>选择规格</h3>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr><th style="text-align:left">规格</th><th style="text-align:left">价格</th><th style="text-align:left">库存</th></tr></thead>
+        <tbody>
+        {{range $p.Variants}}
+          <tr style="border-top:1px solid var(--line)">
+            <td>{{range $i,$o := .Options}}{{if $i}} · {{end}}{{$o.Name}}:{{$o.Value}}{{end}}</td>
+            <td>{{money .Cents}}</td>
+            <td>{{if gt .Available 0}}<span class="stock-in">{{.Available}}</span>{{else}}<span class="stock-out">0</span>{{end}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 加入购物车：M2.2 接渐进增强 JS；当前为占位按钮 -->
+    <button class="btn" {{if not $p.InStock}}disabled{{end}} data-product="{{$p.PublicID}}">加入购物车</button>
+    <p class="muted" style="font-size:.8rem;margin-top:.6rem">购物车功能将在下一步（M2.2）启用。</p>
+  </div>
+</div>
+{{end}}

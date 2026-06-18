@@ -23,6 +23,7 @@ import (
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
 	"github.com/kartwo/kartwo/internal/server"
+	"github.com/kartwo/kartwo/internal/storefront"
 	"github.com/kartwo/kartwo/internal/store"
 	"github.com/kartwo/kartwo/migrations"
 )
@@ -131,7 +132,8 @@ func runServe(logger *slog.Logger) error {
 	mediaSvc := media.New(st.DB, mediaBackend, mediaPolicy, 20)
 
 	adminHTTP := admin.NewHTTP(admin.New(st.DB), catalog.New(st.DB), mediaSvc, cfg.Env == "prod")
-	srv := server.New(cfg, st, Version, adminHTTP)
+	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cfg.ShopName, cfg.Currency, cfg.BaseURL)
+	srv := server.New(cfg, st, Version, adminHTTP, storeHTTP)
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           srv,
