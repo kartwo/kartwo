@@ -44,12 +44,27 @@
     section.desc{margin-top:2rem;border-top:1px solid var(--line);padding-top:1.4rem}
     section.desc h2{margin:0 0 .6rem}
     section.desc p{white-space:pre-wrap;color:var(--ink);max-width:70ch}
+    .variant-opt{display:flex;align-items:center;gap:.6rem;border:1px solid var(--line);border-radius:10px;padding:.5rem .7rem;margin:.4rem 0;cursor:pointer}
+    .variant-opt.sold{opacity:.5}
+    .variant-opt .vo-spec{flex:1}
+    .variant-opt .vo-price{font-weight:600}
+    .add-row{display:flex;gap:.8rem;align-items:center;margin-top:1rem}
+    .cart-badge{background:var(--accent);color:#fff;border-radius:999px;font-size:.72rem;padding:0 .4rem;margin-left:.2rem}
+    .cart-table{width:100%;border-collapse:collapse;margin:1rem 0}
+    .cart-table th,.cart-table td{text-align:left;padding:.6rem .4rem;border-bottom:1px solid var(--line);vertical-align:middle}
+    .cart-thumb{border-radius:8px;object-fit:cover;border:1px solid var(--line)}
+    .cart-foot{margin-top:1.2rem;text-align:right}
+    .cart-foot .total{font-size:1.2rem;margin-bottom:.6rem}
+    button.link{background:none;border:0;color:var(--accent);cursor:pointer;padding:0;font:inherit}
     footer.site{border-top:1px solid var(--line);color:var(--muted);font-size:.85rem;padding:1.2rem 0}
   </style>
 </head>
 <body>
-  <header class="site"><div class="wrap"><a class="brand" href="/">{{.ShopName}}</a><nav><a href="/">全部商品</a></nav></div></header>
+  <header class="site"><div class="wrap"><a class="brand" href="/">{{.ShopName}}</a>
+    <nav><a href="/">全部商品</a><a href="/cart" class="cart-link">购物车<span class="cart-badge" data-cart-count></span></a></nav>
+  </div></header>
   <main><div class="wrap">{{template "content" .}}</div></main>
   <footer class="site"><div class="wrap">由 Kartwo 驱动 · {{.ShopName}}</div></footer>
+  <script src="/static/cart.js" defer></script>
 </body>
 </html>{{end}}

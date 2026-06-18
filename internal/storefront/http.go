@@ -13,35 +13,54 @@ import (
 	"html/template"
 	"net/http"
 	"strings"
+
+	"github.com/kartwo/kartwo/internal/cart"
 )
 
-//go:embed templates/*.html
+//go:embed templates/*.html static/*
 var tmplFS embed.FS
 
 // HTTP 承载店面页面与 SEO 端点。
 type HTTP struct {
 	svc      *Service
+	cart     *cart.Service
 	shopName string
 	currency string
 	baseURL  string // 配置基址；空则按请求推导
+	secure   bool   // prod 下 cookie 加 Secure
 	homeTmpl *template.Template
 	prodTmpl *template.Template
+	cartTmpl *template.Template
 }
 
 // NewHTTP 构建店面 HTTP 层。
-func NewHTTP(svc *Service, shopName, currency, baseURL string) *HTTP {
+func NewHTTP(svc *Service, cartSvc *cart.Service, shopName, currency, baseURL string, secure bool) *HTTP {
 	funcs := template.FuncMap{"money": moneyFunc(currency)}
-	home := template.Must(template.New("").Funcs(funcs).ParseFS(tmplFS, "templates/base.html", "templates/home.html"))
-	prod := template.Must(template.New("").Funcs(funcs).ParseFS(tmplFS, "templates/base.html", "templates/product.html"))
-	return &HTTP{svc: svc, shopName: shopName, currency: currency, baseURL: strings.TrimRight(baseURL, "/"), homeTmpl: home, prodTmpl: prod}
+	parse := func(page string) *template.Template {
+		return template.Must(template.New("").Funcs(funcs).ParseFS(tmplFS, "templates/base.html", page))
+	}
+	return &HTTP{
+		svc: svc, cart: cartSvc, shopName: shopName, currency: currency,
+		baseURL: strings.TrimRight(baseURL, "/"), secure: secure,
+		homeTmpl: parse("templates/home.html"),
+		prodTmpl: parse("templates/product.html"),
+		cartTmpl: parse("templates/cart.html"),
+	}
 }
 
 // Register 注册店面路由（公开，无鉴权）。
 func (h *HTTP) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /{$}", h.home)          // 仅根路径，避免吃掉其它前缀
+	mux.HandleFunc("GET /{$}", h.home) // 仅根路径，避免吃掉其它前缀
 	mux.HandleFunc("GET /p/{slug}", h.product)
 	mux.HandleFunc("GET /sitemap.xml", h.sitemap)
 	mux.HandleFunc("GET /robots.txt", h.robots)
+	mux.HandleFunc("GET /static/cart.js", h.cartJS)
+	// 购物车（匿名，cookie 标识；SameSite=Lax 缓解 CSRF）。
+	mux.HandleFunc("GET /cart", h.cartPage)
+	mux.HandleFunc("GET /cart/data", h.cartData)
+	mux.HandleFunc("POST /cart/items", h.cartAdd)
+	mux.HandleFunc("PATCH /cart/items/{vid}", h.cartSet)
+	mux.HandleFunc("DELETE /cart/items/{vid}", h.cartRemove)
 }
 
 type seo struct {

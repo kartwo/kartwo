@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kartwo/kartwo/internal/cart"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/migrate"
 	"github.com/kartwo/kartwo/migrations"
@@ -21,7 +22,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func setup(t *testing.T) (*Service, *catalog.Service) {
+func setup(t *testing.T) (*Service, *catalog.Service, *sql.DB) {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+t.TempDir()+"/t.db?_pragma=foreign_keys(ON)")
 	if err != nil {
@@ -32,7 +33,7 @@ func setup(t *testing.T) (*Service, *catalog.Service) {
 	if _, err := migrate.Run(context.Background(), db, migrations.FS); err != nil {
 		t.Fatal(err)
 	}
-	return New(db), catalog.New(db)
+	return New(db), catalog.New(db), db
 }
 
 func activeTee(slug string) catalog.ProductInput {
@@ -47,7 +48,7 @@ func activeTee(slug string) catalog.ProductInput {
 }
 
 func TestListCatalog_OnlyActive(t *testing.T) {
-	sf, cat := setup(t)
+	sf, cat, _ := setup(t)
 	ctx := context.Background()
 	if _, err := cat.CreateProduct(ctx, activeTee("tee")); err != nil {
 		t.Fatal(err)
@@ -71,7 +72,7 @@ func TestListCatalog_OnlyActive(t *testing.T) {
 }
 
 func TestGetProduct_AssemblesDetail(t *testing.T) {
-	sf, cat := setup(t)
+	sf, cat, _ := setup(t)
 	ctx := context.Background()
 	if _, err := cat.CreateProduct(ctx, activeTee("tee")); err != nil {
 		t.Fatal(err)
@@ -96,11 +97,11 @@ func TestGetProduct_AssemblesDetail(t *testing.T) {
 }
 
 func newHTTP(t *testing.T) (*HTTP, http.Handler) {
-	sf, cat := setup(t)
+	sf, cat, db := setup(t)
 	if _, err := cat.CreateProduct(context.Background(), activeTee("tee")); err != nil {
 		t.Fatal(err)
 	}
-	h := NewHTTP(sf, "测试店", "CNY", "https://shop.example")
+	h := NewHTTP(sf, cart.New(db), "测试店", "CNY", "https://shop.example", false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux

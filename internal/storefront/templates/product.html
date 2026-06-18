@@ -16,25 +16,23 @@
     </p>
     <p>{{if $p.InStock}}<span class="stock-in">● 有货</span>{{else}}<span class="stock-out">● 暂时缺货</span>{{end}}</p>
 
-    <!-- 加入购物车：M2.2 接渐进增强 JS；当前为占位按钮 -->
-    <button class="btn" {{if not $p.InStock}}disabled{{end}} data-product="{{$p.PublicID}}">加入购物车</button>
-    <p class="muted" style="font-size:.8rem;margin-top:.6rem">购物车功能将在下一步（M2.2）启用。</p>
-
-    <div class="opts">
+    <!-- 选规格 + 加入购物车（cart.js 渐进增强；无 JS 时按钮提交也由后端兜底） -->
+    <form class="opts" data-add-form action="/cart/items" method="post">
       <h3>选择规格</h3>
-      <table style="width:100%;border-collapse:collapse">
-        <thead><tr><th style="text-align:left">规格</th><th style="text-align:left">价格</th><th style="text-align:left">库存</th></tr></thead>
-        <tbody>
-        {{range $p.Variants}}
-          <tr style="border-top:1px solid var(--line)">
-            <td>{{range $i,$o := .Options}}{{if $i}} · {{end}}{{$o.Name}}:{{$o.Value}}{{end}}</td>
-            <td>{{money .Cents}}</td>
-            <td>{{if gt .Available 0}}<span class="stock-in">{{.Available}}</span>{{else}}<span class="stock-out">0</span>{{end}}</td>
-          </tr>
-        {{end}}
-        </tbody>
-      </table>
-    </div>
+      {{range $i, $v := $p.Variants}}
+      <label class="variant-opt {{if le $v.Available 0}}sold{{end}}">
+        <input type="radio" name="variant" value="{{$v.PublicID}}" {{if eq $i 0}}checked{{end}} {{if le $v.Available 0}}disabled{{end}} />
+        <span class="vo-spec">{{range $j,$o := $v.Options}}{{if $j}} · {{end}}{{$o.Name}}:{{$o.Value}}{{end}}</span>
+        <span class="vo-price">{{money $v.Cents}}</span>
+        <span class="vo-stock">{{if gt $v.Available 0}}<span class="stock-in">现货 {{$v.Available}}</span>{{else}}<span class="stock-out">缺货</span>{{end}}</span>
+      </label>
+      {{end}}
+      <div class="add-row">
+        <input type="number" name="quantity" value="1" min="1" max="999" style="width:80px" />
+        <button class="btn" type="submit" {{if not $p.InStock}}disabled{{end}}>加入购物车</button>
+      </div>
+      <p data-flash class="ok" style="font-size:.9rem;min-height:1.2em;margin:.4rem 0 0"></p>
+    </form>
   </div>
 </div>
 

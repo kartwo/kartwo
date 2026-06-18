@@ -1,0 +1,29 @@
+{{define "content"}}
+{{$c := .Cart}}
+<h1>购物车</h1>
+{{if not $c.Lines}}
+  <p class="muted">购物车是空的。<a href="/">去逛逛</a></p>
+{{else}}
+<table class="cart-table">
+  <thead><tr><th></th><th>商品</th><th>规格</th><th>单价</th><th>数量</th><th>小计</th><th></th></tr></thead>
+  <tbody>
+    {{range $c.Lines}}
+    <tr>
+      <td>{{if .ThumbURL}}<img class="cart-thumb" src="{{.ThumbURL}}" alt="{{.ProductTitle}}" width="56" height="56" loading="lazy" />{{end}}</td>
+      <td><a href="/p/{{.ProductSlug}}">{{.ProductTitle}}</a></td>
+      <td class="muted">{{range $i,$o := .Options}}{{if $i}} · {{end}}{{$o.Name}}:{{$o.Value}}{{end}}</td>
+      <td>{{money .UnitCents}}</td>
+      <td><input type="number" min="0" max="999" value="{{.Quantity}}" data-cart-qty="{{.VariantPublicID}}" style="width:72px" /></td>
+      <td>{{money .LineCents}}</td>
+      <td><button class="link" data-cart-remove="{{.VariantPublicID}}">删除</button></td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+<div class="cart-foot">
+  <div class="total">合计：<strong>{{money $c.TotalCents}}</strong></div>
+  <button class="btn" disabled title="结算将在 M2.3 启用">去结算</button>
+  <p class="muted" style="font-size:.8rem">结算（下单/防超卖）将在下一步（M2.3）启用。</p>
+</div>
+{{end}}
+{{end}}

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/kartwo/kartwo/internal/admin"
+	"github.com/kartwo/kartwo/internal/cart"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/config"
 	"github.com/kartwo/kartwo/internal/media"
@@ -168,7 +169,7 @@ func runServe(logger *slog.Logger) error {
 
 	mediaSvc := newMediaService(cfg, st)
 	adminHTTP := admin.NewHTTP(admin.New(st.DB), catalog.New(st.DB), mediaSvc, cfg.Env == "prod")
-	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cfg.ShopName, cfg.Currency, cfg.BaseURL)
+	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), cfg.ShopName, cfg.Currency, cfg.BaseURL, cfg.Env == "prod")
 	srv := server.New(cfg, st, Version, adminHTTP, storeHTTP)
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
