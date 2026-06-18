@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/kartwo/kartwo/internal/cart"
+	"github.com/kartwo/kartwo/internal/order"
 )
 
 //go:embed templates/*.html static/*
@@ -22,29 +23,34 @@ var tmplFS embed.FS
 
 // HTTP 承载店面页面与 SEO 端点。
 type HTTP struct {
-	svc      *Service
-	cart     *cart.Service
-	shopName string
-	currency string
-	baseURL  string // 配置基址；空则按请求推导
-	secure   bool   // prod 下 cookie 加 Secure
-	homeTmpl *template.Template
-	prodTmpl *template.Template
-	cartTmpl *template.Template
+	svc       *Service
+	cart      *cart.Service
+	order     *order.Service
+	shopName  string
+	currency  string
+	baseURL   string // 配置基址；空则按请求推导
+	secure    bool   // prod 下 cookie 加 Secure
+	homeTmpl  *template.Template
+	prodTmpl  *template.Template
+	cartTmpl  *template.Template
+	ckoutTmpl *template.Template
+	orderTmpl *template.Template
 }
 
 // NewHTTP 构建店面 HTTP 层。
-func NewHTTP(svc *Service, cartSvc *cart.Service, shopName, currency, baseURL string, secure bool) *HTTP {
+func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, shopName, currency, baseURL string, secure bool) *HTTP {
 	funcs := template.FuncMap{"money": moneyFunc(currency)}
 	parse := func(page string) *template.Template {
 		return template.Must(template.New("").Funcs(funcs).ParseFS(tmplFS, "templates/base.html", page))
 	}
 	return &HTTP{
-		svc: svc, cart: cartSvc, shopName: shopName, currency: currency,
+		svc: svc, cart: cartSvc, order: orderSvc, shopName: shopName, currency: currency,
 		baseURL: strings.TrimRight(baseURL, "/"), secure: secure,
-		homeTmpl: parse("templates/home.html"),
-		prodTmpl: parse("templates/product.html"),
-		cartTmpl: parse("templates/cart.html"),
+		homeTmpl:  parse("templates/home.html"),
+		prodTmpl:  parse("templates/product.html"),
+		cartTmpl:  parse("templates/cart.html"),
+		ckoutTmpl: parse("templates/checkout.html"),
+		orderTmpl: parse("templates/order.html"),
 	}
 }
 
@@ -61,6 +67,10 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /cart/items", h.cartAdd)
 	mux.HandleFunc("PATCH /cart/items/{vid}", h.cartSet)
 	mux.HandleFunc("DELETE /cart/items/{vid}", h.cartRemove)
+	// 结算/订单（表单提交，无 JS 也可用）。
+	mux.HandleFunc("GET /checkout", h.checkoutPage)
+	mux.HandleFunc("POST /checkout", h.checkoutSubmit)
+	mux.HandleFunc("GET /order/{id}", h.orderPage)
 }
 
 type seo struct {

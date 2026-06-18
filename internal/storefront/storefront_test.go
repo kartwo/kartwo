@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/kartwo/kartwo/internal/cart"
+	"github.com/kartwo/kartwo/internal/order"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/migrate"
 	"github.com/kartwo/kartwo/migrations"
@@ -101,7 +102,7 @@ func newHTTP(t *testing.T) (*HTTP, http.Handler) {
 	if _, err := cat.CreateProduct(context.Background(), activeTee("tee")); err != nil {
 		t.Fatal(err)
 	}
-	h := NewHTTP(sf, cart.New(db), "测试店", "CNY", "https://shop.example", false)
+	h := NewHTTP(sf, cart.New(db), order.New(db, "CNY"), "测试店", "CNY", "https://shop.example", false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
