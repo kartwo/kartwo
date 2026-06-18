@@ -45,6 +45,8 @@
 | 2026-06-18 | **Admin SPA 框架 = Vue 3 + Vite**；构建产物 embed 进单二进制，运行时零外部依赖；构建期需 Node | CRUD 样板最少/包体小/上手快，贴合极简；运行时仍单静态 | 前端/Admin（M1.5） |
 | 2026-06-18 | **storefront v1 = 二进制内嵌默认主题**（独立 Next.js/Astro 留 v2+）；SEO(JSON-LD/sitemap/canonical/规范 meta)与页面性能做扎实，作产品卖点 | 单二进制零额外部署、贴合 30 分钟开店北极星；SEO/性能是迁站/获客命门 | 店面（M2） |
 | 2026-06-18 | **Git 双远程推送**：origin fetch=GitHub，push 同时写 GitHub+Gitee（双备份） | 异地双备份、抗单点 | 基建 |
+| 2026-06-18 | **店面 v1 用服务端渲染纯 HTML（Go html/template）**，购物车等交互用渐进增强少量 JS；Admin 维持 Vue SPA | SEO 卖点落地：HTML 对爬虫最友好、首屏最快、无 JS 也能下单；Admin 在登录后无需 SEO | 店面（M2） |
+| 2026-06-18 | **v1 访客下单**（结账填邮箱即可），完整客户账户体系推迟 v1.1 | 北极星=快，强制注册流失；存最小客户信息即可 | 店面/订单（M2，账户 v1.1） |
 
 ---
 
