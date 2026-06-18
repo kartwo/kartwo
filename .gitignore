@@ -16,6 +16,9 @@ config.enc
 *.pem
 *.key
 
+# 本地文档：人工测试说明 docs/test、完成报告 docs/reports（不进 git）
+/docs/
+
 # 编辑器/系统
 .DS_Store
 .idea/
