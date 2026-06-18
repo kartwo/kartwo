@@ -15,7 +15,10 @@
       {{if eq $p.MinCents $p.MaxCents}}{{money $p.MinCents}}{{else}}{{money $p.MinCents}} – {{money $p.MaxCents}}{{end}}
     </p>
     <p>{{if $p.InStock}}<span class="stock-in">● 有货</span>{{else}}<span class="stock-out">● 暂时缺货</span>{{end}}</p>
-    {{if $p.Description}}<p class="muted">{{$p.Description}}</p>{{end}}
+
+    <!-- 加入购物车：M2.2 接渐进增强 JS；当前为占位按钮 -->
+    <button class="btn" {{if not $p.InStock}}disabled{{end}} data-product="{{$p.PublicID}}">加入购物车</button>
+    <p class="muted" style="font-size:.8rem;margin-top:.6rem">购物车功能将在下一步（M2.2）启用。</p>
 
     <div class="opts">
       <h3>选择规格</h3>
@@ -32,10 +35,13 @@
         </tbody>
       </table>
     </div>
-
-    <!-- 加入购物车：M2.2 接渐进增强 JS；当前为占位按钮 -->
-    <button class="btn" {{if not $p.InStock}}disabled{{end}} data-product="{{$p.PublicID}}">加入购物车</button>
-    <p class="muted" style="font-size:.8rem;margin-top:.6rem">购物车功能将在下一步（M2.2）启用。</p>
   </div>
 </div>
+
+{{if $p.Description}}
+<section class="desc">
+  <h2>商品介绍</h2>
+  <p>{{$p.Description}}</p>
+</section>
+{{end}}
 {{end}}
