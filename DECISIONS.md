@@ -45,6 +45,7 @@
 | 2026-06-18 | **Admin SPA 框架 = Vue 3 + Vite**；构建产物 embed 进单二进制，运行时零外部依赖；构建期需 Node | CRUD 样板最少/包体小/上手快，贴合极简；运行时仍单静态 | 前端/Admin（M1.5） |
 | 2026-06-18 | **storefront v1 = 二进制内嵌默认主题**（独立 Next.js/Astro 留 v2+）；SEO(JSON-LD/sitemap/canonical/规范 meta)与页面性能做扎实，作产品卖点 | 单二进制零额外部署、贴合 30 分钟开店北极星；SEO/性能是迁站/获客命门 | 店面（M2） |
 | 2026-06-18 | **Git 双远程推送**：origin fetch=GitHub，push 同时写 GitHub+Gitee（双备份） | 异地双备份、抗单点 | 基建 |
+| 2026-06-18 | **仓库 LICENSE 文件采用 MIT**（署名 2026 仗键天涯(daxing)），覆盖 GitHub 自动生成的 Apache-2.0 | 与"内核 MIT、Open Core"一致；MIT 最宽松主流，利开源引流+卖企业 | 全局/许可 |
 
 ---
 
