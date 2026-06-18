@@ -46,6 +46,15 @@ type Category struct {
 	DeletedAt sql.NullString `db:"deleted_at" json:"deleted_at"`
 }
 
+type Customer struct {
+	ID        int64  `db:"id" json:"id"`
+	PublicID  string `db:"public_id" json:"public_id"`
+	Email     string `db:"email" json:"email"`
+	Name      string `db:"name" json:"name"`
+	CreatedAt string `db:"created_at" json:"created_at"`
+	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
 type Inventory struct {
 	VariantID int64  `db:"variant_id" json:"variant_id"`
 	Quantity  int64  `db:"quantity" json:"quantity"`
@@ -84,6 +93,35 @@ type Meta struct {
 	Value     string `db:"value" json:"value"`
 	CreatedAt string `db:"created_at" json:"created_at"`
 	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
+type Order struct {
+	ID            int64  `db:"id" json:"id"`
+	PublicID      string `db:"public_id" json:"public_id"`
+	CustomerID    int64  `db:"customer_id" json:"customer_id"`
+	Status        string `db:"status" json:"status"`
+	Email         string `db:"email" json:"email"`
+	ShipName      string `db:"ship_name" json:"ship_name"`
+	ShipPhone     string `db:"ship_phone" json:"ship_phone"`
+	ShipAddress   string `db:"ship_address" json:"ship_address"`
+	ShipCountry   string `db:"ship_country" json:"ship_country"`
+	Currency      string `db:"currency" json:"currency"`
+	SubtotalCents int64  `db:"subtotal_cents" json:"subtotal_cents"`
+	TotalCents    int64  `db:"total_cents" json:"total_cents"`
+	CreatedAt     string `db:"created_at" json:"created_at"`
+	UpdatedAt     string `db:"updated_at" json:"updated_at"`
+}
+
+type OrderItem struct {
+	ID           int64  `db:"id" json:"id"`
+	OrderID      int64  `db:"order_id" json:"order_id"`
+	VariantID    int64  `db:"variant_id" json:"variant_id"`
+	ProductTitle string `db:"product_title" json:"product_title"`
+	VariantLabel string `db:"variant_label" json:"variant_label"`
+	Sku          string `db:"sku" json:"sku"`
+	UnitCents    int64  `db:"unit_cents" json:"unit_cents"`
+	Quantity     int64  `db:"quantity" json:"quantity"`
+	LineCents    int64  `db:"line_cents" json:"line_cents"`
 }
 
 type Product struct {
