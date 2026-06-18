@@ -122,7 +122,7 @@ func runServe(logger *slog.Logger) error {
 	}
 	defer func() { _ = st.Close() }()
 
-	adminHTTP := admin.NewHTTP(admin.New(st.DB), cfg.Env == "prod")
+	adminHTTP := admin.NewHTTP(admin.New(st.DB), catalog.New(st.DB), cfg.Env == "prod")
 	srv := server.New(cfg, st, Version, adminHTTP)
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,

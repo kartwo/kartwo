@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/migrate"
 	"github.com/kartwo/kartwo/migrations"
 
@@ -110,7 +111,7 @@ func TestKEKStableAcrossLogins(t *testing.T) {
 
 func newHTTP(t *testing.T) (*HTTP, http.Handler) {
 	svc := newSvc(t)
-	h := NewHTTP(svc, false)
+	h := NewHTTP(svc, catalog.New(svc.db), false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
@@ -216,6 +217,99 @@ func TestHTTPSetupWeakPasswordRejected(t *testing.T) {
 	_, mux := newHTTP(t)
 	if resp := doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"short"}`, nil, ""); resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("弱口令 setup 状态 = %d，期望 400", resp.StatusCode)
+	}
+}
+
+// loginAndCookies 完成 setup+login，返回 session cookie 与 csrf 值。
+func loginAndCookies(t *testing.T, mux http.Handler) (*http.Cookie, string) {
+	t.Helper()
+	_ = doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"supersecret"}`, nil, "")
+	resp := doJSON(t, mux, "POST", "/admin/api/login", `{"username":"admin","password":"supersecret"}`, nil, "")
+	var sessionC *http.Cookie
+	var csrf string
+	for _, c := range resp.Cookies {
+		switch c.Name {
+		case sessionCookie:
+			sessionC = c
+		case csrfCookie:
+			csrf = c.Value
+		}
+	}
+	if sessionC == nil || csrf == "" {
+		t.Fatal("登录未返回 session/csrf")
+	}
+	return sessionC, csrf
+}
+
+func TestHTTPProductCRUDFlow(t *testing.T) {
+	_, mux := newHTTP(t)
+	sess, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+
+	body := `{"title":"T恤","slug":"tee","status":"active",
+		"options":[{"name":"尺码","values":["S","M"]},{"name":"颜色","values":["黑","白"]}],
+		"variants":[
+			{"price_cents":9900,"quantity":10,"selections":[{"option":"尺码","value":"S"},{"option":"颜色","value":"黑"}]},
+			{"price_cents":9900,"quantity":20,"selections":[{"option":"尺码","value":"M"},{"option":"颜色","value":"白"}]}
+		]}`
+
+	// 未登录 → 401
+	if resp := doJSON(t, mux, "POST", "/admin/api/products", body, nil, ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("未登录建商品 = %d，期望 401", resp.StatusCode)
+	}
+	// 登录但无 CSRF → 403
+	if resp := doJSON(t, mux, "POST", "/admin/api/products", body, auth, ""); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("无 CSRF 建商品 = %d，期望 403", resp.StatusCode)
+	}
+	// 正常建商品 → 201
+	resp := doJSON(t, mux, "POST", "/admin/api/products", body, auth, csrf)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("建商品 = %d，期望 201；body=%s", resp.StatusCode, resp.Body)
+	}
+	var created struct {
+		PublicID string `json:"public_id"`
+	}
+	_ = json.Unmarshal(resp.Body, &created)
+	if created.PublicID == "" {
+		t.Fatal("未返回 public_id")
+	}
+
+	// 列表含一条
+	listResp := doJSON(t, mux, "GET", "/admin/api/products", "", auth, "")
+	var list struct {
+		Products []map[string]any `json:"products"`
+	}
+	_ = json.Unmarshal(listResp.Body, &list)
+	if len(list.Products) != 1 {
+		t.Fatalf("商品数 = %d，期望 1", len(list.Products))
+	}
+
+	// 取详情，拿一个变体 public_id
+	getResp := doJSON(t, mux, "GET", "/admin/api/products/"+created.PublicID, "", auth, "")
+	var detail struct {
+		Variants []struct {
+			PublicID string `json:"public_id"`
+			Quantity int64  `json:"quantity"`
+		} `json:"variants"`
+	}
+	_ = json.Unmarshal(getResp.Body, &detail)
+	if len(detail.Variants) != 2 {
+		t.Fatalf("详情变体数 = %d，期望 2", len(detail.Variants))
+	}
+
+	// 改库存
+	vpid := detail.Variants[0].PublicID
+	if resp := doJSON(t, mux, "PATCH", "/admin/api/variants/"+vpid+"/inventory", `{"quantity":999}`, auth, csrf); resp.StatusCode != http.StatusOK {
+		t.Fatalf("改库存 = %d，期望 200；body=%s", resp.StatusCode, resp.Body)
+	}
+
+	// 软删
+	if resp := doJSON(t, mux, "DELETE", "/admin/api/products/"+created.PublicID, "", auth, csrf); resp.StatusCode != http.StatusOK {
+		t.Fatalf("软删 = %d，期望 200", resp.StatusCode)
+	}
+	// 软删后取 → 404
+	if resp := doJSON(t, mux, "GET", "/admin/api/products/"+created.PublicID, "", auth, ""); resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("软删后取 = %d，期望 404", resp.StatusCode)
 	}
 }
 

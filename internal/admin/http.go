@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/kartwo/kartwo/internal/catalog"
 )
 
 const (
@@ -24,13 +26,14 @@ const (
 // HTTP 承载 Admin API 处理器。
 type HTTP struct {
 	svc     *Service
-	secure  bool          // prod 下 cookie 加 Secure
+	cat     *catalog.Service
+	secure  bool // prod 下 cookie 加 Secure
 	limiter *loginLimiter
 }
 
 // NewHTTP 构建 Admin HTTP 层。secure=true 时 cookie 标记 Secure（prod）。
-func NewHTTP(svc *Service, secure bool) *HTTP {
-	return &HTTP{svc: svc, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
+func NewHTTP(svc *Service, cat *catalog.Service, secure bool) *HTTP {
+	return &HTTP{svc: svc, cat: cat, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
 }
 
 // Register 在给定 mux 上注册 /admin/api/* 路由。
@@ -40,6 +43,17 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/api/login", h.login)
 	mux.Handle("POST /admin/api/logout", h.requireAuth(http.HandlerFunc(h.logout)))
 	mux.Handle("GET /admin/api/me", h.requireAuth(http.HandlerFunc(h.me)))
+
+	// 商品/分类/变体 CRUD（均需鉴权；写操作经中间件 CSRF 校验）。
+	protect := func(fn http.HandlerFunc) http.Handler { return h.requireAuth(fn) }
+	mux.Handle("GET /admin/api/products", protect(h.listProducts))
+	mux.Handle("POST /admin/api/products", protect(h.createProduct))
+	mux.Handle("GET /admin/api/products/{id}", protect(h.getProduct))
+	mux.Handle("PATCH /admin/api/products/{id}", protect(h.updateProduct))
+	mux.Handle("DELETE /admin/api/products/{id}", protect(h.deleteProduct))
+	mux.Handle("PATCH /admin/api/variants/{id}/inventory", protect(h.setVariantInventory))
+	mux.Handle("GET /admin/api/categories", protect(h.listCategories))
+	mux.Handle("POST /admin/api/categories", protect(h.createCategory))
 }
 
 func (h *HTTP) status(w http.ResponseWriter, r *http.Request) {
