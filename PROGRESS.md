@@ -8,8 +8,8 @@
 ---
 
 ## 当前状态
-- **阶段**：**M1.4（媒体上传 + StoragePolicy）已完成，待 Derek 人工验收**（分支 `feat/m1-data-model`）。
-- **下一步**：M1.4 验收通过 → M1.5（Admin SPA，届时拍板 Vue3/React）。M1 各片累积于分支，全 M1 完成后合主干打 `v0.1.0`。
+- **阶段**：**M1.4 已验收通过**；进行 M1.5（Admin SPA，M1 最后一片）。
+- **下一步**：拍板 Admin SPA 框架(Vue3/React)后实现 M1.5。M1.5 完成即整个 M1 完成，合主干打 `v0.1.0`。
 - **最新 git tag**：`v0.0.0`（M0）
 
 ## 里程碑总览
@@ -17,7 +17,7 @@
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
 | M0 | 地基与骨架（含数据层选型落地、CI 安全门禁、生成各 .md） | ✅ 已验收通过（v0.0.0） |
-| M1 | 核心数据模型 + Admin 基础 + 媒体上传 + StoragePolicy（切 5 片） | 🟡 进行中（M1.1–1.4 已做，1.4 待验收） |
+| M1 | 核心数据模型 + Admin 基础 + 媒体上传 + StoragePolicy（切 5 片） | 🟡 进行中（M1.1–1.4 已验收，做 M1.5） |
 | M2 | 店面 + 购物车 + 下单（防超卖）+ SEO 基建 | ⬜ 未开始 |
 | M3 | 支付路由 + Stripe/PayPal + 沙箱 + 退款 | ⬜ 未开始 |
 | M4 | 自动 HTTPS + 向导完整 + 30 分钟开店（北极星） | ⬜ 未开始 |
@@ -30,8 +30,8 @@
 - [x] **M1.1 数据模型与迁移**（✅ 已验收）：通用双轴 option×option schema、纯 SQL 迁移、sqlc 数据层、seed-demo 装 6 变体并打印矩阵、单测
 - [x] **M1.2 Admin 鉴权 + 向导骨架**（✅ 已验收）：argon2id 口令、主口令派生 KEK(内存金库)、初始化幂等、会话+CSRF、登录限流、向导 API；单测+HTTP 测
 - [x] **M1.3 Admin 商品 CRUD API**（✅ 已验收）：商品建/列/取/改/软删、变体校验、改库存、分类增列；鉴权+对象级+CSRF；单测+HTTP 测+实测
-- [x] **M1.4 媒体上传 + StoragePolicy**（待验收）：multipart 上传、magic-bytes、去 EXIF、多尺寸 WebP(gen2brain)、内容哈希、本地后端、StoragePolicy+磁盘护栏、单商品张数护栏、孤儿清理、/media 托管；单测+HTTP 测+实测
-- [ ] M1.5 Admin SPA（登录 + 商品管理；SPA 框架届时拍板）
+- [x] **M1.4 媒体上传 + StoragePolicy**（✅ 已验收）：multipart 上传、magic-bytes、去 EXIF、多尺寸 WebP(gen2brain)、内容哈希、本地后端、StoragePolicy+磁盘护栏、单商品张数护栏、孤儿清理、/media 托管；单测+HTTP 测+实测
+- [ ] M1.5 Admin SPA（登录 + 商品管理 + 传图；SPA 框架待拍板）— 进行中
 
 ## 历史里程碑明细（M0 · 地基与骨架）
 - [x] `git init` + Go module（`github.com/kartwo/kartwo`，go 1.26.4 钉死）
