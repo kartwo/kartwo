@@ -11,11 +11,28 @@ on:
 # 钉死版本，不用浮动 latest（与 go.mod 一致）。
 env:
   GO_VERSION: "1.26.4"
+  NODE_VERSION: "24"
   SQLC_VERSION: "1.30.0"
   GOLANGCI_LINT_VERSION: "v2.5.0"
   GOVULNCHECK_VERSION: "v1.1.4"
 
 jobs:
+  frontend:
+    name: 前端构建（Admin SPA）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: 构建 Admin 前端（验证可构建）
+        working-directory: web/admin/ui
+        run: |
+          npm ci
+          npm run build
+      - name: 确认构建产物存在
+        run: test -f web/admin/dist/index.html && ls web/admin/dist/assets
+
   build-test:
     name: 构建与测试
     runs-on: ubuntu-latest

@@ -86,7 +86,9 @@ func securityHeaders(cfg *config.Config) func(http.Handler) http.Handler {
 			h.Set("X-Content-Type-Options", "nosniff")
 			h.Set("X-Frame-Options", "DENY")
 			h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
-			h.Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; base-uri 'self'")
+			// script 严格 'self'（Vue 生产构建无需 eval/inline）；style 放开内联（Vue 内联 style 属性）；图片含本地 /media。
+			h.Set("Content-Security-Policy",
+				"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'")
 			if cfg.Env == "prod" {
 				h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 			}

@@ -7,9 +7,12 @@
 BIN := $(CURDIR)/.bin
 TOOLPATH := PATH="$(BIN):$$PATH"
 
-.PHONY: all build test vet lint vuln gen tidy run check tools
+.PHONY: all build test vet lint vuln gen tidy run check tools web
 
 all: check
+
+web:           ## 构建 Admin 前端(Vue3+Vite) 到 web/admin/dist（供 go build embed）
+	cd web/admin/ui && npm ci && npm run build
 
 tools:         ## 安装钉死版本的开发工具到 ./.bin（版本与 CI 一致）
 	GOBIN=$(BIN) go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
