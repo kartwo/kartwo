@@ -43,6 +43,8 @@
 | 2026-06-18 | 图片缩放用 **golang.org/x/image/draw**、WebP 解码 x/image/webp；去 EXIF 靠解码再编码(只留像素) | 纯 Go 无 CGO；高质量重采样；再编码天然剥 EXIF | 媒体（M1.4） |
 | 2026-06-18 | 媒体存储后端做成 **Backend 接口 + LocalBackend 默认**；S3/R2 为 v1.1，仅留接口 | 双模式/可移植；本片只落地本地默认 | 媒体（M1.4） |
 | 2026-06-18 | **Admin SPA 框架 = Vue 3 + Vite**；构建产物 embed 进单二进制，运行时零外部依赖；构建期需 Node | CRUD 样板最少/包体小/上手快，贴合极简；运行时仍单静态 | 前端/Admin（M1.5） |
+| 2026-06-18 | **storefront v1 = 二进制内嵌默认主题**（独立 Next.js/Astro 留 v2+）；SEO(JSON-LD/sitemap/canonical/规范 meta)与页面性能做扎实，作产品卖点 | 单二进制零额外部署、贴合 30 分钟开店北极星；SEO/性能是迁站/获客命门 | 店面（M2） |
+| 2026-06-18 | **Git 双远程推送**：origin fetch=GitHub，push 同时写 GitHub+Gitee（双备份） | 异地双备份、抗单点 | 基建 |
 
 ---
 
@@ -51,4 +53,3 @@
 | 决策 | 最迟需在 | 备注 |
 |---|---|---|
 | 主攻市场（美/欧/中东/东南亚） | M3 前 | 决定本地支付/RTL/多语言/合规 |
-| storefront v1 形态 | M2 前 | 已暂定内嵌默认主题，待最终确认 |
