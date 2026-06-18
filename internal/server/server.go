@@ -9,21 +9,43 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	adminui "github.com/kartwo/kartwo/web/admin"
 
+	"github.com/kartwo/kartwo/internal/admin"
 	"github.com/kartwo/kartwo/internal/config"
 	"github.com/kartwo/kartwo/internal/store"
 )
 
 // New 构建带中间件的 HTTP Handler。
-func New(cfg *config.Config, st *store.Store, version string) http.Handler {
+func New(cfg *config.Config, st *store.Store, version string, adminHTTP *admin.HTTP) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(st, version))
+	adminHTTP.Register(mux) // /admin/api/*
+	mux.Handle("GET /media/", mediaHandler(filepath.Join(cfg.DataDir, "media")))
 	mux.Handle("/", adminHandler())
 
 	return securityHeaders(cfg)(mux)
+}
+
+// mediaHandler 公开只读托管 ./data/media（供 Admin/店面展图）；禁目录列举。
+func mediaHandler(root string) http.Handler {
+	fileServer := http.FileServer(http.Dir(root))
+	return http.StripPrefix("/media/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 禁止目录列举：以 / 结尾或映射到目录的请求返回 404。
+		if len(r.URL.Path) == 0 || r.URL.Path[len(r.URL.Path)-1] == '/' {
+			http.NotFound(w, r)
+			return
+		}
+		if info, err := os.Stat(filepath.Join(root, filepath.Clean("/"+r.URL.Path))); err == nil && info.IsDir() {
+			http.NotFound(w, r)
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	}))
 }
 
 // healthHandler 返回服务存活与数据库可达状态。
@@ -64,7 +86,9 @@ func securityHeaders(cfg *config.Config) func(http.Handler) http.Handler {
 			h.Set("X-Content-Type-Options", "nosniff")
 			h.Set("X-Frame-Options", "DENY")
 			h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
-			h.Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; base-uri 'self'")
+			// script 严格 'self'（Vue 生产构建无需 eval/inline）；style 放开内联（Vue 内联 style 属性）；图片含本地 /media。
+			h.Set("Content-Security-Policy",
+				"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'")
 			if cfg.Env == "prod" {
 				h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 			}

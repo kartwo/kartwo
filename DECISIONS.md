@@ -35,6 +35,14 @@
 | 2026-06-17 | **customer/order schema 推迟到 M2/M3 使用时再建，M1 不留空表** | 避免镀金空表；schema 随行为一起落地 | 范围（M1→M2/M3） |
 | 2026-06-17 | M1 切成 5 个独立可验收切片（数据模型/鉴权+向导/CRUD API/媒体+StoragePolicy/Admin SPA） | 遵守"每阶段十几分钟可人工测完"铁律 | 节奏（M1） |
 | 2026-06-17 | 外部 ID 实现选 **UUIDv7**（google/uuid），不引 Hashid 盐管理；如需短公开码后续可叠加 | 时间有序、无需盐管理、落地简单（CONVENTIONS 许可二选一） | 数据模型 |
+| 2026-06-17 | **sqlc(.sql) 注释用纯 ASCII、每条语句单行**，避开 sqlc v1.30 多字节注释致查询源跨度错位的 bug（生成可编译但 SQL 错乱、运行时报错） | 实测根因：注释含中文(多字节)时 sqlc 按字节偏移切片错位；纯 ASCII 注释生成正确；CI sqlc-diff 兜底 | 数据层/构建 |
+| 2026-06-17 | **主口令 KDF = argon2id**（golang.org/x/crypto，无 CGO） | OWASP 首选、抗 GPU、纯 Go；CONVENTIONS 已列优先 | 安全/鉴权（M1.2） |
+| 2026-06-17 | **argon2id 参数 memory=64MiB,time=3,parallelism=1,keyLen=32,saltLen=16** | 1C1G $5 VPS 友好、单次登录几十毫秒、安全充分（OWASP 推荐档） | 安全/鉴权（M1.2） |
+| 2026-06-17 | **主口令与管理员登录密码合一**：一个口令既登录又派生配置加密密钥(KEK)，两用途用不同盐 | 非技术商家记一个口令最省心（北极星）；不同盐隔离两用途 | 安全/鉴权（M1.2） |
+| 2026-06-18 | **图片 WebP 编码 = gen2brain/webp**（wazero 跑内嵌 libwebp WASM，无 CGO） | 无 CGO 下支持有损+无损 WebP、照片体积最优；仍单静态二进制；契合 ARCHITECTURE §5/§18 | 媒体（M1.4） |
+| 2026-06-18 | 图片缩放用 **golang.org/x/image/draw**、WebP 解码 x/image/webp；去 EXIF 靠解码再编码(只留像素) | 纯 Go 无 CGO；高质量重采样；再编码天然剥 EXIF | 媒体（M1.4） |
+| 2026-06-18 | 媒体存储后端做成 **Backend 接口 + LocalBackend 默认**；S3/R2 为 v1.1，仅留接口 | 双模式/可移植；本片只落地本地默认 | 媒体（M1.4） |
+| 2026-06-18 | **Admin SPA 框架 = Vue 3 + Vite**；构建产物 embed 进单二进制，运行时零外部依赖；构建期需 Node | CRUD 样板最少/包体小/上手快，贴合极简；运行时仍单静态 | 前端/Admin（M1.5） |
 
 ---
 
@@ -42,7 +50,5 @@
 
 | 决策 | 最迟需在 | 备注 |
 |---|---|---|
-| Admin SPA 框架 Vue3 / React | M1 的 SPA 切片前 | 决定前端技术栈；不阻塞 M1 数据模型/API 切片 |
-| 主攻市场（美/欧/中东/东南亚） | M3 前 | 决定本地支付/RTL/多语言/合规 |
 | 主攻市场（美/欧/中东/东南亚） | M3 前 | 决定本地支付/RTL/多语言/合规 |
 | storefront v1 形态 | M2 前 | 已暂定内嵌默认主题，待最终确认 |

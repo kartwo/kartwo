@@ -8,14 +8,19 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
+	"github.com/kartwo/kartwo/internal/admin"
+	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/config"
+	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
 	"github.com/kartwo/kartwo/internal/server"
 	"github.com/kartwo/kartwo/internal/store"
@@ -29,33 +34,104 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	if err := run(logger); err != nil {
-		logger.Error("启动失败", "err", err)
+	// 子命令分发：默认 serve；seed-demo 装演示数据后退出。
+	sub := "serve"
+	if len(os.Args) > 1 {
+		sub = os.Args[1]
+	}
+
+	var err error
+	switch sub {
+	case "serve":
+		err = runServe(logger)
+	case "seed-demo":
+		err = runSeedDemo(logger)
+	default:
+		err = fmt.Errorf("未知子命令 %q（可用：serve | seed-demo）", sub)
+	}
+	if err != nil {
+		logger.Error("执行失败", "subcommand", sub, "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(logger *slog.Logger) error {
+// setup 完成"配置→数据层→迁移"的公共装配，serve 与 seed-demo 共用。
+func setup(logger *slog.Logger) (*config.Config, *store.Store, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	logger.Info("配置已加载", "env", cfg.Env, "addr", cfg.Addr, "data_dir", cfg.DataDir, "engine", cfg.DBEngine)
 
 	st, err := store.Open(cfg)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	defer func() { _ = st.Close() }()
 
 	// 启动即跑迁移：幂等可重入，未应用的才执行。
 	applied, err := migrate.Run(context.Background(), st.DB, migrations.FS)
 	if err != nil {
-		return err
+		_ = st.Close()
+		return nil, nil, err
 	}
 	logger.Info("数据库迁移完成", "newly_applied", applied)
+	return cfg, st, nil
+}
 
-	srv := server.New(cfg, st, Version)
+// runSeedDemo 装入演示商品并打印变体矩阵（M1.1 验收用），完成后退出。
+func runSeedDemo(logger *slog.Logger) error {
+	_, st, err := setup(logger)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
+
+	ctx := context.Background()
+	svc := catalog.New(st.DB)
+	pid, created, err := svc.SeedDemo(ctx)
+	if err != nil {
+		return err
+	}
+	if created {
+		logger.Info("演示数据已装入", "product_id", pid)
+	} else {
+		logger.Info("演示数据已存在，跳过装入", "product_id", pid)
+	}
+
+	matrix, err := svc.GetVariantMatrix(ctx, pid)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("\n演示商品变体矩阵（共 %d 个变体）：\n", len(matrix))
+	for _, v := range matrix {
+		opts := ""
+		for i, p := range v.Options {
+			if i > 0 {
+				opts += " × "
+			}
+			opts += fmt.Sprintf("%s=%s", p.Name, p.Value)
+		}
+		fmt.Printf("  [%s] %-14s ¥%.2f  库存=%d  %s\n", v.PublicID[:8], v.SKU, float64(v.PriceCents)/100, v.Quantity, opts)
+	}
+	fmt.Println()
+	return nil
+}
+
+func runServe(logger *slog.Logger) error {
+	cfg, st, err := setup(logger)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
+
+	mediaRoot := filepath.Join(cfg.DataDir, "media")
+	mediaBackend := media.NewLocalBackend(mediaRoot)
+	// 默认存储策略：不限总量，单文件 ≤10MiB，磁盘可用 <200MiB 时停新上传。
+	mediaPolicy := media.NewDefaultPolicy(mediaRoot, 10<<20, 200<<20)
+	mediaSvc := media.New(st.DB, mediaBackend, mediaPolicy, 20)
+
+	adminHTTP := admin.NewHTTP(admin.New(st.DB), catalog.New(st.DB), mediaSvc, cfg.Env == "prod")
+	srv := server.New(cfg, st, Version, adminHTTP)
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           srv,
