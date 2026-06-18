@@ -30,6 +30,10 @@
 | modernc.org/sqlite | 纯 Go SQLite 驱动（默认数据库） | BSD-3-Clause | 已引入 |
 | github.com/google/uuid | 外部 ID（UUIDv7）生成 | BSD-3-Clause | 已引入 |
 | golang.org/x/crypto/argon2 | 主口令哈希与 KEK 派生（argon2id） | BSD-3-Clause | 已引入 |
+| github.com/gen2brain/webp | WebP 编解码（wazero 跑内嵌 libwebp WASM，无 CGO） | MIT | 已引入 |
+| github.com/tetratelabs/wazero | gen2brain/webp 依赖：纯 Go WASM 运行时 | Apache-2.0 | 已引入（间接） |
+| github.com/ebitengine/purego | gen2brain/webp 依赖 | Apache-2.0 | 已引入（间接） |
+| golang.org/x/image | 图片缩放（draw）与 WebP 解码 | BSD-3-Clause | 已引入 |
 | 工具：sqlc | 由纯 SQL 生成类型安全数据层代码（构建期，不进二进制） | MIT | 已引入 |
 | 工具：golangci-lint | 静态检查（CI 门禁，不进二进制） | GPL-3.0（仅作为外部 CLI 调用，不链接进产物） | 已引入 |
 | 工具：govulncheck | 依赖漏洞扫描（CI 门禁，不进二进制） | BSD-3-Clause | 已引入 |

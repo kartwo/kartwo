@@ -39,6 +39,9 @@
 | 2026-06-17 | **主口令 KDF = argon2id**（golang.org/x/crypto，无 CGO） | OWASP 首选、抗 GPU、纯 Go；CONVENTIONS 已列优先 | 安全/鉴权（M1.2） |
 | 2026-06-17 | **argon2id 参数 memory=64MiB,time=3,parallelism=1,keyLen=32,saltLen=16** | 1C1G $5 VPS 友好、单次登录几十毫秒、安全充分（OWASP 推荐档） | 安全/鉴权（M1.2） |
 | 2026-06-17 | **主口令与管理员登录密码合一**：一个口令既登录又派生配置加密密钥(KEK)，两用途用不同盐 | 非技术商家记一个口令最省心（北极星）；不同盐隔离两用途 | 安全/鉴权（M1.2） |
+| 2026-06-18 | **图片 WebP 编码 = gen2brain/webp**（wazero 跑内嵌 libwebp WASM，无 CGO） | 无 CGO 下支持有损+无损 WebP、照片体积最优；仍单静态二进制；契合 ARCHITECTURE §5/§18 | 媒体（M1.4） |
+| 2026-06-18 | 图片缩放用 **golang.org/x/image/draw**、WebP 解码 x/image/webp；去 EXIF 靠解码再编码(只留像素) | 纯 Go 无 CGO；高质量重采样；再编码天然剥 EXIF | 媒体（M1.4） |
+| 2026-06-18 | 媒体存储后端做成 **Backend 接口 + LocalBackend 默认**；S3/R2 为 v1.1，仅留接口 | 双模式/可移植；本片只落地本地默认 | 媒体（M1.4） |
 
 ---
 
