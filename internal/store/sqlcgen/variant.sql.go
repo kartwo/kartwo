@@ -58,6 +58,31 @@ func (q *Queries) CreateVariant(ctx context.Context, arg CreateVariantParams) (i
 	return result.LastInsertId()
 }
 
+const getVariantByPublicID = `-- name: GetVariantByPublicID :one
+SELECT id, public_id, product_id, sku, price_cents FROM variant WHERE public_id = ? AND deleted_at IS NULL
+`
+
+type GetVariantByPublicIDRow struct {
+	ID         int64          `db:"id" json:"id"`
+	PublicID   string         `db:"public_id" json:"public_id"`
+	ProductID  int64          `db:"product_id" json:"product_id"`
+	Sku        sql.NullString `db:"sku" json:"sku"`
+	PriceCents int64          `db:"price_cents" json:"price_cents"`
+}
+
+func (q *Queries) GetVariantByPublicID(ctx context.Context, publicID string) (GetVariantByPublicIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getVariantByPublicID, publicID)
+	var i GetVariantByPublicIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.ProductID,
+		&i.Sku,
+		&i.PriceCents,
+	)
+	return i, err
+}
+
 const listVariantOptionValuesByProduct = `-- name: ListVariantOptionValuesByProduct :many
 SELECT v.id AS variant_id, po.name AS option_name, pov.value AS option_value, po.position AS option_position FROM variant v JOIN variant_option_value vov ON vov.variant_id = v.id JOIN product_option po ON po.id = vov.option_id JOIN product_option_value pov ON pov.id = vov.value_id WHERE v.product_id = ? AND v.deleted_at IS NULL ORDER BY v.position, v.id, po.position
 `
@@ -138,4 +163,13 @@ func (q *Queries) ListVariantsByProduct(ctx context.Context, productID int64) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const softDeleteVariantsByProduct = `-- name: SoftDeleteVariantsByProduct :exec
+UPDATE variant SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE product_id = ? AND deleted_at IS NULL
+`
+
+func (q *Queries) SoftDeleteVariantsByProduct(ctx context.Context, productID int64) error {
+	_, err := q.db.ExecContext(ctx, softDeleteVariantsByProduct, productID)
+	return err
 }

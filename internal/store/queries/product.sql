@@ -14,3 +14,15 @@ INSERT INTO product_option (product_id, name, position) VALUES (?, ?, ?);
 
 -- name: CreateOptionValue :execlastid
 INSERT INTO product_option_value (option_id, value, position) VALUES (?, ?, ?);
+
+-- name: ListProducts :many
+SELECT id, public_id, title, slug, status, created_at, updated_at FROM product WHERE deleted_at IS NULL ORDER BY id DESC;
+
+-- name: GetProductByPublicID :one
+SELECT id, public_id, title, slug, description, status, created_at, updated_at FROM product WHERE public_id = ? AND deleted_at IS NULL;
+
+-- name: UpdateProduct :exec
+UPDATE product SET title = ?, description = ?, status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND deleted_at IS NULL;
+
+-- name: SoftDeleteProduct :exec
+UPDATE product SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND deleted_at IS NULL;

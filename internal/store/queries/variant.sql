@@ -14,3 +14,9 @@ SELECT id, public_id, sku, price_cents, option_key, position FROM variant WHERE 
 
 -- name: ListVariantOptionValuesByProduct :many
 SELECT v.id AS variant_id, po.name AS option_name, pov.value AS option_value, po.position AS option_position FROM variant v JOIN variant_option_value vov ON vov.variant_id = v.id JOIN product_option po ON po.id = vov.option_id JOIN product_option_value pov ON pov.id = vov.value_id WHERE v.product_id = ? AND v.deleted_at IS NULL ORDER BY v.position, v.id, po.position;
+
+-- name: GetVariantByPublicID :one
+SELECT id, public_id, product_id, sku, price_cents FROM variant WHERE public_id = ? AND deleted_at IS NULL;
+
+-- name: SoftDeleteVariantsByProduct :exec
+UPDATE variant SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE product_id = ? AND deleted_at IS NULL;

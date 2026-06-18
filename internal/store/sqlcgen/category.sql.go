@@ -41,6 +41,31 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 	return result.LastInsertId()
 }
 
+const getCategoryByPublicID = `-- name: GetCategoryByPublicID :one
+SELECT id, public_id, name, slug, position FROM category WHERE public_id = ? AND deleted_at IS NULL
+`
+
+type GetCategoryByPublicIDRow struct {
+	ID       int64  `db:"id" json:"id"`
+	PublicID string `db:"public_id" json:"public_id"`
+	Name     string `db:"name" json:"name"`
+	Slug     string `db:"slug" json:"slug"`
+	Position int64  `db:"position" json:"position"`
+}
+
+func (q *Queries) GetCategoryByPublicID(ctx context.Context, publicID string) (GetCategoryByPublicIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getCategoryByPublicID, publicID)
+	var i GetCategoryByPublicIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.Name,
+		&i.Slug,
+		&i.Position,
+	)
+	return i, err
+}
+
 const linkProductCategory = `-- name: LinkProductCategory :exec
 INSERT OR IGNORE INTO product_category (product_id, category_id) VALUES (?, ?)
 `
@@ -53,4 +78,45 @@ type LinkProductCategoryParams struct {
 func (q *Queries) LinkProductCategory(ctx context.Context, arg LinkProductCategoryParams) error {
 	_, err := q.db.ExecContext(ctx, linkProductCategory, arg.ProductID, arg.CategoryID)
 	return err
+}
+
+const listCategories = `-- name: ListCategories :many
+SELECT id, public_id, name, slug, position FROM category WHERE deleted_at IS NULL ORDER BY position, id
+`
+
+type ListCategoriesRow struct {
+	ID       int64  `db:"id" json:"id"`
+	PublicID string `db:"public_id" json:"public_id"`
+	Name     string `db:"name" json:"name"`
+	Slug     string `db:"slug" json:"slug"`
+	Position int64  `db:"position" json:"position"`
+}
+
+func (q *Queries) ListCategories(ctx context.Context) ([]ListCategoriesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listCategories)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCategoriesRow{}
+	for rows.Next() {
+		var i ListCategoriesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.Name,
+			&i.Slug,
+			&i.Position,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

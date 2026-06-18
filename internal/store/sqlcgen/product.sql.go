@@ -76,6 +76,37 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (i
 	return result.LastInsertId()
 }
 
+const getProductByPublicID = `-- name: GetProductByPublicID :one
+SELECT id, public_id, title, slug, description, status, created_at, updated_at FROM product WHERE public_id = ? AND deleted_at IS NULL
+`
+
+type GetProductByPublicIDRow struct {
+	ID          int64  `db:"id" json:"id"`
+	PublicID    string `db:"public_id" json:"public_id"`
+	Title       string `db:"title" json:"title"`
+	Slug        string `db:"slug" json:"slug"`
+	Description string `db:"description" json:"description"`
+	Status      string `db:"status" json:"status"`
+	CreatedAt   string `db:"created_at" json:"created_at"`
+	UpdatedAt   string `db:"updated_at" json:"updated_at"`
+}
+
+func (q *Queries) GetProductByPublicID(ctx context.Context, publicID string) (GetProductByPublicIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getProductByPublicID, publicID)
+	var i GetProductByPublicIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.Title,
+		&i.Slug,
+		&i.Description,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getProductBySlug = `-- name: GetProductBySlug :one
 SELECT id, public_id, title, slug, description, status, created_at, updated_at FROM product WHERE slug = ? AND deleted_at IS NULL
 `
@@ -105,4 +136,79 @@ func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (GetProduct
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listProducts = `-- name: ListProducts :many
+SELECT id, public_id, title, slug, status, created_at, updated_at FROM product WHERE deleted_at IS NULL ORDER BY id DESC
+`
+
+type ListProductsRow struct {
+	ID        int64  `db:"id" json:"id"`
+	PublicID  string `db:"public_id" json:"public_id"`
+	Title     string `db:"title" json:"title"`
+	Slug      string `db:"slug" json:"slug"`
+	Status    string `db:"status" json:"status"`
+	CreatedAt string `db:"created_at" json:"created_at"`
+	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
+func (q *Queries) ListProducts(ctx context.Context) ([]ListProductsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listProducts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProductsRow{}
+	for rows.Next() {
+		var i ListProductsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.Title,
+			&i.Slug,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const softDeleteProduct = `-- name: SoftDeleteProduct :exec
+UPDATE product SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND deleted_at IS NULL
+`
+
+func (q *Queries) SoftDeleteProduct(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, softDeleteProduct, id)
+	return err
+}
+
+const updateProduct = `-- name: UpdateProduct :exec
+UPDATE product SET title = ?, description = ?, status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND deleted_at IS NULL
+`
+
+type UpdateProductParams struct {
+	Title       string `db:"title" json:"title"`
+	Description string `db:"description" json:"description"`
+	Status      string `db:"status" json:"status"`
+	ID          int64  `db:"id" json:"id"`
+}
+
+func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) error {
+	_, err := q.db.ExecContext(ctx, updateProduct,
+		arg.Title,
+		arg.Description,
+		arg.Status,
+		arg.ID,
+	)
+	return err
 }

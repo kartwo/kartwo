@@ -8,3 +8,9 @@ INSERT INTO category (public_id, name, slug, parent_id, position) VALUES (?, ?, 
 
 -- name: LinkProductCategory :exec
 INSERT OR IGNORE INTO product_category (product_id, category_id) VALUES (?, ?);
+
+-- name: ListCategories :many
+SELECT id, public_id, name, slug, position FROM category WHERE deleted_at IS NULL ORDER BY position, id;
+
+-- name: GetCategoryByPublicID :one
+SELECT id, public_id, name, slug, position FROM category WHERE public_id = ? AND deleted_at IS NULL;
