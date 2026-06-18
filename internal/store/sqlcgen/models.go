@@ -17,6 +17,23 @@ type AdminUser struct {
 	UpdatedAt    string `db:"updated_at" json:"updated_at"`
 }
 
+type Cart struct {
+	ID        int64  `db:"id" json:"id"`
+	Token     string `db:"token" json:"token"`
+	Status    string `db:"status" json:"status"`
+	CreatedAt string `db:"created_at" json:"created_at"`
+	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
+type CartItem struct {
+	ID        int64  `db:"id" json:"id"`
+	CartID    int64  `db:"cart_id" json:"cart_id"`
+	VariantID int64  `db:"variant_id" json:"variant_id"`
+	Quantity  int64  `db:"quantity" json:"quantity"`
+	CreatedAt string `db:"created_at" json:"created_at"`
+	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
 type Category struct {
 	ID        int64          `db:"id" json:"id"`
 	PublicID  string         `db:"public_id" json:"public_id"`
