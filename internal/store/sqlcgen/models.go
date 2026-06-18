@@ -36,6 +36,32 @@ type Inventory struct {
 	UpdatedAt string `db:"updated_at" json:"updated_at"`
 }
 
+type MediaAsset struct {
+	ID           int64          `db:"id" json:"id"`
+	PublicID     string         `db:"public_id" json:"public_id"`
+	ProductID    int64          `db:"product_id" json:"product_id"`
+	ContentHash  string         `db:"content_hash" json:"content_hash"`
+	OriginalPath string         `db:"original_path" json:"original_path"`
+	Mime         string         `db:"mime" json:"mime"`
+	Width        int64          `db:"width" json:"width"`
+	Height       int64          `db:"height" json:"height"`
+	SizeBytes    int64          `db:"size_bytes" json:"size_bytes"`
+	Position     int64          `db:"position" json:"position"`
+	CreatedAt    string         `db:"created_at" json:"created_at"`
+	DeletedAt    sql.NullString `db:"deleted_at" json:"deleted_at"`
+}
+
+type MediaDerivative struct {
+	ID        int64  `db:"id" json:"id"`
+	AssetID   int64  `db:"asset_id" json:"asset_id"`
+	Label     string `db:"label" json:"label"`
+	Path      string `db:"path" json:"path"`
+	Format    string `db:"format" json:"format"`
+	Width     int64  `db:"width" json:"width"`
+	Height    int64  `db:"height" json:"height"`
+	SizeBytes int64  `db:"size_bytes" json:"size_bytes"`
+}
+
 type Meta struct {
 	Key       string `db:"key" json:"key"`
 	Value     string `db:"value" json:"value"`
