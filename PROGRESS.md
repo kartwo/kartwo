@@ -8,7 +8,7 @@
 ---
 
 ## 当前状态
-- **阶段**：**M2.1（店面+SEO 骨架）已完成，待 Derek 人工验收**（分支 feat/m2-storefront）。
+- **阶段**：**M2.1 已验收通过**（封面图/商品介绍修复已确认）；进行 M2.2（购物车）。
 - **下一步**：M2.1 验收通过 → M2.2（购物车 schema+状态机）。
 - **最新 git tag**：`v0.1.0`（M1）
 
@@ -18,7 +18,7 @@
 |---|---|---|
 | M0 | 地基与骨架（含数据层选型落地、CI 安全门禁、生成各 .md） | ✅ 已验收通过（v0.0.0） |
 | M1 | 核心数据模型 + Admin 基础 + 媒体上传 + StoragePolicy（切 5 片） | ✅ 已验收通过（v0.1.0） |
-| M2 | 店面 + 购物车 + 下单（防超卖）+ SEO 基建（切 3 片） | 🟡 进行中（M2.1 待验收） |
+| M2 | 店面 + 购物车 + 下单（防超卖）+ SEO 基建（切 3 片） | 🟡 进行中（M2.1 已验收，做 M2.2） |
 | M3 | 支付路由 + Stripe/PayPal + 沙箱 + 退款 | ⬜ 未开始 |
 | M4 | 自动 HTTPS + 向导完整 + 30 分钟开店（北极星） | ⬜ 未开始 |
 | M5 | 数据导入(含301) + 诊断页 + 备份/导出/升级 | ⬜ 未开始 |
@@ -27,7 +27,7 @@
 > 状态图例：⬜ 未开始 ｜ 🟡 进行中 ｜ ✅ 已验收通过
 
 ## 当前里程碑明细（M2 · 切 3 片）
-- [x] **M2.1 店面浏览 + 内嵌主题 + SEO 基建**（待验收）：SSR 目录/详情(Go template)、canonical/OG/JSON-LD(Product+AggregateOffer)、sitemap.xml/robots.txt、WebP 响应式图、Admin 迁至 /admin/、店面占 /；单测+HTTP 测+实测
+- [x] **M2.1 店面浏览 + 内嵌主题 + SEO 基建**（✅ 已验收）：SSR 目录/详情(Go template)、canonical/OG/JSON-LD(Product+AggregateOffer)、sitemap.xml/robots.txt、WebP 响应式图、Admin 迁至 /admin/、店面占 /；单测+HTTP 测+实测
 - [ ] M2.2 购物车（order/customer schema + 购物车状态机 + API + 页面）
 - [ ] M2.3 下单(未付) + 库存预留防超卖（并发验收）
 
