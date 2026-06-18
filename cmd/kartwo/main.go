@@ -13,12 +13,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/kartwo/kartwo/internal/admin"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/config"
+	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
 	"github.com/kartwo/kartwo/internal/server"
 	"github.com/kartwo/kartwo/internal/store"
@@ -122,7 +124,13 @@ func runServe(logger *slog.Logger) error {
 	}
 	defer func() { _ = st.Close() }()
 
-	adminHTTP := admin.NewHTTP(admin.New(st.DB), catalog.New(st.DB), cfg.Env == "prod")
+	mediaRoot := filepath.Join(cfg.DataDir, "media")
+	mediaBackend := media.NewLocalBackend(mediaRoot)
+	// 默认存储策略：不限总量，单文件 ≤10MiB，磁盘可用 <200MiB 时停新上传。
+	mediaPolicy := media.NewDefaultPolicy(mediaRoot, 10<<20, 200<<20)
+	mediaSvc := media.New(st.DB, mediaBackend, mediaPolicy, 20)
+
+	adminHTTP := admin.NewHTTP(admin.New(st.DB), catalog.New(st.DB), mediaSvc, cfg.Env == "prod")
 	srv := server.New(cfg, st, Version, adminHTTP)
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,

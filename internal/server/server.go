@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	adminui "github.com/kartwo/kartwo/web/admin"
@@ -23,9 +25,27 @@ func New(cfg *config.Config, st *store.Store, version string, adminHTTP *admin.H
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(st, version))
 	adminHTTP.Register(mux) // /admin/api/*
+	mux.Handle("GET /media/", mediaHandler(filepath.Join(cfg.DataDir, "media")))
 	mux.Handle("/", adminHandler())
 
 	return securityHeaders(cfg)(mux)
+}
+
+// mediaHandler 公开只读托管 ./data/media（供 Admin/店面展图）；禁目录列举。
+func mediaHandler(root string) http.Handler {
+	fileServer := http.FileServer(http.Dir(root))
+	return http.StripPrefix("/media/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 禁止目录列举：以 / 结尾或映射到目录的请求返回 404。
+		if len(r.URL.Path) == 0 || r.URL.Path[len(r.URL.Path)-1] == '/' {
+			http.NotFound(w, r)
+			return
+		}
+		if info, err := os.Stat(filepath.Join(root, filepath.Clean("/"+r.URL.Path))); err == nil && info.IsDir() {
+			http.NotFound(w, r)
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	}))
 }
 
 // healthHandler 返回服务存活与数据库可达状态。

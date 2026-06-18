@@ -179,6 +179,17 @@ func (s *Service) CreateProduct(ctx context.Context, in ProductInput) (string, e
 	return publicID, nil
 }
 
+// ProductIDByPublicID 把商品 public_id 解析为内部主键。不存在返回 ErrNotFound。
+func (s *Service) ProductIDByPublicID(ctx context.Context, publicID string) (int64, error) {
+	p, err := s.q.GetProductByPublicID(ctx, publicID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	} else if err != nil {
+		return 0, fmt.Errorf("catalog: 解析商品失败: %w", err)
+	}
+	return p.ID, nil
+}
+
 // ListProducts 列出未删除商品（新建在前）。
 func (s *Service) ListProducts(ctx context.Context) ([]ProductSummary, error) {
 	rows, err := s.q.ListProducts(ctx)

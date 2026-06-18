@@ -9,12 +9,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	"image/png"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/kartwo/kartwo/internal/catalog"
+	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
 	"github.com/kartwo/kartwo/migrations"
 
@@ -111,7 +115,9 @@ func TestKEKStableAcrossLogins(t *testing.T) {
 
 func newHTTP(t *testing.T) (*HTTP, http.Handler) {
 	svc := newSvc(t)
-	h := NewHTTP(svc, catalog.New(svc.db), false)
+	root := t.TempDir() + "/media"
+	md := media.New(svc.db, media.NewLocalBackend(root), media.NewDefaultPolicy(root, 10<<20, 0), 20)
+	h := NewHTTP(svc, catalog.New(svc.db), md, false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
@@ -310,6 +316,62 @@ func TestHTTPProductCRUDFlow(t *testing.T) {
 	// 软删后取 → 404
 	if resp := doJSON(t, mux, "GET", "/admin/api/products/"+created.PublicID, "", auth, ""); resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("软删后取 = %d，期望 404", resp.StatusCode)
+	}
+}
+
+func TestHTTPMediaUpload(t *testing.T) {
+	_, mux := newHTTP(t)
+	sess, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+
+	// 建商品
+	body := `{"title":"T","slug":"t","status":"active","options":[{"name":"尺码","values":["S"]}],"variants":[{"price_cents":1,"quantity":1,"selections":[{"option":"尺码","value":"S"}]}]}`
+	resp := doJSON(t, mux, "POST", "/admin/api/products", body, auth, csrf)
+	var created struct {
+		PublicID string `json:"public_id"`
+	}
+	_ = json.Unmarshal(resp.Body, &created)
+
+	// 造一张 PNG
+	var img bytes.Buffer
+	_ = png.Encode(&img, image.NewRGBA(image.Rect(0, 0, 400, 300)))
+
+	// multipart 上传
+	var mb bytes.Buffer
+	mw := multipart.NewWriter(&mb)
+	fw, _ := mw.CreateFormFile("file", "x.png")
+	_, _ = fw.Write(img.Bytes())
+	_ = mw.Close()
+
+	req := httptest.NewRequest("POST", "/admin/api/products/"+created.PublicID+"/media", &mb)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set(csrfHeader, csrf)
+	req.AddCookie(sess)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	res := rec.Result()
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != http.StatusCreated {
+		b, _ := io.ReadAll(res.Body)
+		t.Fatalf("上传 = %d，期望 201；body=%s", res.StatusCode, b)
+	}
+
+	// 列表含 1 张
+	lr := doJSON(t, mux, "GET", "/admin/api/products/"+created.PublicID+"/media", "", auth, "")
+	var lst struct {
+		Media []struct {
+			PublicID    string `json:"public_id"`
+			Derivatives []any  `json:"derivatives"`
+		} `json:"media"`
+	}
+	_ = json.Unmarshal(lr.Body, &lst)
+	if len(lst.Media) != 1 || len(lst.Media[0].Derivatives) == 0 {
+		t.Fatalf("媒体列表异常: %+v", lst)
+	}
+
+	// 删除
+	if dr := doJSON(t, mux, "DELETE", "/admin/api/media/"+lst.Media[0].PublicID, "", auth, csrf); dr.StatusCode != http.StatusOK {
+		t.Fatalf("删图 = %d，期望 200", dr.StatusCode)
 	}
 }
 
