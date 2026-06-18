@@ -17,16 +17,19 @@ import (
 
 	"github.com/kartwo/kartwo/internal/admin"
 	"github.com/kartwo/kartwo/internal/config"
+	"github.com/kartwo/kartwo/internal/storefront"
 	"github.com/kartwo/kartwo/internal/store"
 )
 
 // New 构建带中间件的 HTTP Handler。
-func New(cfg *config.Config, st *store.Store, version string, adminHTTP *admin.HTTP) http.Handler {
+// 路由布局：店面占 "/"（SEO 主位）；Admin SPA 在 "/admin/"；API 在 "/admin/api/"；媒体在 "/media/"。
+func New(cfg *config.Config, st *store.Store, version string, adminHTTP *admin.HTTP, storeHTTP *storefront.HTTP) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(st, version))
-	adminHTTP.Register(mux) // /admin/api/*
+	adminHTTP.Register(mux)   // /admin/api/*（含商品/媒体 API）
+	storeHTTP.Register(mux)   // /、/p/{slug}、/sitemap.xml、/robots.txt
 	mux.Handle("GET /media/", mediaHandler(filepath.Join(cfg.DataDir, "media")))
-	mux.Handle("/", adminHandler())
+	mux.Handle("/admin/", adminHandler()) // Admin SPA（/admin 自动跳 /admin/）
 
 	return securityHeaders(cfg)(mux)
 }
@@ -67,14 +70,14 @@ func healthHandler(st *store.Store, version string) http.HandlerFunc {
 	}
 }
 
-// adminHandler 托管内嵌的 Admin SPA 占位静态资源。
+// adminHandler 在 /admin/ 前缀下托管内嵌的 Admin SPA（Vite base=/admin/）。
 func adminHandler() http.Handler {
 	sub, err := fs.Sub(adminui.FS, "dist")
 	if err != nil {
 		// 构建期保证 dist 存在；运行期 panic 即配置错误。
 		panic(err)
 	}
-	return http.FileServer(http.FS(sub))
+	return http.StripPrefix("/admin/", http.FileServer(http.FS(sub)))
 }
 
 // securityHeaders 注入强制安全响应头（HSTS/CSP/X-Frame-Options/X-Content-Type-Options 等）。

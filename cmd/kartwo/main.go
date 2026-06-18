@@ -6,9 +6,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"log/slog"
 	"net/http"
 	"os"
@@ -18,17 +22,44 @@ import (
 	"time"
 
 	"github.com/kartwo/kartwo/internal/admin"
+	"github.com/kartwo/kartwo/internal/cart"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/config"
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
+	"github.com/kartwo/kartwo/internal/order"
 	"github.com/kartwo/kartwo/internal/server"
 	"github.com/kartwo/kartwo/internal/store"
+	"github.com/kartwo/kartwo/internal/storefront"
 	"github.com/kartwo/kartwo/migrations"
 )
 
 // Version 为构建版本，发布时经 ldflags 注入；默认开发占位。
 var Version = "0.0.0-dev"
+
+// generateDemoCover 生成一张自有版权的演示封面图（渐变 PNG），用于演示数据。
+func generateDemoCover() []byte {
+	const w, h = 1000, 1000
+	c8 := func(v int) uint8 { // 限定到 0..255，转换显式安全
+		switch {
+		case v < 0:
+			return 0
+		case v > 255:
+			return 255
+		default:
+			return uint8(v)
+		}
+	}
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{R: c8(56 + x*120/w), G: c8(120 + y*100/h), B: c8(200 - x*80/w), A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img)
+	return buf.Bytes()
+}
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -78,9 +109,16 @@ func setup(logger *slog.Logger) (*config.Config, *store.Store, error) {
 	return cfg, st, nil
 }
 
-// runSeedDemo 装入演示商品并打印变体矩阵（M1.1 验收用），完成后退出。
+// newMediaService 按配置构造媒体服务（serve 与 seed-demo 共用）。
+func newMediaService(cfg *config.Config, st *store.Store) *media.Service {
+	mediaRoot := filepath.Join(cfg.DataDir, "media")
+	// 默认存储策略：不限总量，单文件 ≤10MiB，磁盘可用 <200MiB 时停新上传。
+	return media.New(st.DB, media.NewLocalBackend(mediaRoot), media.NewDefaultPolicy(mediaRoot, 10<<20, 200<<20), 20)
+}
+
+// runSeedDemo 装入演示商品（含一张演示封面图）并打印变体矩阵，完成后退出。
 func runSeedDemo(logger *slog.Logger) error {
-	_, st, err := setup(logger)
+	cfg, st, err := setup(logger)
 	if err != nil {
 		return err
 	}
@@ -94,6 +132,12 @@ func runSeedDemo(logger *slog.Logger) error {
 	}
 	if created {
 		logger.Info("演示数据已装入", "product_id", pid)
+		// 配一张自生成的演示封面图（无版权问题），让店面演示更完整。
+		if _, err := newMediaService(cfg, st).Upload(ctx, pid, generateDemoCover()); err != nil {
+			logger.Warn("演示封面上传失败（忽略）", "err", err)
+		} else {
+			logger.Info("演示封面已上传")
+		}
 	} else {
 		logger.Info("演示数据已存在，跳过装入", "product_id", pid)
 	}
@@ -124,14 +168,10 @@ func runServe(logger *slog.Logger) error {
 	}
 	defer func() { _ = st.Close() }()
 
-	mediaRoot := filepath.Join(cfg.DataDir, "media")
-	mediaBackend := media.NewLocalBackend(mediaRoot)
-	// 默认存储策略：不限总量，单文件 ≤10MiB，磁盘可用 <200MiB 时停新上传。
-	mediaPolicy := media.NewDefaultPolicy(mediaRoot, 10<<20, 200<<20)
-	mediaSvc := media.New(st.DB, mediaBackend, mediaPolicy, 20)
-
+	mediaSvc := newMediaService(cfg, st)
 	adminHTTP := admin.NewHTTP(admin.New(st.DB), catalog.New(st.DB), mediaSvc, cfg.Env == "prod")
-	srv := server.New(cfg, st, Version, adminHTTP)
+	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), order.New(st.DB, cfg.Currency), cfg.ShopName, cfg.Currency, cfg.BaseURL, cfg.Env == "prod")
+	srv := server.New(cfg, st, Version, adminHTTP, storeHTTP)
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           srv,
