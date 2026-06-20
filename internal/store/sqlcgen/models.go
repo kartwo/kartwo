@@ -193,3 +193,12 @@ type VariantOptionValue struct {
 	OptionID  int64 `db:"option_id" json:"option_id"`
 	ValueID   int64 `db:"value_id" json:"value_id"`
 }
+
+type WebhookEvent struct {
+	ID         int64  `db:"id" json:"id"`
+	Provider   string `db:"provider" json:"provider"`
+	EventID    string `db:"event_id" json:"event_id"`
+	EventType  string `db:"event_type" json:"event_type"`
+	OrderRef   string `db:"order_ref" json:"order_ref"`
+	ReceivedAt string `db:"received_at" json:"received_at"`
+}
