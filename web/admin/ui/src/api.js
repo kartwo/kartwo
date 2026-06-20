@@ -52,6 +52,10 @@ export const api = {
   deleteProduct: (id) => request('DELETE', '/products/' + id),
   setInventory: (variantId, quantity) => request('PATCH', '/variants/' + variantId + '/inventory', { quantity }),
 
+  markets: () => request('GET', '/markets'),
+  getMarket: () => request('GET', '/settings/market'),
+  setMarket: (code) => request('PUT', '/settings/market', { code }),
+
   listMedia: (productId) => request('GET', '/products/' + productId + '/media'),
   deleteMedia: (mediaId) => request('DELETE', '/media/' + mediaId),
   uploadMedia: (productId, file) => {

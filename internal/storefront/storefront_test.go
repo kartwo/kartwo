@@ -15,9 +15,10 @@ import (
 	"testing"
 
 	"github.com/kartwo/kartwo/internal/cart"
-	"github.com/kartwo/kartwo/internal/order"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/migrate"
+	"github.com/kartwo/kartwo/internal/order"
+	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/migrations"
 
 	_ "modernc.org/sqlite"
@@ -40,7 +41,7 @@ func setup(t *testing.T) (*Service, *catalog.Service, *sql.DB) {
 func activeTee(slug string) catalog.ProductInput {
 	return catalog.ProductInput{
 		Title: "T恤", Slug: slug, Status: "active",
-		Options:  []catalog.OptionInput{{Name: "尺码", Values: []string{"S", "M"}}},
+		Options: []catalog.OptionInput{{Name: "尺码", Values: []string{"S", "M"}}},
 		Variants: []catalog.VariantInput{
 			{PriceCents: 9900, Quantity: 5, Selections: []catalog.Selection{{Option: "尺码", Value: "S"}}},
 			{PriceCents: 12900, Quantity: 0, Selections: []catalog.Selection{{Option: "尺码", Value: "M"}}},
@@ -102,7 +103,7 @@ func newHTTP(t *testing.T) (*HTTP, http.Handler) {
 	if _, err := cat.CreateProduct(context.Background(), activeTee("tee")); err != nil {
 		t.Fatal(err)
 	}
-	h := NewHTTP(sf, cart.New(db), order.New(db, "CNY"), "测试店", "CNY", "https://shop.example", false)
+	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db), "测试店", "https://shop.example", false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux

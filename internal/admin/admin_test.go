@@ -20,6 +20,7 @@ import (
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
+	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/migrations"
 
 	"database/sql"
@@ -117,7 +118,7 @@ func newHTTP(t *testing.T) (*HTTP, http.Handler) {
 	svc := newSvc(t)
 	root := t.TempDir() + "/media"
 	md := media.New(svc.db, media.NewLocalBackend(root), media.NewDefaultPolicy(root, 10<<20, 0), 20)
-	h := NewHTTP(svc, catalog.New(svc.db), md, false)
+	h := NewHTTP(svc, catalog.New(svc.db), md, settings.New(svc.db), false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
@@ -372,6 +373,54 @@ func TestHTTPMediaUpload(t *testing.T) {
 	// 删除
 	if dr := doJSON(t, mux, "DELETE", "/admin/api/media/"+lst.Media[0].PublicID, "", auth, csrf); dr.StatusCode != http.StatusOK {
 		t.Fatalf("删图 = %d，期望 200", dr.StatusCode)
+	}
+}
+
+func TestHTTPMarkets(t *testing.T) {
+	_, mux := newHTTP(t)
+	sess, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+
+	resp := doJSON(t, mux, "GET", "/admin/api/markets", "", auth, "")
+	var ml struct {
+		Markets []struct {
+			Code      string `json:"code"`
+			Available bool   `json:"available"`
+		} `json:"markets"`
+	}
+	_ = json.Unmarshal(resp.Body, &ml)
+	var hasUS, hasSoon bool
+	for _, m := range ml.Markets {
+		if m.Code == "US" && m.Available {
+			hasUS = true
+		}
+		if !m.Available {
+			hasSoon = true
+		}
+	}
+	if !hasUS || !hasSoon {
+		t.Fatalf("市场列表异常: %+v", ml.Markets)
+	}
+
+	resp = doJSON(t, mux, "GET", "/admin/api/settings/market", "", auth, "")
+	var cur struct {
+		Configured bool `json:"configured"`
+	}
+	_ = json.Unmarshal(resp.Body, &cur)
+	if cur.Configured {
+		t.Fatal("初始应未配置市场")
+	}
+
+	if r := doJSON(t, mux, "PUT", "/admin/api/settings/market", `{"code":"MENA"}`, auth, csrf); r.StatusCode != http.StatusConflict {
+		t.Fatalf("选即将上线市场 = %d，期望 409", r.StatusCode)
+	}
+	if r := doJSON(t, mux, "PUT", "/admin/api/settings/market", `{"code":"US"}`, auth, csrf); r.StatusCode != http.StatusOK {
+		t.Fatalf("选美国 = %d，期望 200", r.StatusCode)
+	}
+	resp = doJSON(t, mux, "GET", "/admin/api/settings/market", "", auth, "")
+	_ = json.Unmarshal(resp.Body, &cur)
+	if !cur.Configured {
+		t.Fatal("选定后应为已配置")
 	}
 }
 

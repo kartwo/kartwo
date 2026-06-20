@@ -13,14 +13,14 @@
         <tr>
           <td>{{.Title}}</td>
           <td class="muted">{{.Spec}}</td>
-          <td>{{money .UnitCents}}</td>
+          <td>{{call $.Money .UnitCents}}</td>
           <td>{{.Quantity}}</td>
-          <td>{{money .LineCents}}</td>
+          <td>{{call $.Money .LineCents}}</td>
         </tr>
         {{end}}
       </tbody>
     </table>
-    <div class="cart-foot"><div class="total">合计：<strong>{{money $o.TotalCents}}</strong></div></div>
+    <div class="cart-foot"><div class="total">合计：<strong>{{call $.Money $o.TotalCents}}</strong></div></div>
   </div>
   <div>
     <h3>收货信息</h3>

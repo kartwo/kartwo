@@ -12,7 +12,7 @@
   <div class="info">
     <h1>{{$p.Title}}</h1>
     <p class="price" style="font-size:1.3rem">
-      {{if eq $p.MinCents $p.MaxCents}}{{money $p.MinCents}}{{else}}{{money $p.MinCents}} – {{money $p.MaxCents}}{{end}}
+      {{if eq $p.MinCents $p.MaxCents}}{{call $.Money $p.MinCents}}{{else}}{{call $.Money $p.MinCents}} – {{call $.Money $p.MaxCents}}{{end}}
     </p>
     <p>{{if $p.InStock}}<span class="stock-in">● 有货</span>{{else}}<span class="stock-out">● 暂时缺货</span>{{end}}</p>
 
@@ -23,7 +23,7 @@
       <label class="variant-opt {{if le $v.Available 0}}sold{{end}}">
         <input type="radio" name="variant" value="{{$v.PublicID}}" {{if eq $i 0}}checked{{end}} {{if le $v.Available 0}}disabled{{end}} />
         <span class="vo-spec">{{range $j,$o := $v.Options}}{{if $j}} · {{end}}{{$o.Name}}:{{$o.Value}}{{end}}</span>
-        <span class="vo-price">{{money $v.Cents}}</span>
+        <span class="vo-price">{{call $.Money $v.Cents}}</span>
         <span class="vo-stock">{{if gt $v.Available 0}}<span class="stock-in">现货 {{$v.Available}}</span>{{else}}<span class="stock-out">缺货</span>{{end}}</span>
       </label>
       {{end}}

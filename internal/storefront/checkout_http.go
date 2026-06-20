@@ -33,6 +33,7 @@ func (h *HTTP) renderCheckout(w http.ResponseWriter, r *http.Request, errMsg str
 		"ShopName": h.shopName,
 		"Cart":     view,
 		"Error":    errMsg,
+		"Money":    h.money(r.Context()),
 		"SEO": seo{
 			Title: "结算 — " + h.shopName, Description: "结算", Canonical: h.base(r) + "/checkout", OGType: "website",
 		},
@@ -88,6 +89,7 @@ func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{
 		"ShopName": h.shopName,
 		"Order":    o,
+		"Money":    h.money(r.Context()),
 		"SEO": seo{
 			Title: "订单确认 — " + h.shopName, Description: "订单确认", Canonical: h.base(r) + "/order/" + o.PublicID, OGType: "website",
 		},

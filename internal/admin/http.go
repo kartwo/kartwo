@@ -15,6 +15,7 @@ import (
 
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/media"
+	"github.com/kartwo/kartwo/internal/settings"
 )
 
 const (
@@ -26,16 +27,17 @@ const (
 
 // HTTP 承载 Admin API 处理器。
 type HTTP struct {
-	svc     *Service
-	cat     *catalog.Service
-	media   *media.Service
-	secure  bool // prod 下 cookie 加 Secure
-	limiter *loginLimiter
+	svc      *Service
+	cat      *catalog.Service
+	media    *media.Service
+	settings *settings.Service
+	secure   bool // prod 下 cookie 加 Secure
+	limiter  *loginLimiter
 }
 
 // NewHTTP 构建 Admin HTTP 层。secure=true 时 cookie 标记 Secure（prod）。
-func NewHTTP(svc *Service, cat *catalog.Service, md *media.Service, secure bool) *HTTP {
-	return &HTTP{svc: svc, cat: cat, media: md, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
+func NewHTTP(svc *Service, cat *catalog.Service, md *media.Service, settingsSvc *settings.Service, secure bool) *HTTP {
+	return &HTTP{svc: svc, cat: cat, media: md, settings: settingsSvc, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
 }
 
 // Register 在给定 mux 上注册 /admin/api/* 路由。
@@ -61,6 +63,11 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("POST /admin/api/products/{id}/media", protect(h.uploadMedia))
 	mux.Handle("GET /admin/api/products/{id}/media", protect(h.listMedia))
 	mux.Handle("DELETE /admin/api/media/{id}", protect(h.deleteMedia))
+
+	// 向导：主攻市场。
+	mux.Handle("GET /admin/api/markets", protect(h.listMarkets))
+	mux.Handle("GET /admin/api/settings/market", protect(h.getMarket))
+	mux.Handle("PUT /admin/api/settings/market", protect(h.setMarket))
 }
 
 func (h *HTTP) status(w http.ResponseWriter, r *http.Request) {

@@ -6,6 +6,7 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import App from './App.vue'
 import ProductList from './views/ProductList.vue'
 import ProductEdit from './views/ProductEdit.vue'
+import MarketSelect from './views/MarketSelect.vue'
 import './style.css'
 
 const router = createRouter({
@@ -15,6 +16,7 @@ const router = createRouter({
     { path: '/products', component: ProductList },
     { path: '/products/new', component: ProductEdit },
     { path: '/products/:id', component: ProductEdit, props: true },
+    { path: '/market', component: MarketSelect },
   ],
 })
 

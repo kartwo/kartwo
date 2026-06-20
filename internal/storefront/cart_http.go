@@ -122,7 +122,7 @@ func (h *HTTP) cartData(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "内部错误")
 		return
 	}
-	writeJSON(w, http.StatusOK, cartJSON(view, h.currency))
+	writeJSON(w, http.StatusOK, cartJSON(view, h.cur(r.Context())))
 }
 
 // cartPage 服务端渲染购物车页。
@@ -141,6 +141,7 @@ func (h *HTTP) cartPage(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{
 		"ShopName": h.shopName,
 		"Cart":     view,
+		"Money":    h.money(r.Context()),
 		"SEO": seo{
 			Title: "购物车 — " + h.shopName, Description: "购物车", Canonical: canonical, OGType: "website",
 		},

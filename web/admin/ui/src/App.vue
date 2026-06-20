@@ -1,11 +1,13 @@
 <!-- 应用外壳与鉴权 / App Shell & Auth. 作者：仗键天涯(daxing) 3442535897@qq.com -->
 <script setup>
-import { ref, onMounted, provide } from 'vue'
+import { ref, onMounted, onUnmounted, provide } from 'vue'
 import { api, APIError } from './api.js'
+import MarketSelect from './views/MarketSelect.vue'
 
 const loading = ref(true)
 const initialized = ref(false)
 const authed = ref(false)
+const marketConfigured = ref(false)
 const username = ref('')
 const form = ref({ user: '', pass: '' })
 const err = ref('')
@@ -22,6 +24,8 @@ async function refresh() {
         const me = await api.me()
         authed.value = true
         username.value = me.username
+        const mk = await api.getMarket()
+        marketConfigured.value = !!mk.configured
       } catch (e) {
         authed.value = false
       }
@@ -30,6 +34,10 @@ async function refresh() {
     loading.value = false
   }
 }
+
+function onMarketConfigured() { marketConfigured.value = true }
+onMounted(() => window.addEventListener('market-configured', onMarketConfigured))
+onUnmounted(() => window.removeEventListener('market-configured', onMarketConfigured))
 
 async function doSetup() {
   busy.value = true; err.value = ''
@@ -96,12 +104,22 @@ onMounted(refresh)
     </div>
   </div>
 
+  <!-- 已登录但未选市场：强制走「选择主攻市场」向导步骤 -->
+  <template v-else-if="!marketConfigured">
+    <header class="app-header">
+      <div class="brand">Kartwo Admin · 开店向导</div>
+      <button @click="doLogout">登出</button>
+    </header>
+    <MarketSelect />
+  </template>
+
   <!-- 已登录：应用 -->
   <template v-else>
     <header class="app-header">
       <div class="brand">Kartwo Admin</div>
       <div class="row" style="gap:1rem; flex: 0;">
         <RouterLink to="/products">商品</RouterLink>
+        <RouterLink to="/market">市场</RouterLink>
         <span class="muted">{{ username }}</span>
         <button @click="doLogout">登出</button>
       </div>

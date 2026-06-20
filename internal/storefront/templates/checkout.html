@@ -30,12 +30,12 @@
         {{range $c.Lines}}
         <tr>
           <td>{{.ProductTitle}}<br><span class="muted" style="font-size:.85rem">{{range $i,$o := .Options}}{{if $i}} · {{end}}{{$o.Name}}:{{$o.Value}}{{end}} × {{.Quantity}}</span></td>
-          <td style="text-align:right">{{money .LineCents}}</td>
+          <td style="text-align:right">{{call $.Money .LineCents}}</td>
         </tr>
         {{end}}
       </tbody>
     </table>
-    <div class="cart-foot"><div class="total">合计：<strong>{{money $c.TotalCents}}</strong></div></div>
+    <div class="cart-foot"><div class="total">合计：<strong>{{call $.Money $c.TotalCents}}</strong></div></div>
   </div>
 </div>
 {{end}}
