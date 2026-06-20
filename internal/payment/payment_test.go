@@ -252,6 +252,110 @@ func TestWebhookLockedReturnsErrLocked(t *testing.T) {
 	}
 }
 
+// ---- 环境变量覆盖旁路（env > 加密库，覆盖非双写）----
+
+func fakeEnv(m map[string]string) func(string) string {
+	return func(k string) string { return m[k] }
+}
+
+func TestResolveEnvKeys(t *testing.T) {
+	// 未设 secret → 不激活。
+	if e := resolveEnvKeys(fakeEnv(map[string]string{})); e.active {
+		t.Fatal("未设 STRIPE_SECRET_KEY 不应激活")
+	}
+	// 设了 secret → 激活，mode 由前缀推断。
+	e := resolveEnvKeys(fakeEnv(map[string]string{
+		envStripeSecret:  "sk_live_abc",
+		envStripeWebhook: "whsec_env",
+	}))
+	if !e.active || e.mode != "live" || e.webhook != "whsec_env" {
+		t.Fatalf("激活/推断有误: %+v", e)
+	}
+	// 显式 mode 覆盖推断。
+	e2 := resolveEnvKeys(fakeEnv(map[string]string{envStripeSecret: "sk_live_x", envStripeMode: "test"}))
+	if e2.mode != "test" {
+		t.Fatalf("显式 mode 应覆盖推断，得 %s", e2.mode)
+	}
+}
+
+func TestKeyCacheEnvOverridesDB(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+t.TempDir()+"/t.db?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := migrate.Run(context.Background(), db, migrations.FS); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	settingsSvc := settings.New(db)
+	kek := make([]byte, 32)
+	_, _ = rand.Read(kek)
+	// 库里存了一套 key（应被 env 覆盖、绝不被读取）。
+	_ = settingsSvc.SetEncrypted(ctx, KeyStripeSecret, []byte("sk_db_should_not_win"), kek)
+	_ = settingsSvc.SetEncrypted(ctx, KeyStripeWebhookSecret, []byte("whsec_db"), kek)
+
+	cache := &KeyCache{settings: settingsSvc, env: resolveEnvKeys(fakeEnv(map[string]string{
+		envStripeSecret:      "sk_env_wins",
+		envStripeWebhook:     "whsec_env_wins",
+		envStripePublishable: "pk_env",
+	}))}
+
+	// Unlock 在 env 模式下是 no-op：不读/不解密库内值。
+	if err := cache.Unlock(ctx, kek); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := cache.secretKey(); !ok || v != "sk_env_wins" {
+		t.Fatalf("env 应覆盖库，得 %q", v)
+	}
+	if v, ok := cache.webhookSecret(); !ok || v != "whsec_env_wins" {
+		t.Fatalf("env whsec 应生效，得 %q", v)
+	}
+	st := cache.Status()
+	if st.Source != "env" || !st.HasSecret || st.Publishable != "pk_env" {
+		t.Fatalf("Status 应报 env 来源: %+v", st)
+	}
+	// Lock 不影响 env。
+	cache.Lock()
+	if v, _ := cache.secretKey(); v != "sk_env_wins" {
+		t.Fatal("Lock 不应清掉 env 覆盖")
+	}
+}
+
+func TestWebhookEnvOverrideNoLoginNeeded(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+t.TempDir()+"/t.db?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := migrate.Run(context.Background(), db, migrations.FS); err != nil {
+		t.Fatal(err)
+	}
+	settingsSvc := settings.New(db)
+	// env 覆盖：whsec 来自环境变量；从不登录、从不 Unlock。
+	cache := &KeyCache{settings: settingsSvc, env: resolveEnvKeys(fakeEnv(map[string]string{
+		envStripeSecret:  "sk_test_env",
+		envStripeWebhook: testWhsec,
+	}))}
+	svc := NewService(db, settingsSvc, cache)
+
+	ctx := context.Background()
+	ref := "order-env-1"
+	seedOrder(t, db, ref, 2500, "USD")
+	body := eventBody("evt_env_1", ref, "paid", 2500, "usd")
+	hdr := signStripe(testWhsec, time.Now().Unix(), body)
+
+	// env 模式下「锁定→503」不触发：直接验签通过并改单。
+	if err := svc.HandleWebhook(ctx, body, hdr); err != nil {
+		t.Fatalf("env 模式无需登录即应处理: %v", err)
+	}
+	if st := orderStatus(t, db, ref); st != "paid" {
+		t.Fatalf("订单应 paid，得 %s", st)
+	}
+}
+
 // ---- 密钥缓存生命周期 ----
 
 func TestKeyCacheLifecycle(t *testing.T) {

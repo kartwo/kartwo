@@ -178,6 +178,12 @@ func runServe(logger *slog.Logger) error {
 	adminSvc := admin.New(st.DB)
 	adminSvc.SetPaymentKeys(payCache)
 	paySvc := payment.NewService(st.DB, settingsSvc, payCache)
+	// 仅记录密钥「来源」，绝不打印任何密钥值。
+	if payCache.EnvOverride() {
+		logger.Info("收款密钥来源", "source", "env", "note", "环境变量覆盖已激活，后台收款页只读")
+	} else {
+		logger.Info("收款密钥来源", "source", "db", "note", "走后台收款页加密库（默认）")
+	}
 
 	adminHTTP := admin.NewHTTP(adminSvc, catalog.New(st.DB), mediaSvc, settingsSvc, cfg.Env == "prod")
 	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), order.New(st.DB, settingsSvc), settingsSvc, paySvc, cfg.ShopName, cfg.BaseURL, cfg.Env == "prod")

@@ -16,14 +16,28 @@ import (
 )
 
 // getPayment 返回收款配置状态（绝不回传 sk/whsec 明文，仅报是否已配置）。
+// env 覆盖激活时报来源=env 且 readonly=true（收款页置灰，请改环境变量）。
 func (h *HTTP) getPayment(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	if st, ok := h.svc.PaymentStatus(); ok && st.Source == "env" {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"source":      "env",
+			"readonly":    true,
+			"mode":        st.Mode,
+			"publishable": st.Publishable,
+			"has_secret":  st.HasSecret,
+			"has_webhook": st.HasWebhook,
+		})
+		return
+	}
 	mode, err := h.settings.Get(ctx, payment.KeyStripeMode)
 	if errors.Is(err, settings.ErrNotFound) || strings.TrimSpace(mode) == "" {
 		mode = "test"
 	}
 	pub, _ := h.settings.Get(ctx, payment.KeyStripePublishable)
 	writeJSON(w, http.StatusOK, map[string]any{
+		"source":      "db",
+		"readonly":    false,
 		"mode":        mode,
 		"publishable": pub,
 		"has_secret":  h.settingExists(ctx, payment.KeyStripeSecret),
@@ -42,6 +56,12 @@ func (h *HTTP) setPayment(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
+	// env 覆盖模式下收款页只读：拒绝写库（杜绝跨源混用；请改环境变量后重启）。
+	if st, ok := h.svc.PaymentStatus(); ok && st.Source == "env" {
+		writeErr(w, http.StatusConflict, "当前收款密钥由环境变量提供（只读）。请修改环境变量后重启，或清空相关环境变量以改用后台配置。")
+		return
+	}
+
 	mode := strings.TrimSpace(req.Mode)
 	if mode != "test" && mode != "live" {
 		writeErr(w, http.StatusBadRequest, "mode 只能是 test 或 live")

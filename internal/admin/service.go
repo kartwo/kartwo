@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/kartwo/kartwo/internal/auth"
+	"github.com/kartwo/kartwo/internal/payment"
 	"github.com/kartwo/kartwo/internal/store/sqlcgen"
 )
 
@@ -38,10 +39,11 @@ var (
 )
 
 // PaymentKeys 是收款密钥内存缓存的生命周期钩子（由 internal/payment 实现）。
-// 绑定 KEK 金库：登录解锁时 Unlock 载入、登出时 Lock 销毁。避免 admin 直接依赖 payment 包。
+// 绑定 KEK 金库：登录解锁时 Unlock 载入、登出时 Lock 销毁；Status 供收款页判定来源(env|db)。
 type PaymentKeys interface {
 	Unlock(ctx context.Context, kek []byte) error
 	Lock()
+	Status() payment.CacheStatus
 }
 
 // Service 承载 Admin 鉴权逻辑。
@@ -66,6 +68,14 @@ func (s *Service) ReloadKeys(ctx context.Context, kek []byte) error {
 		return nil
 	}
 	return s.keys.Unlock(ctx, kek)
+}
+
+// PaymentStatus 返回收款密钥来源状态（含 env|db）；keys 未注入时 ok=false。
+func (s *Service) PaymentStatus() (payment.CacheStatus, bool) {
+	if s.keys == nil {
+		return payment.CacheStatus{}, false
+	}
+	return s.keys.Status(), true
 }
 
 // Session 为一次登录产生的会话凭据。

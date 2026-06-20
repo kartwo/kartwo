@@ -10,6 +10,8 @@ const secret = ref('')
 const webhookSecret = ref('')
 const hasSecret = ref(false)
 const hasWebhook = ref(false)
+const source = ref('db')
+const readonly = ref(false)
 const err = ref('')
 const msg = ref('')
 const busy = ref(false)
@@ -22,6 +24,8 @@ async function load() {
     publishable.value = p.publishable || ''
     hasSecret.value = !!p.has_secret
     hasWebhook.value = !!p.has_webhook
+    source.value = p.source || 'db'
+    readonly.value = !!p.readonly
   } catch (e) {
     if (e instanceof APIError && e.status === 401) return onUnauthorized()
     err.value = e.message
@@ -62,33 +66,37 @@ onMounted(load)
     <p v-if="err" class="err">{{ err }}</p>
     <p v-if="msg" class="ok">{{ msg }}</p>
 
+    <p v-if="readonly" class="env-banner">
+      🔒 当前收款密钥<strong>由环境变量提供（只读）</strong>。如需修改，请在终端改环境变量后重启；或清空相关环境变量以改用此页配置。
+    </p>
+
     <div class="panel card" style="margin-top:1rem">
       <label>模式</label>
-      <select v-model="mode">
+      <select v-model="mode" :disabled="readonly">
         <option value="test">测试 / 沙箱（推荐先用）</option>
         <option value="live">正式（真实收款）</option>
       </select>
 
       <label>可发布密钥（Publishable key，pk_…）</label>
-      <input v-model="publishable" placeholder="pk_test_…" autocomplete="off" />
+      <input v-model="publishable" placeholder="pk_test_…" autocomplete="off" :disabled="readonly" />
 
       <label>
         密钥（Secret key，sk_…）
         <span class="chip" :class="{ on: hasSecret }">{{ hasSecret ? '已配置' : '未配置' }}</span>
       </label>
-      <input v-model="secret" type="password" :placeholder="hasSecret ? '已保存，留空表示不修改' : 'sk_test_…'" autocomplete="off" />
+      <input v-model="secret" type="password" :placeholder="readonly ? '由环境变量提供' : (hasSecret ? '已保存，留空表示不修改' : 'sk_test_…')" autocomplete="off" :disabled="readonly" />
 
       <label>
         Webhook 签名密钥（whsec_…）
         <span class="chip" :class="{ on: hasWebhook }">{{ hasWebhook ? '已配置' : '未配置' }}</span>
       </label>
-      <input v-model="webhookSecret" type="password" :placeholder="hasWebhook ? '已保存，留空表示不修改' : 'whsec_…'" autocomplete="off" />
+      <input v-model="webhookSecret" type="password" :placeholder="readonly ? '由环境变量提供' : (hasWebhook ? '已保存，留空表示不修改' : 'whsec_…')" autocomplete="off" :disabled="readonly" />
       <p class="muted" style="font-size:.82rem">
         本地测试用 Stripe CLI 转发时，<code>stripe listen</code> 会打印一个 whsec；正式上线用 Stripe 后台「Webhooks」端点的签名密钥。两者填这里即可，按需替换。
       </p>
 
       <div class="spacer"></div>
-      <button class="primary" :disabled="busy" @click="save">保存收款设置</button>
+      <button class="primary" :disabled="busy || readonly" @click="save">保存收款设置</button>
     </div>
   </div>
 </template>
@@ -98,4 +106,5 @@ onMounted(load)
 .chip.on{color:#03263a;background:var(--accent);border-color:var(--accent)}
 .panel.card label{display:block;margin-top:.8rem}
 .panel.card input,.panel.card select{width:100%}
+.env-banner{margin-top:1rem;padding:.6rem .8rem;border:1px solid var(--line);border-radius:8px;background:var(--panel);font-size:.9rem}
 </style>
