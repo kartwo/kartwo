@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/internal/store/sqlcgen"
 )
 
@@ -30,12 +31,12 @@ var (
 type Service struct {
 	db       *sql.DB
 	q        *sqlcgen.Queries
-	currency string
+	settings *settings.Service
 }
 
-// New 构造下单服务。
-func New(db *sql.DB, currency string) *Service {
-	return &Service{db: db, q: sqlcgen.New(db), currency: currency}
+// New 构造下单服务（货币按当前主攻市场解析）。
+func New(db *sql.DB, settingsSvc *settings.Service) *Service {
+	return &Service{db: db, q: sqlcgen.New(db), settings: settingsSvc}
 }
 
 // CheckoutInfo 为访客结算填写的信息。
@@ -100,6 +101,9 @@ func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo)
 		return "", ErrEmptyCart
 	}
 
+	// 货币在开事务前解析（事务持有唯一连接时再查会死锁）。
+	currency := s.settings.Currency(ctx)
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", fmt.Errorf("order: 开启事务失败: %w", err)
@@ -140,7 +144,7 @@ func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo)
 	orderID, err := q.CreateOrder(ctx, sqlcgen.CreateOrderParams{
 		PublicID: publicID, CustomerID: cust.ID, Email: info.Email,
 		ShipName: info.Name, ShipPhone: info.Phone, ShipAddress: info.Address, ShipCountry: info.Country,
-		Currency: s.currency, SubtotalCents: subtotal, TotalCents: subtotal, // v1: 税/运 = 0
+		Currency: currency, SubtotalCents: subtotal, TotalCents: subtotal, // v1: 税/运 = 0
 	})
 	if err != nil {
 		return "", fmt.Errorf("order: 建订单失败: %w", err)

@@ -168,6 +168,13 @@ type Session struct {
 	CreatedAt string `db:"created_at" json:"created_at"`
 }
 
+type Setting struct {
+	Key       string `db:"key" json:"key"`
+	Value     string `db:"value" json:"value"`
+	Encrypted int64  `db:"encrypted" json:"encrypted"`
+	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
 type Variant struct {
 	ID         int64          `db:"id" json:"id"`
 	PublicID   string         `db:"public_id" json:"public_id"`
