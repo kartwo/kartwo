@@ -7,6 +7,7 @@ import App from './App.vue'
 import ProductList from './views/ProductList.vue'
 import ProductEdit from './views/ProductEdit.vue'
 import MarketSelect from './views/MarketSelect.vue'
+import PaymentSettings from './views/PaymentSettings.vue'
 import './style.css'
 
 const router = createRouter({
@@ -17,6 +18,7 @@ const router = createRouter({
     { path: '/products/new', component: ProductEdit },
     { path: '/products/:id', component: ProductEdit, props: true },
     { path: '/market', component: MarketSelect },
+    { path: '/payment', component: PaymentSettings },
   ],
 })
 

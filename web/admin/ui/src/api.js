@@ -56,6 +56,9 @@ export const api = {
   getMarket: () => request('GET', '/settings/market'),
   setMarket: (code) => request('PUT', '/settings/market', { code }),
 
+  getPayment: () => request('GET', '/settings/payment'),
+  setPayment: (payload) => request('PUT', '/settings/payment', payload),
+
   listMedia: (productId) => request('GET', '/products/' + productId + '/media'),
   deleteMedia: (mediaId) => request('DELETE', '/media/' + mediaId),
   uploadMedia: (productId, file) => {
