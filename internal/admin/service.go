@@ -37,16 +37,35 @@ var (
 	ErrUnauthorized = errors.New("admin: 未授权")
 )
 
+// PaymentKeys 是收款密钥内存缓存的生命周期钩子（由 internal/payment 实现）。
+// 绑定 KEK 金库：登录解锁时 Unlock 载入、登出时 Lock 销毁。避免 admin 直接依赖 payment 包。
+type PaymentKeys interface {
+	Unlock(ctx context.Context, kek []byte) error
+	Lock()
+}
+
 // Service 承载 Admin 鉴权逻辑。
 type Service struct {
 	db    *sql.DB
 	q     *sqlcgen.Queries
-	vault *kekVault // 内存中持有已解锁会话的 KEK，绝不落盘
+	vault *kekVault    // 内存中持有已解锁会话的 KEK，绝不落盘
+	keys  PaymentKeys // 可选：收款密钥缓存，随登录/登出解锁/销毁
 }
 
 // New 构建 Admin 服务。
 func New(db *sql.DB) *Service {
 	return &Service{db: db, q: sqlcgen.New(db), vault: newKEKVault()}
+}
+
+// SetPaymentKeys 注入收款密钥缓存钩子（main 装配时调用）。
+func (s *Service) SetPaymentKeys(k PaymentKeys) { s.keys = k }
+
+// ReloadKeys 用给定 KEK 立即重载收款密钥缓存（收款页改密钥后调用，使其即时生效）。
+func (s *Service) ReloadKeys(ctx context.Context, kek []byte) error {
+	if s.keys == nil {
+		return nil
+	}
+	return s.keys.Unlock(ctx, kek)
 }
 
 // Session 为一次登录产生的会话凭据。
@@ -154,6 +173,10 @@ func (s *Service) Login(ctx context.Context, username, password string) (*Sessio
 		return nil, fmt.Errorf("admin: 建会话失败: %w", err)
 	}
 	s.vault.put(token, kek)
+	// 解锁收款密钥缓存（绑定 KEK 金库生命周期）。失败不阻断登录——收款页/诊断会提示。
+	if s.keys != nil {
+		_ = s.keys.Unlock(ctx, kek)
+	}
 	return &Session{Token: token, CSRFToken: csrf, ExpiresAt: expires}, nil
 }
 
@@ -176,9 +199,12 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*AuthContext,
 	}, nil
 }
 
-// Logout 删除会话并清内存 KEK。
+// Logout 删除会话并清内存 KEK；同时销毁收款密钥缓存（退出即销毁）。
 func (s *Service) Logout(ctx context.Context, token string) error {
 	s.vault.delete(token)
+	if s.keys != nil {
+		s.keys.Lock()
+	}
 	if err := s.q.DeleteSession(ctx, token); err != nil {
 		return fmt.Errorf("admin: 删会话失败: %w", err)
 	}

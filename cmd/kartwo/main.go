@@ -28,6 +28,7 @@ import (
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
 	"github.com/kartwo/kartwo/internal/order"
+	"github.com/kartwo/kartwo/internal/payment"
 	"github.com/kartwo/kartwo/internal/server"
 	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/internal/store"
@@ -171,9 +172,17 @@ func runServe(logger *slog.Logger) error {
 
 	mediaSvc := newMediaService(cfg, st)
 	settingsSvc := settings.New(st.DB)
-	adminHTTP := admin.NewHTTP(admin.New(st.DB), catalog.New(st.DB), mediaSvc, settingsSvc, cfg.Env == "prod")
-	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), order.New(st.DB, settingsSvc), settingsSvc, cfg.ShopName, cfg.BaseURL, cfg.Env == "prod")
-	srv := server.New(cfg, st, Version, adminHTTP, storeHTTP)
+
+	// 收款密钥内存缓存（绑定 KEK 金库：登录解锁/登出销毁）+ 支付编排服务。
+	payCache := payment.NewKeyCache(settingsSvc)
+	adminSvc := admin.New(st.DB)
+	adminSvc.SetPaymentKeys(payCache)
+	paySvc := payment.NewService(st.DB, settingsSvc, payCache)
+
+	adminHTTP := admin.NewHTTP(adminSvc, catalog.New(st.DB), mediaSvc, settingsSvc, cfg.Env == "prod")
+	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), order.New(st.DB, settingsSvc), settingsSvc, paySvc, cfg.ShopName, cfg.BaseURL, cfg.Env == "prod")
+	payHTTP := payment.NewHTTP(paySvc)
+	srv := server.New(cfg, st, Version, adminHTTP, storeHTTP, payHTTP)
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           srv,

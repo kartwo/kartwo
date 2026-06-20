@@ -68,6 +68,10 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("GET /admin/api/markets", protect(h.listMarkets))
 	mux.Handle("GET /admin/api/settings/market", protect(h.getMarket))
 	mux.Handle("PUT /admin/api/settings/market", protect(h.setMarket))
+
+	// 收款设置（Stripe 密钥；sk/whsec 加密存）。
+	mux.Handle("GET /admin/api/settings/payment", protect(h.getPayment))
+	mux.Handle("PUT /admin/api/settings/payment", protect(h.setPayment))
 }
 
 func (h *HTTP) status(w http.ResponseWriter, r *http.Request) {

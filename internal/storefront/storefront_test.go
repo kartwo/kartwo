@@ -103,7 +103,7 @@ func newHTTP(t *testing.T) (*HTTP, http.Handler) {
 	if _, err := cat.CreateProduct(context.Background(), activeTee("tee")); err != nil {
 		t.Fatal(err)
 	}
-	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db), "测试店", "https://shop.example", false)
+	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db), nil, "测试店", "https://shop.example", false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux

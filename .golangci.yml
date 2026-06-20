@@ -25,3 +25,8 @@ linters:
       - path: _test\.go
         linters:
           - gosec
+      # 收款设置项「键名」常量含 Secret 字样触发 G101 误报（实为键名、非凭证本身）。
+      - path: internal/payment/provider\.go
+        text: "G101"
+        linters:
+          - gosec

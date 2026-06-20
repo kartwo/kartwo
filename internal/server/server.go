@@ -17,17 +17,19 @@ import (
 
 	"github.com/kartwo/kartwo/internal/admin"
 	"github.com/kartwo/kartwo/internal/config"
+	"github.com/kartwo/kartwo/internal/payment"
 	"github.com/kartwo/kartwo/internal/storefront"
 	"github.com/kartwo/kartwo/internal/store"
 )
 
 // New 构建带中间件的 HTTP Handler。
 // 路由布局：店面占 "/"（SEO 主位）；Admin SPA 在 "/admin/"；API 在 "/admin/api/"；媒体在 "/media/"。
-func New(cfg *config.Config, st *store.Store, version string, adminHTTP *admin.HTTP, storeHTTP *storefront.HTTP) http.Handler {
+func New(cfg *config.Config, st *store.Store, version string, adminHTTP *admin.HTTP, storeHTTP *storefront.HTTP, payHTTP *payment.HTTP) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(st, version))
 	adminHTTP.Register(mux)   // /admin/api/*（含商品/媒体 API）
 	storeHTTP.Register(mux)   // /、/p/{slug}、/sitemap.xml、/robots.txt
+	payHTTP.Register(mux)     // /webhooks/stripe（公开，HMAC 签名鉴权，无 CSRF）
 	mux.Handle("GET /media/", mediaHandler(filepath.Join(cfg.DataDir, "media")))
 	mux.Handle("/admin/", adminHandler()) // Admin SPA（/admin 自动跳 /admin/）
 

@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/kartwo/kartwo/internal/order"
+	"github.com/kartwo/kartwo/internal/payment"
 )
 
 func (h *HTTP) checkoutPage(w http.ResponseWriter, r *http.Request) {
@@ -73,8 +74,40 @@ func (h *HTTP) checkoutSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 下单成功：清购物车 cookie（车已转换；下次购物自动新建）。
-	http.SetCookie(w, &http.Cookie{Name: cartCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: h.secure, SameSite: http.SameSiteLaxMode})
+	h.clearCartCookie(w)
+
+	// 收款已就绪 → 发起托管收银会话并跳转网关；「已付」以 Webhook 为准（不信任跳转）。
+	if h.pay != nil && h.pay.Ready(r.Context()) {
+		if url, perr := h.startPayment(r, publicID, info.Email); perr == nil {
+			http.Redirect(w, r, url, http.StatusSeeOther)
+			return
+		}
+		// 发起收款失败：落到订单页（订单为未付，可后续重试收款）。
+	}
 	http.Redirect(w, r, "/order/"+publicID, http.StatusSeeOther)
+}
+
+// startPayment 用订单的权威金额/币种发起一次收款，返回网关跳转 URL。
+func (h *HTTP) startPayment(r *http.Request, publicID, email string) (string, error) {
+	o, err := h.order.Get(r.Context(), publicID)
+	if err != nil {
+		return "", err
+	}
+	base := h.base(r)
+	return h.pay.StartCheckout(r.Context(), payment.OrderForPayment{
+		PublicID:    publicID,
+		Email:       email,
+		Currency:    o.Currency,
+		AmountCents: o.TotalCents,
+		Description: h.shopName + " — Order",
+		SuccessURL:  base + "/order/" + publicID + "?paid=1",
+		CancelURL:   base + "/order/" + publicID + "?canceled=1",
+	})
+}
+
+// clearCartCookie 清空购物车 cookie。
+func (h *HTTP) clearCartCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{Name: cartCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: h.secure, SameSite: http.SameSiteLaxMode})
 }
 
 func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
