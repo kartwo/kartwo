@@ -1,41 +1,41 @@
 {{define "content"}}
 {{$c := .Cart}}
-<h1>结算</h1>
+<h1>Checkout</h1>
 {{if .Error}}<p class="err" style="color:#dc2626">{{.Error}}</p>{{end}}
 {{if not $c.Lines}}
-  <p class="muted">购物车是空的。<a href="/">去逛逛</a></p>
+  <p class="muted">Your cart is empty. <a href="/">Continue shopping</a></p>
 {{else}}
 <div class="detail">
   <div>
-    <h3>收货信息</h3>
+    <h3>Shipping details</h3>
     <form method="post" action="/checkout">
-      <label>邮箱 *</label>
+      <label>Email *</label>
       <input type="email" name="email" required style="width:100%" />
-      <label>收货人 *</label>
+      <label>Full name *</label>
       <input type="text" name="name" required style="width:100%" />
-      <label>电话</label>
+      <label>Phone</label>
       <input type="text" name="phone" style="width:100%" />
-      <label>收货地址 *</label>
+      <label>Shipping address *</label>
       <textarea name="address" rows="3" required style="width:100%"></textarea>
-      <label>国家/地区</label>
+      <label>Country/Region</label>
       <input type="text" name="country" style="width:100%" />
-      <div style="margin-top:1rem"><button class="btn" type="submit">提交订单</button></div>
-      <p class="muted" style="font-size:.8rem">提交即创建待付款订单并预留库存；在线支付将在 M3 启用。</p>
+      <div style="margin-top:1rem"><button class="btn" type="submit">Place order</button></div>
+      <p class="muted" style="font-size:.8rem">Placing the order reserves your items. Online payment is coming soon.</p>
     </form>
   </div>
   <div>
-    <h3>订单摘要</h3>
+    <h3>Order summary</h3>
     <table class="cart-table">
       <tbody>
         {{range $c.Lines}}
         <tr>
-          <td>{{.ProductTitle}}<br><span class="muted" style="font-size:.85rem">{{range $i,$o := .Options}}{{if $i}} · {{end}}{{$o.Name}}:{{$o.Value}}{{end}} × {{.Quantity}}</span></td>
+          <td>{{.ProductTitle}}<br><span class="muted" style="font-size:.85rem">{{range $i,$o := .Options}}{{if $i}} · {{end}}{{$o.Name}}: {{$o.Value}}{{end}} × {{.Quantity}}</span></td>
           <td style="text-align:right">{{call $.Money .LineCents}}</td>
         </tr>
         {{end}}
       </tbody>
     </table>
-    <div class="cart-foot"><div class="total">合计：<strong>{{call $.Money $c.TotalCents}}</strong></div></div>
+    <div class="cart-foot"><div class="total">Total: <strong>{{call $.Money $c.TotalCents}}</strong></div></div>
   </div>
 </div>
 {{end}}

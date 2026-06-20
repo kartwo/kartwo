@@ -1,28 +1,28 @@
 {{define "content"}}
 {{$c := .Cart}}
-<h1>购物车</h1>
+<h1>Cart</h1>
 {{if not $c.Lines}}
-  <p class="muted">购物车是空的。<a href="/">去逛逛</a></p>
+  <p class="muted">Your cart is empty. <a href="/">Continue shopping</a></p>
 {{else}}
 <table class="cart-table">
-  <thead><tr><th></th><th>商品</th><th>规格</th><th>单价</th><th>数量</th><th>小计</th><th></th></tr></thead>
+  <thead><tr><th></th><th>Product</th><th>Options</th><th>Price</th><th>Qty</th><th>Subtotal</th><th></th></tr></thead>
   <tbody>
     {{range $c.Lines}}
     <tr>
       <td>{{if .ThumbURL}}<img class="cart-thumb" src="{{.ThumbURL}}" alt="{{.ProductTitle}}" width="56" height="56" loading="lazy" />{{end}}</td>
       <td><a href="/p/{{.ProductSlug}}">{{.ProductTitle}}</a></td>
-      <td class="muted">{{range $i,$o := .Options}}{{if $i}} · {{end}}{{$o.Name}}:{{$o.Value}}{{end}}</td>
+      <td class="muted">{{range $i,$o := .Options}}{{if $i}} · {{end}}{{$o.Name}}: {{$o.Value}}{{end}}</td>
       <td>{{call $.Money .UnitCents}}</td>
       <td><input type="number" min="0" max="999" value="{{.Quantity}}" data-cart-qty="{{.VariantPublicID}}" style="width:72px" /></td>
       <td>{{call $.Money .LineCents}}</td>
-      <td><button class="link" data-cart-remove="{{.VariantPublicID}}">删除</button></td>
+      <td><button class="link" data-cart-remove="{{.VariantPublicID}}">Remove</button></td>
     </tr>
     {{end}}
   </tbody>
 </table>
 <div class="cart-foot">
-  <div class="total">合计：<strong>{{call $.Money $c.TotalCents}}</strong></div>
-  <a class="btn" href="/checkout">去结算</a>
+  <div class="total">Total: <strong>{{call $.Money $c.TotalCents}}</strong></div>
+  <a class="btn" href="/checkout">Checkout</a>
 </div>
 {{end}}
 {{end}}

@@ -21,12 +21,12 @@ func (h *HTTP) checkoutPage(w http.ResponseWriter, r *http.Request) {
 func (h *HTTP) renderCheckout(w http.ResponseWriter, r *http.Request, errMsg string) {
 	id, err := h.cartCtx(w, r)
 	if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
 	view, err := h.cart.View(r.Context(), id)
 	if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
 	data := map[string]any{
@@ -35,7 +35,7 @@ func (h *HTTP) renderCheckout(w http.ResponseWriter, r *http.Request, errMsg str
 		"Error":    errMsg,
 		"Money":    h.money(r.Context()),
 		"SEO": seo{
-			Title: "结算 — " + h.shopName, Description: "结算", Canonical: h.base(r) + "/checkout", OGType: "website",
+			Title: "Checkout — " + h.shopName, Description: "Checkout", Canonical: h.base(r) + "/checkout", OGType: "website",
 		},
 	}
 	h.render(w, h.ckoutTmpl, data)
@@ -48,7 +48,7 @@ func (h *HTTP) checkoutSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := h.cartCtx(w, r)
 	if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
 	info := order.CheckoutInfo{
@@ -62,13 +62,13 @@ func (h *HTTP) checkoutSubmit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, order.ErrEmptyCart):
-			h.renderCheckout(w, r, "购物车是空的")
+			h.renderCheckout(w, r, "Your cart is empty.")
 		case errors.Is(err, order.ErrOutOfStock):
-			h.renderCheckout(w, r, "库存不足："+err.Error())
+			h.renderCheckout(w, r, "Sorry, some items are no longer in stock. Please adjust your cart.")
 		case errors.Is(err, order.ErrInvalidInfo):
-			h.renderCheckout(w, r, "请填写完整正确的收货信息（邮箱/收货人/地址）")
+			h.renderCheckout(w, r, "Please enter a valid email, full name and shipping address.")
 		default:
-			http.Error(w, "内部错误", http.StatusInternalServerError)
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		}
 		return
 	}
@@ -83,7 +83,7 @@ func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	} else if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
 	data := map[string]any{
@@ -91,7 +91,7 @@ func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
 		"Order":    o,
 		"Money":    h.money(r.Context()),
 		"SEO": seo{
-			Title: "订单确认 — " + h.shopName, Description: "订单确认", Canonical: h.base(r) + "/order/" + o.PublicID, OGType: "website",
+			Title: "Order — " + h.shopName, Description: "Order confirmation", Canonical: h.base(r) + "/order/" + o.PublicID, OGType: "website",
 		},
 	}
 	h.render(w, h.orderTmpl, data)

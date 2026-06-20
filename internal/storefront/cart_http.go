@@ -30,7 +30,7 @@ func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
-		writeErr(w, http.StatusBadRequest, "请求体非法")
+		writeErr(w, http.StatusBadRequest, "Invalid request")
 		return false
 	}
 	return true
@@ -68,7 +68,7 @@ func (h *HTTP) cartAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := h.cartCtx(w, r)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "内部错误")
+		writeErr(w, http.StatusInternalServerError, "Something went wrong")
 		return
 	}
 	if err := h.cart.AddItem(r.Context(), id, req.Variant, req.Quantity); err != nil {
@@ -87,7 +87,7 @@ func (h *HTTP) cartSet(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := h.cartCtx(w, r)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "内部错误")
+		writeErr(w, http.StatusInternalServerError, "Something went wrong")
 		return
 	}
 	if err := h.cart.SetQty(r.Context(), id, r.PathValue("vid"), req.Quantity); err != nil {
@@ -100,7 +100,7 @@ func (h *HTTP) cartSet(w http.ResponseWriter, r *http.Request) {
 func (h *HTTP) cartRemove(w http.ResponseWriter, r *http.Request) {
 	id, err := h.cartCtx(w, r)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "内部错误")
+		writeErr(w, http.StatusInternalServerError, "Something went wrong")
 		return
 	}
 	if err := h.cart.RemoveItem(r.Context(), id, r.PathValue("vid")); err != nil {
@@ -114,12 +114,12 @@ func (h *HTTP) cartRemove(w http.ResponseWriter, r *http.Request) {
 func (h *HTTP) cartData(w http.ResponseWriter, r *http.Request) {
 	id, err := h.cartCtx(w, r)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "内部错误")
+		writeErr(w, http.StatusInternalServerError, "Something went wrong")
 		return
 	}
 	view, err := h.cart.View(r.Context(), id)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "内部错误")
+		writeErr(w, http.StatusInternalServerError, "Something went wrong")
 		return
 	}
 	writeJSON(w, http.StatusOK, cartJSON(view, h.cur(r.Context())))
@@ -129,12 +129,12 @@ func (h *HTTP) cartData(w http.ResponseWriter, r *http.Request) {
 func (h *HTTP) cartPage(w http.ResponseWriter, r *http.Request) {
 	id, err := h.cartCtx(w, r)
 	if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
 	view, err := h.cart.View(r.Context(), id)
 	if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
 	canonical := h.base(r) + "/cart"
@@ -143,7 +143,7 @@ func (h *HTTP) cartPage(w http.ResponseWriter, r *http.Request) {
 		"Cart":     view,
 		"Money":    h.money(r.Context()),
 		"SEO": seo{
-			Title: "购物车 — " + h.shopName, Description: "购物车", Canonical: canonical, OGType: "website",
+			Title: "Cart — " + h.shopName, Description: "Your cart", Canonical: canonical, OGType: "website",
 		},
 	}
 	h.render(w, h.cartTmpl, data)
@@ -152,7 +152,7 @@ func (h *HTTP) cartPage(w http.ResponseWriter, r *http.Request) {
 func (h *HTTP) respondCount(w http.ResponseWriter, r *http.Request, cartID int64) {
 	n, err := h.cart.Count(r.Context(), cartID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "内部错误")
+		writeErr(w, http.StatusInternalServerError, "Something went wrong")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"count": n})
@@ -172,11 +172,11 @@ func (h *HTTP) cartJS(w http.ResponseWriter, _ *http.Request) {
 func (h *HTTP) writeCartErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, cart.ErrVariantNotFound):
-		writeErr(w, http.StatusNotFound, "商品规格不存在")
+		writeErr(w, http.StatusNotFound, "Variant not found")
 	case errors.Is(err, cart.ErrInvalidQty):
-		writeErr(w, http.StatusBadRequest, "数量非法")
+		writeErr(w, http.StatusBadRequest, "Invalid quantity")
 	default:
-		writeErr(w, http.StatusInternalServerError, "内部错误")
+		writeErr(w, http.StatusInternalServerError, "Something went wrong")
 	}
 }
 

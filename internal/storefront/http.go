@@ -104,7 +104,7 @@ func (h *HTTP) base(r *http.Request) string {
 func (h *HTTP) home(w http.ResponseWriter, r *http.Request) {
 	items, err := h.svc.ListCatalog(r.Context())
 	if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
 	canonical := h.base(r) + "/"
@@ -116,7 +116,7 @@ func (h *HTTP) home(w http.ResponseWriter, r *http.Request) {
 		"Items":    items,
 		"Money":    h.money(r.Context()),
 		"SEO": seo{
-			Title: h.shopName + " — 全部商品", Description: h.shopName + " 的商品目录",
+			Title: h.shopName + " — Shop", Description: h.shopName + " catalog",
 			Canonical: canonical, OGType: "website", JSONLD: jsonLD(ld),
 		},
 	}
@@ -130,7 +130,7 @@ func (h *HTTP) product(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	} else if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
 	canonical := h.base(r) + "/p/" + p.Slug
@@ -177,7 +177,7 @@ func (h *HTTP) productLD(ctx context.Context, p *ProductPage, canonical, image s
 func (h *HTTP) sitemap(w http.ResponseWriter, r *http.Request) {
 	items, err := h.svc.ListCatalog(r.Context())
 	if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
 	base := h.base(r)
@@ -201,7 +201,7 @@ func (h *HTTP) robots(w http.ResponseWriter, r *http.Request) {
 func (h *HTTP) render(w http.ResponseWriter, t *template.Template, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.ExecuteTemplate(w, "base", data); err != nil {
-		http.Error(w, "渲染失败", http.StatusInternalServerError)
+		http.Error(w, "Render error", http.StatusInternalServerError)
 	}
 }
 

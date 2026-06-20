@@ -1,13 +1,13 @@
 {{define "content"}}
 {{$o := .Order}}
-<h1>订单已提交 ✓</h1>
-<p class="muted">感谢下单！订单号 <strong>{{$o.PublicID}}</strong>，状态：{{$o.Status}}（待付款，在线支付将在后续启用）。</p>
+<h1>Order placed ✓</h1>
+<p class="muted">Thank you for your order! Order <strong>{{$o.PublicID}}</strong> — status: {{$o.Status}} (awaiting payment; online payment coming soon).</p>
 
 <div class="detail">
   <div>
-    <h3>订单明细</h3>
+    <h3>Order details</h3>
     <table class="cart-table">
-      <thead><tr><th>商品</th><th>规格</th><th>单价</th><th>数量</th><th>小计</th></tr></thead>
+      <thead><tr><th>Product</th><th>Options</th><th>Price</th><th>Qty</th><th>Subtotal</th></tr></thead>
       <tbody>
         {{range $o.Lines}}
         <tr>
@@ -20,14 +20,14 @@
         {{end}}
       </tbody>
     </table>
-    <div class="cart-foot"><div class="total">合计：<strong>{{call $.Money $o.TotalCents}}</strong></div></div>
+    <div class="cart-foot"><div class="total">Total: <strong>{{call $.Money $o.TotalCents}}</strong></div></div>
   </div>
   <div>
-    <h3>收货信息</h3>
+    <h3>Shipping details</h3>
     <p>{{$o.ShipName}}{{if $o.ShipPhone}} · {{$o.ShipPhone}}{{end}}<br>
     {{$o.Email}}<br>
     <span style="white-space:pre-wrap">{{$o.ShipAddress}}</span>{{if $o.ShipCountry}}<br>{{$o.ShipCountry}}{{end}}</p>
-    <p><a href="/">← 继续购物</a></p>
+    <p><a href="/">← Continue shopping</a></p>
   </div>
 </div>
 {{end}}

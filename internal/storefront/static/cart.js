@@ -35,7 +35,7 @@
       var btn = form.querySelector('button[type="submit"]');
       if (btn) btn.disabled = true;
       api('POST', '/cart/items', { variant: sel.value, quantity: qty })
-        .then(function () { refreshCount(); flash(form, '已加入购物车 ✓'); })
+        .then(function () { refreshCount(); flash(form, 'Added to cart ✓'); })
         .catch(function (err) { flash(form, err.message, true); })
         .finally(function () { if (btn) btn.disabled = false; });
     });
