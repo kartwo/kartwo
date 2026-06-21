@@ -81,10 +81,10 @@ onMounted(load)
       <input v-model="publishable" placeholder="pk_test_…" autocomplete="off" :disabled="readonly" />
 
       <label>
-        密钥（Secret key，sk_…）
+        密钥（Secret key，sk_… 或受限密钥 rk_…，推荐 rk_）
         <span class="chip" :class="{ on: hasSecret }">{{ hasSecret ? '已配置' : '未配置' }}</span>
       </label>
-      <input v-model="secret" type="password" :placeholder="readonly ? '由环境变量提供' : (hasSecret ? '已保存，留空表示不修改' : 'sk_test_…')" autocomplete="off" :disabled="readonly" />
+      <input v-model="secret" type="password" :placeholder="readonly ? '由环境变量提供' : (hasSecret ? '已保存，留空表示不修改' : 'sk_test_… 或 rk_test_…')" autocomplete="off" :disabled="readonly" />
 
       <label>
         Webhook 签名密钥（whsec_…）

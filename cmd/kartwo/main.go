@@ -180,7 +180,19 @@ func runServe(logger *slog.Logger) error {
 	paySvc := payment.NewService(st.DB, settingsSvc, payCache)
 	// 仅记录密钥「来源」，绝不打印任何密钥值。
 	if payCache.EnvOverride() {
-		logger.Info("收款密钥来源", "source", "env", "note", "环境变量覆盖已激活，后台收款页只读")
+		payStatus := payCache.Status()
+		logger.Info("收款密钥来源", "source", "env", "mode", payStatus.Mode, "note", "环境变量覆盖已激活，后台收款页只读")
+		// 半设：设了 secret 却没设 whsec —— 明确告警，且绝不回退加密库取 whsec。
+		if !payStatus.HasWebhook {
+			logger.Warn("env 收款密钥不完整",
+				"detail", "已设 STRIPE_SECRET_KEY 但缺 STRIPE_WEBHOOK_SECRET；Webhook 将不可用(返 503)，且不会回退加密库取 whsec",
+				"fix", "请补设 STRIPE_WEBHOOK_SECRET(由 stripe listen 现场生成)，或清空全部 STRIPE_* 改用后台加密库")
+		}
+		// LIVE 防误：env 路径无 §7 沙箱兜底，正式模式显眼告警。
+		if payStatus.Mode == "live" {
+			logger.Warn("⚠️ 收款处于 LIVE 正式模式",
+				"detail", "env 路径无沙箱兜底，将产生真实收款；M3.2 测试期请确认确实需要 LIVE")
+		}
 	} else {
 		logger.Info("收款密钥来源", "source", "db", "note", "走后台收款页加密库（默认）")
 	}

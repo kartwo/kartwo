@@ -50,7 +50,8 @@ func resolveEnvKeys(getenv func(string) string) envKeys {
 	}
 	mode := strings.TrimSpace(getenv(envStripeMode))
 	if mode == "" {
-		if strings.HasPrefix(secret, "sk_live_") {
+		// 兼容密钥(sk_)与受限密钥(rk_，Stripe 推荐)：按 _live_ 段判定，避免 rk_live_ 被误判为 test。
+		if strings.Contains(secret, "_live_") {
 			mode = "live"
 		} else {
 			mode = "test"

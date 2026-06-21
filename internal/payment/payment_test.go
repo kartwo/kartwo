@@ -276,6 +276,13 @@ func TestResolveEnvKeys(t *testing.T) {
 	if e2.mode != "test" {
 		t.Fatalf("显式 mode 应覆盖推断，得 %s", e2.mode)
 	}
+	// 受限密钥(rk_，Stripe 推荐)live 也要判对，不被误判 test。
+	if e3 := resolveEnvKeys(fakeEnv(map[string]string{envStripeSecret: "rk_live_y"})); e3.mode != "live" {
+		t.Fatalf("rk_live_ 应判 live，得 %s", e3.mode)
+	}
+	if e4 := resolveEnvKeys(fakeEnv(map[string]string{envStripeSecret: "rk_test_z"})); e4.mode != "test" {
+		t.Fatalf("rk_test_ 应判 test，得 %s", e4.mode)
+	}
 }
 
 func TestKeyCacheEnvOverridesDB(t *testing.T) {
@@ -353,6 +360,42 @@ func TestWebhookEnvOverrideNoLoginNeeded(t *testing.T) {
 	}
 	if st := orderStatus(t, db, ref); st != "paid" {
 		t.Fatalf("订单应 paid，得 %s", st)
+	}
+}
+
+func TestEnvHalfSetNoFallbackToDB(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+t.TempDir()+"/t.db?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := migrate.Run(context.Background(), db, migrations.FS); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	settingsSvc := settings.New(db)
+	kek := make([]byte, 32)
+	_, _ = rand.Read(kek)
+	// 库里有 whsec —— 半设 env 模式下绝不能被取用。
+	_ = settingsSvc.SetEncrypted(ctx, KeyStripeWebhookSecret, []byte("whsec_db_must_not_leak"), kek)
+
+	// 仅设 env secret，未设 env whsec。
+	cache := &KeyCache{settings: settingsSvc, env: resolveEnvKeys(fakeEnv(map[string]string{
+		envStripeSecret: "sk_test_only",
+	}))}
+	_ = cache.Unlock(ctx, kek) // env 模式 no-op
+
+	if _, ok := cache.secretKey(); !ok {
+		t.Fatal("env secret 应可用")
+	}
+	// 关键：whsec 必须 false（拒绝半回退到库），而非取到库内值。
+	if v, ok := cache.webhookSecret(); ok {
+		t.Fatalf("半设不得回退取库内 whsec，得 %q", v)
+	}
+	// Status 反映不完整。
+	if st := cache.Status(); st.Source != "env" || st.HasWebhook {
+		t.Fatalf("半设 Status 应 env+HasWebhook=false: %+v", st)
 	}
 }
 
