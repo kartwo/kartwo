@@ -61,7 +61,8 @@
 | 2026-06-21 | **密钥来源=混合**：加密存后台为默认/主来源(§14 不变)，新增**可选 env 覆盖旁路**(`STRIPE_SECRET_KEY` 等)，优先级 env>加密库、**覆盖非双写**(不读库内值)、env 模式收款页只读、无锁定态、env 值不落库不进日志 | 给技术运维/本地联调一条 12-factor 路；普通商家仍走 UI 保北极星；单一来源杜绝跨源歧义；§14 仍权威、不收回任何决策 | 支付/安全（M3.2 增量） |
 | 2026-06-21 | 上一条「密钥纪律=一律从 env 读」系表述错误，**已更正**：保密纪律(不硬编码/不进日志git/不回贴对话)不变，但密钥来源仍以加密存后台为默认 | 避免误拆已实现的加密存+方案A 设计 | 支付（澄清） |
 | 2026-06-21 | **env 半设(有 secret 缺 whsec)启动 WARN 且绝不回退库取 whsec**；**env LIVE 密钥启动 WARN**；mode 推断按 `_live_` 段(兼容受限密钥 rk_) | 杜绝半回退歧义、防误上 LIVE、兼容 Stripe 推荐的 rk_ 受限密钥 | 支付/安全（M3.2 护栏） |
-| 2026-06-21 | 经 `/stripe:stripe-best-practices` 复核：webhook 双校验**无偏离**官方推荐；Checkout Sessions(非 Charges)、不传 `payment_method_types`(启用动态支付方式)、推荐 rk_ 已采纳；**暂不钉 Stripe-Version**(仅读稳定字段，正式上线再议)、IP allowlist 留 M5 硬化 | 锁定合规、记录有意未做项 | 支付（M3.2 复核） |
+| 2026-06-21 | 经 `/stripe:stripe-best-practices` 复核：webhook 双校验**无偏离**官方推荐；Checkout Sessions(非 Charges)、不传 `payment_method_types`(启用动态支付方式)、推荐 rk_ 已采纳；IP allowlist 留 M5 硬化 | 锁定合规、记录有意未做项 | 支付（M3.2 复核） |
+| 2026-06-21 | **暂不钉 Stripe-Version，触发点=发版硬化(M4 前后)，修法=client 初始化显式钉死 API 版本**(请求加 `Stripe-Version` 头)。理由：Kartwo 分发到**不可控的商家账号**，各账号 Dashboard 默认 API 版本不同，不钉则同一份二进制在不同商家上行为可能漂移；M3.2 只读稳定字段(id/type/client_reference_id/payment_status/amount_total/currency)故当前安全。**仅记录，暂不改代码** | 可复现/抗版本漂移 vs 控范围 | 支付/硬化（M4 前后落地） |
 
 ---
 
