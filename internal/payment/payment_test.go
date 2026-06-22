@@ -362,11 +362,11 @@ func fakeEnv(m map[string]string) func(string) string {
 
 func TestResolveEnvKeys(t *testing.T) {
 	// 未设 secret → 不激活。
-	if e := resolveEnvKeys(fakeEnv(map[string]string{})); e.active {
+	if e := resolveStripeEnv(fakeEnv(map[string]string{})); e.active {
 		t.Fatal("未设 STRIPE_SECRET_KEY 不应激活")
 	}
 	// 设了 secret → 激活，mode 由前缀推断。
-	e := resolveEnvKeys(fakeEnv(map[string]string{
+	e := resolveStripeEnv(fakeEnv(map[string]string{
 		envStripeSecret:  "sk_live_abc",
 		envStripeWebhook: "whsec_env",
 	}))
@@ -374,15 +374,15 @@ func TestResolveEnvKeys(t *testing.T) {
 		t.Fatalf("激活/推断有误: %+v", e)
 	}
 	// 显式 mode 覆盖推断。
-	e2 := resolveEnvKeys(fakeEnv(map[string]string{envStripeSecret: "sk_live_x", envStripeMode: "test"}))
+	e2 := resolveStripeEnv(fakeEnv(map[string]string{envStripeSecret: "sk_live_x", envStripeMode: "test"}))
 	if e2.mode != "test" {
 		t.Fatalf("显式 mode 应覆盖推断，得 %s", e2.mode)
 	}
 	// 受限密钥(rk_，Stripe 推荐)live 也要判对，不被误判 test。
-	if e3 := resolveEnvKeys(fakeEnv(map[string]string{envStripeSecret: "rk_live_y"})); e3.mode != "live" {
+	if e3 := resolveStripeEnv(fakeEnv(map[string]string{envStripeSecret: "rk_live_y"})); e3.mode != "live" {
 		t.Fatalf("rk_live_ 应判 live，得 %s", e3.mode)
 	}
-	if e4 := resolveEnvKeys(fakeEnv(map[string]string{envStripeSecret: "rk_test_z"})); e4.mode != "test" {
+	if e4 := resolveStripeEnv(fakeEnv(map[string]string{envStripeSecret: "rk_test_z"})); e4.mode != "test" {
 		t.Fatalf("rk_test_ 应判 test，得 %s", e4.mode)
 	}
 }
@@ -405,7 +405,7 @@ func TestKeyCacheEnvOverridesDB(t *testing.T) {
 	_ = settingsSvc.SetEncrypted(ctx, KeyStripeSecret, []byte("sk_db_should_not_win"), kek)
 	_ = settingsSvc.SetEncrypted(ctx, KeyStripeWebhookSecret, []byte("whsec_db"), kek)
 
-	cache := &KeyCache{settings: settingsSvc, env: resolveEnvKeys(fakeEnv(map[string]string{
+	cache := &KeyCache{settings: settingsSvc, stripeEnv: resolveStripeEnv(fakeEnv(map[string]string{
 		envStripeSecret:      "sk_env_wins",
 		envStripeWebhook:     "whsec_env_wins",
 		envStripePublishable: "pk_env",
@@ -422,7 +422,7 @@ func TestKeyCacheEnvOverridesDB(t *testing.T) {
 		t.Fatalf("env whsec 应生效，得 %q", v)
 	}
 	st := cache.Status()
-	if st.Source != "env" || !st.HasSecret || st.Publishable != "pk_env" {
+	if st.StripeSource != "env" || !st.StripeHasSecret || st.StripePublishable != "pk_env" {
 		t.Fatalf("Status 应报 env 来源: %+v", st)
 	}
 	// Lock 不影响 env。
@@ -444,7 +444,7 @@ func TestWebhookEnvOverrideNoLoginNeeded(t *testing.T) {
 	}
 	settingsSvc := settings.New(db)
 	// env 覆盖：whsec 来自环境变量；从不登录、从不 Unlock。
-	cache := &KeyCache{settings: settingsSvc, env: resolveEnvKeys(fakeEnv(map[string]string{
+	cache := &KeyCache{settings: settingsSvc, stripeEnv: resolveStripeEnv(fakeEnv(map[string]string{
 		envStripeSecret:  "sk_test_env",
 		envStripeWebhook: testWhsec,
 	}))}
@@ -483,7 +483,7 @@ func TestEnvHalfSetNoFallbackToDB(t *testing.T) {
 	_ = settingsSvc.SetEncrypted(ctx, KeyStripeWebhookSecret, []byte("whsec_db_must_not_leak"), kek)
 
 	// 仅设 env secret，未设 env whsec。
-	cache := &KeyCache{settings: settingsSvc, env: resolveEnvKeys(fakeEnv(map[string]string{
+	cache := &KeyCache{settings: settingsSvc, stripeEnv: resolveStripeEnv(fakeEnv(map[string]string{
 		envStripeSecret: "sk_test_only",
 	}))}
 	_ = cache.Unlock(ctx, kek) // env 模式 no-op
@@ -496,7 +496,7 @@ func TestEnvHalfSetNoFallbackToDB(t *testing.T) {
 		t.Fatalf("半设不得回退取库内 whsec，得 %q", v)
 	}
 	// Status 反映不完整。
-	if st := cache.Status(); st.Source != "env" || st.HasWebhook {
+	if st := cache.Status(); st.StripeSource != "env" || st.StripeHasWebhook {
 		t.Fatalf("半设 Status 应 env+HasWebhook=false: %+v", st)
 	}
 }

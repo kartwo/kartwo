@@ -21,6 +21,13 @@ const (
 	KeyStripeSecret = "pay.stripe.secret"
 	// KeyStripeWebhookSecret Webhook 签名密钥 whsec_*（加密存；本地 CLI 转发与正式端点为不同值，均作普通配置项）。
 	KeyStripeWebhookSecret = "pay.stripe.webhook_secret"
+
+	// KeyPayPalMode 沙箱/正式：sandbox | live（明文）。
+	KeyPayPalMode = "pay.paypal.mode"
+	// KeyPayPalClientID PayPal 应用 client_id（半公开，明文）。
+	KeyPayPalClientID = "pay.paypal.client_id"
+	// KeyPayPalSecret PayPal 应用 secret（加密存）。
+	KeyPayPalSecret = "pay.paypal.secret"
 )
 
 var (

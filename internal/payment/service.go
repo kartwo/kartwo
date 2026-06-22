@@ -23,6 +23,7 @@ type Service struct {
 	settings *settings.Service
 	keys     *KeyCache
 	stripe   *StripeProvider
+	paypal   *PayPalProvider
 }
 
 // NewService 构造支付编排服务。
@@ -33,50 +34,83 @@ func NewService(db *sql.DB, settingsSvc *settings.Service, keys *KeyCache) *Serv
 		settings: settingsSvc,
 		keys:     keys,
 		stripe:   NewStripeProvider(keys),
+		paypal:   NewPayPalProvider(keys),
 	}
 }
 
-// providerFor 按当前主攻市场选通道。v1：市场支持 stripe 即用 stripe（预留 geo/币种细分）。
-func (s *Service) providerFor(ctx context.Context) (PaymentProvider, bool) {
-	m := s.settings.Market(ctx)
-	for _, p := range m.Providers {
-		if p == "stripe" {
-			return s.stripe, true
-		}
-	}
-	return nil, false
-}
-
-// MarketSupports 报告当前市场是否含某通道（供诊断/UI）。
-func (s *Service) MarketSupports(ctx context.Context, provider string) bool {
+// providerReady 报告某通道是否「市场支持 + 密钥就绪」。
+func (s *Service) providerReady(ctx context.Context, provider string) bool {
+	supported := false
 	for _, p := range s.settings.Market(ctx).Providers {
 		if p == provider {
-			return true
+			supported = true
+			break
 		}
 	}
-	return false
-}
-
-// Ready 报告收款是否就绪（市场有通道 + 密钥已解锁）。storefront 据此决定是否跳转网关。
-func (s *Service) Ready(ctx context.Context) bool {
-	if _, ok := s.providerFor(ctx); !ok {
+	if !supported {
 		return false
 	}
-	_, ok := s.keys.secretKey()
-	return ok
+	switch provider {
+	case "stripe":
+		_, ok := s.keys.secretKey()
+		return ok
+	case "paypal":
+		_, _, _, ok := s.keys.paypalCreds()
+		return ok
+	default:
+		return false
+	}
 }
 
-// StartCheckout 为订单发起一次收款，返回托管收银台跳转 URL。
-func (s *Service) StartCheckout(ctx context.Context, ord OrderForPayment) (string, error) {
-	prov, ok := s.providerFor(ctx)
-	if !ok {
-		return "", fmt.Errorf("payment: 当前市场未配置支付通道")
+// AvailableMethods 返回当前市场下已就绪（配好密钥）的支付方式，供结算页选择。
+func (s *Service) AvailableMethods(ctx context.Context) []string {
+	var out []string
+	for _, p := range s.settings.Market(ctx).Providers {
+		if s.providerReady(ctx, p) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// StartCheckout 用指定通道为订单发起一次收款，返回托管收银台/审批跳转 URL。
+func (s *Service) StartCheckout(ctx context.Context, provider string, ord OrderForPayment) (string, error) {
+	prov := s.providerByName(provider)
+	if prov == nil || !s.providerReady(ctx, provider) {
+		return "", fmt.Errorf("payment: 支付方式 %q 不可用", provider)
 	}
 	sess, err := prov.CreatePayment(ctx, ord)
 	if err != nil {
 		return "", err
 	}
 	return sess.RedirectURL, nil
+}
+
+// CapturePayPal 对已审批的 PayPal 订单做 capture 并据其结果改单（已付判定=同步 capture）。
+// 校验：completed + custom_id 能对上库内订单 + 金额/币种一致；改单条件更新(pending->paid)幂等。返回订单 public_id。
+func (s *Service) CapturePayPal(ctx context.Context, paypalOrderID string) (string, error) {
+	res, err := s.paypal.Capture(ctx, paypalOrderID)
+	if err != nil {
+		return "", err
+	}
+	if !res.Completed || res.OrderRef == "" {
+		return res.OrderRef, ErrMismatch
+	}
+	ord, err := s.q.GetOrderByPublicID(ctx, res.OrderRef)
+	if errors.Is(err, sql.ErrNoRows) {
+		return res.OrderRef, ErrMismatch
+	} else if err != nil {
+		return res.OrderRef, fmt.Errorf("payment: 取订单失败: %w", err)
+	}
+	if ord.TotalCents != res.AmountCents || !strings.EqualFold(ord.Currency, res.Currency) {
+		return res.OrderRef, ErrMismatch
+	}
+	if _, err := s.q.MarkOrderPaidByPublicID(ctx, sqlcgen.MarkOrderPaidByPublicIDParams{
+		PaymentProvider: "paypal", PaymentRef: res.CaptureID, PublicID: res.OrderRef,
+	}); err != nil {
+		return res.OrderRef, fmt.Errorf("payment: 更新订单状态失败: %w", err)
+	}
+	return res.OrderRef, nil
 }
 
 // HandleWebhook 处理 Stripe Webhook：双校验 + 幂等。
@@ -228,11 +262,13 @@ func (s *Service) Refund(ctx context.Context, orderPublicID string) error {
 	return nil
 }
 
-// providerByName 按通道名取 provider（v1 仅 stripe；PayPal 在 M3.3b 接入）。
+// providerByName 按通道名取 provider。
 func (s *Service) providerByName(name string) PaymentProvider {
 	switch name {
 	case "stripe":
 		return s.stripe
+	case "paypal":
+		return s.paypal
 	default:
 		return nil
 	}

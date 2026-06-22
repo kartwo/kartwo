@@ -24,8 +24,9 @@ import (
 
 // PaymentGateway 收款网关（由 internal/payment 实现）。nil 表示未接入收款，结算退化为「下单未付」。
 type PaymentGateway interface {
-	Ready(ctx context.Context) bool
-	StartCheckout(ctx context.Context, ord payment.OrderForPayment) (string, error)
+	AvailableMethods(ctx context.Context) []string
+	StartCheckout(ctx context.Context, provider string, ord payment.OrderForPayment) (string, error)
+	CapturePayPal(ctx context.Context, paypalOrderID string) (string, error)
 }
 
 //go:embed templates/*.html static/*
@@ -87,6 +88,7 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /checkout", h.checkoutPage)
 	mux.HandleFunc("POST /checkout", h.checkoutSubmit)
 	mux.HandleFunc("GET /order/{id}", h.orderPage)
+	mux.HandleFunc("GET /paypal/return", h.paypalReturn) // PayPal 审批后跳回做同步 capture
 }
 
 type seo struct {
