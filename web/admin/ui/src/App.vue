@@ -119,6 +119,7 @@ onMounted(refresh)
       <div class="brand">Kartwo Admin</div>
       <div class="row" style="gap:1rem; flex: 0;">
         <RouterLink to="/products">商品</RouterLink>
+        <RouterLink to="/orders">订单</RouterLink>
         <RouterLink to="/market">市场</RouterLink>
         <RouterLink to="/payment">收款</RouterLink>
         <span class="muted">{{ username }}</span>

@@ -59,6 +59,10 @@ export const api = {
   getPayment: () => request('GET', '/settings/payment'),
   setPayment: (payload) => request('PUT', '/settings/payment', payload),
 
+  listOrders: () => request('GET', '/orders'),
+  getOrder: (id) => request('GET', '/orders/' + id),
+  refundOrder: (id) => request('POST', '/orders/' + id + '/refund'),
+
   listMedia: (productId) => request('GET', '/products/' + productId + '/media'),
   deleteMedia: (mediaId) => request('DELETE', '/media/' + mediaId),
   uploadMedia: (productId, file) => {
