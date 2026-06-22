@@ -69,6 +69,9 @@
 | 2026-06-22 | **PayPal 沙箱 webhook 本地用 webhook 模拟器验收**；真实端到端(顾客批准→真 webhook)推迟 M4(有 HTTPS/域名后) | PayPal 无 stripe listen 等价物、本地无公网 URL；不引隧道依赖(默认无外部依赖) | PayPal/验收（M3.3b/M4） |
 | 2026-06-22 | **PayPal 与 Stripe 对称**：env 覆盖旁路(`PAYPAL_CLIENT_ID/SECRET`)、密钥加密存、hosted 审批+intent=CAPTURE(不做两段授权)、退款整数分、同事务幂等 | 一致性、北极星代码最少 | PayPal（M3.3b） |
 | 2026-06-22 | 退款**先调网关、成功后才落库**(写 refund 记录 + paid→refunded 同事务)；`charge.refunded` webhook **只同步订单状态、不写退款记录**(记录由手动退款路径写，UNIQUE(provider_refund_id) 兜底) | 避免「库里已退钱没退」；避免跨源退款记录去重复杂度 | 退款（M3.3a 实现） |
+| 2026-06-23 | **M3.3b 再拆 2 片**：3.3b-1 PayPal 付款(建单+审批+capture+结算支付方式选择UI，沙箱真跑付款) / 3.3b-2 PayPal 退款+webhook(模拟器验收) | 单片偏大、守「十几分钟可测完」铁律 | 节奏（M3.3b） |
+| 2026-06-23 | **PayPal「已付」=同步 capture**：顾客批准跳回后我方主动 capture，响应 COMPLETED 即 paid(存 capture_id 作 payment_ref)；webhook 仅幂等补充同步 | capture 是 PayPal 权威同步信号；不卡在 webhook 验签限制上、happy-path 最稳 | PayPal（M3.3b-1） |
+| 2026-06-23 | PayPal 金额 v1 仅 2 位小数币种(USD)：整数分↔小数字符串转换；多位/零位小数币种后置 | PayPal 用小数字符串、与内核整数分需转换；控范围 | PayPal（M3.3b-1） |
 | 2026-06-21 | **暂不钉 Stripe-Version，触发点=发版硬化(M4 前后)，修法=client 初始化显式钉死 API 版本**(请求加 `Stripe-Version` 头)。理由：Kartwo 分发到**不可控的商家账号**，各账号 Dashboard 默认 API 版本不同，不钉则同一份二进制在不同商家上行为可能漂移；M3.2 只读稳定字段(id/type/client_reference_id/payment_status/amount_total/currency)故当前安全。**仅记录，暂不改代码** | 可复现/抗版本漂移 vs 控范围 | 支付/硬化（M4 前后落地） |
 
 ---

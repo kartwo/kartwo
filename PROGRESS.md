@@ -31,7 +31,9 @@
 - [x] **M3.2 支付路由 + Stripe Checkout 沙箱 + Webhook 双校验（拒伪造/幂等）**（✅ 已验收，真实沙箱 A1~A3 通过）：PaymentProvider 抽象 + 瘦 Stripe 客户端(不引 SDK)；结算就绪即跳 Stripe 托管收银台、订单 public_id 作对账锚点；Webhook 双校验(原始字节 HMAC+时间戳防重放 + 订单号/金额/币种比对 + 显式 payment_status=='paid')；回调幂等(去重 INSERT 与 pending→paid 同一事务)；KEK 收款密钥内存缓存(登录解锁/登出销毁/改密钥即时重载)，锁定时 Webhook 返 503 交网关重投；后台收款页(sk/whsec 加密存)；**可选 env 覆盖旁路**(env>加密库/覆盖非双写/env模式收款页只读/不落库不进日志/记来源)；单测覆盖验签四态+双校验+幂等+缓存生命周期+env覆盖；实测 locked→503、env模式forged→400(不锁定)
 - M3.3 PayPal 沙箱 + 退款(整数分) + 向导支付步骤 —— **拆 3 小片**（2026-06-22 拍板）：
   - [x] **M3.3a 退款(Stripe)**（✅ 已验收，真实沙箱退款通过）：迁移 0009(payment_provider/payment_ref 列 + refund 表)；webhook 落 payment_intent；后台手动整单全额退款(Stripe /v1/refunds，整数分，先退款后落库)；charge.refunded webhook 同步状态(双校验+同事务幂等)；订单状态 refunded；最小后台订单页(列表+详情+退款按钮)；单测(退款幸福路径/重复拒/未付拒/charge.refunded 幂等)；自驱实测(订单API/守卫409·404/charge.refunded→refunded)
-  - [ ] **M3.3b PayPal 沙箱**：PayPal Orders v2 hosted 审批+CAPTURE + webhook 验签(模拟器验收) + PayPal 退款 + env 覆盖旁路；并入支付路由
+  - M3.3b PayPal 沙箱 —— **再拆 2 片**（2026-06-23 拍板）：
+    - [ ] **M3.3b-1 PayPal 付款**：Orders v2 建单+hosted 审批+同步 capture(已付判定) + 结算页支付方式选择(卡/PayPal) + PayPal 密钥(加密存+env 旁路) + 路由分发；沙箱真跑付款
+    - [ ] **M3.3b-2 PayPal 退款 + webhook**：capture 退款 + webhook 验签(verify-webhook-signature)+幂等(模拟器验收，真实端到端 M4)
   - [ ] **M3.3c 向导支付步骤**：收款配置纳入开店向导（大白话引导，可跳过稍后配）；**+ 未付订单页加「去支付」按钮**（顾客中途取消/弃单后重新发起付款，复用结算跳转逻辑）（2026-06-23 并入）
 
 ## 历史里程碑明细（M2 · 切 3 片，✅ v0.2.0）
