@@ -68,6 +68,7 @@
 | 2026-06-22 | **退款依赖持久化 Stripe payment_intent**：在 `checkout.session.completed` 时存 payment_intent+provider 到订单/支付记录（退款退到 intent 非 session）；退款 webhook(`charge.refunded`)复用「双校验+同事务幂等」同步状态 | 不存 intent 则无法退款；状态同步防重复 | 退款（M3.3a） |
 | 2026-06-22 | **PayPal 沙箱 webhook 本地用 webhook 模拟器验收**；真实端到端(顾客批准→真 webhook)推迟 M4(有 HTTPS/域名后) | PayPal 无 stripe listen 等价物、本地无公网 URL；不引隧道依赖(默认无外部依赖) | PayPal/验收（M3.3b/M4） |
 | 2026-06-22 | **PayPal 与 Stripe 对称**：env 覆盖旁路(`PAYPAL_CLIENT_ID/SECRET`)、密钥加密存、hosted 审批+intent=CAPTURE(不做两段授权)、退款整数分、同事务幂等 | 一致性、北极星代码最少 | PayPal（M3.3b） |
+| 2026-06-22 | 退款**先调网关、成功后才落库**(写 refund 记录 + paid→refunded 同事务)；`charge.refunded` webhook **只同步订单状态、不写退款记录**(记录由手动退款路径写，UNIQUE(provider_refund_id) 兜底) | 避免「库里已退钱没退」；避免跨源退款记录去重复杂度 | 退款（M3.3a 实现） |
 | 2026-06-21 | **暂不钉 Stripe-Version，触发点=发版硬化(M4 前后)，修法=client 初始化显式钉死 API 版本**(请求加 `Stripe-Version` 头)。理由：Kartwo 分发到**不可控的商家账号**，各账号 Dashboard 默认 API 版本不同，不钉则同一份二进制在不同商家上行为可能漂移；M3.2 只读稳定字段(id/type/client_reference_id/payment_status/amount_total/currency)故当前安全。**仅记录，暂不改代码** | 可复现/抗版本漂移 vs 控范围 | 支付/硬化（M4 前后落地） |
 
 ---

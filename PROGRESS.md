@@ -8,9 +8,9 @@
 ---
 
 ## 当前状态
-- **阶段**：**M3.2 已验收通过**（支付路由 + Stripe Checkout 沙箱 + Webhook 双校验/幂等）。真实沙箱 A1~A3（4242 已付 / 取消 pending / 4000…0002 失败 pending）+ 自驱 B/C/E1~E5 全过。
-- **下一步**：规划 **M3.3**（PayPal 沙箱 + 退款[整数分] + 向导支付步骤），经 Derek 拍板后动手。
-- **最新 git tag**：`v0.2.0`（M2）；M3 收官（M3.3 完）合主干再打 `v0.3.0`（feat/m3-payments 暂不合）。
+- **阶段**：**M3.3a 已完成、待 Derek 人工验收**（退款 Stripe：持久化 payment_intent + 全额退款 + charge.refunded 幂等 + 后台订单页）。
+- **下一步**：Derek 按 `docs/test/m3.3a.md` 验收（沙箱付一笔→后台订单页退款→订单 refunded + Stripe 可见）；过则进 M3.3b（PayPal 沙箱）。
+- **最新 git tag**：`v0.2.0`（M2）；M3 收官（M3.3a/b/c 完）合主干再打 `v0.3.0`。
 
 ## 里程碑总览
 
@@ -30,7 +30,7 @@
 - [x] **M3.1 市场框架 + 向导市场选择 + 加密设置地基**（✅ 已验收，含店面默认英文补丁）：可扩展 Market 注册表(US 点亮/其余即将上线)、AES-GCM(KEK)加密设置、向导市场步骤(大白话文案)、店面货币随市场；单测+实测
 - [x] **M3.2 支付路由 + Stripe Checkout 沙箱 + Webhook 双校验（拒伪造/幂等）**（✅ 已验收，真实沙箱 A1~A3 通过）：PaymentProvider 抽象 + 瘦 Stripe 客户端(不引 SDK)；结算就绪即跳 Stripe 托管收银台、订单 public_id 作对账锚点；Webhook 双校验(原始字节 HMAC+时间戳防重放 + 订单号/金额/币种比对 + 显式 payment_status=='paid')；回调幂等(去重 INSERT 与 pending→paid 同一事务)；KEK 收款密钥内存缓存(登录解锁/登出销毁/改密钥即时重载)，锁定时 Webhook 返 503 交网关重投；后台收款页(sk/whsec 加密存)；**可选 env 覆盖旁路**(env>加密库/覆盖非双写/env模式收款页只读/不落库不进日志/记来源)；单测覆盖验签四态+双校验+幂等+缓存生命周期+env覆盖；实测 locked→503、env模式forged→400(不锁定)
 - M3.3 PayPal 沙箱 + 退款(整数分) + 向导支付步骤 —— **拆 3 小片**（2026-06-22 拍板）：
-  - [ ] **M3.3a 退款(Stripe)**：持久化 payment_intent + 全额退款(整数分) + 退款 webhook(charge.refunded)同事务幂等 + 订单状态 refunded + 最小后台订单页(列表+详情+退款按钮)
+  - [x] **M3.3a 退款(Stripe)**（待验收）：迁移 0009(payment_provider/payment_ref 列 + refund 表)；webhook 落 payment_intent；后台手动整单全额退款(Stripe /v1/refunds，整数分，先退款后落库)；charge.refunded webhook 同步状态(双校验+同事务幂等)；订单状态 refunded；最小后台订单页(列表+详情+退款按钮)；单测(退款幸福路径/重复拒/未付拒/charge.refunded 幂等)；自驱实测(订单API/守卫409·404/charge.refunded→refunded)
   - [ ] **M3.3b PayPal 沙箱**：PayPal Orders v2 hosted 审批+CAPTURE + webhook 验签(模拟器验收) + PayPal 退款 + env 覆盖旁路；并入支付路由
   - [ ] **M3.3c 向导支付步骤**：收款配置纳入开店向导（大白话引导，可跳过稍后配）
 
