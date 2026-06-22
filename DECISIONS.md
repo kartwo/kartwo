@@ -62,6 +62,12 @@
 | 2026-06-21 | 上一条「密钥纪律=一律从 env 读」系表述错误，**已更正**：保密纪律(不硬编码/不进日志git/不回贴对话)不变，但密钥来源仍以加密存后台为默认 | 避免误拆已实现的加密存+方案A 设计 | 支付（澄清） |
 | 2026-06-21 | **env 半设(有 secret 缺 whsec)启动 WARN 且绝不回退库取 whsec**；**env LIVE 密钥启动 WARN**；mode 推断按 `_live_` 段(兼容受限密钥 rk_) | 杜绝半回退歧义、防误上 LIVE、兼容 Stripe 推荐的 rk_ 受限密钥 | 支付/安全（M3.2 护栏） |
 | 2026-06-21 | 经 `/stripe:stripe-best-practices` 复核：webhook 双校验**无偏离**官方推荐；Checkout Sessions(非 Charges)、不传 `payment_method_types`(启用动态支付方式)、推荐 rk_ 已采纳；IP allowlist 留 M5 硬化 | 锁定合规、记录有意未做项 | 支付（M3.2 复核） |
+| 2026-06-22 | **M3.3 拆 3 小片**：3.3a 退款(Stripe) / 3.3b PayPal 沙箱 / 3.3c 向导支付步骤，各自独立验收 | 原 M3.3 三件大事超「十几分钟可测完」铁律 | 节奏（M3.3） |
+| 2026-06-22 | **退款 v1 仅整单全额退款**，订单转 `refunded`；保留 `refund` 记录表结构，部分退款后续易加 | 落地最简、验收最快，不镀金 | 退款（M3.3a） |
+| 2026-06-22 | **退款触发=新建最小后台订单页（列表+详情+退款按钮）**，鉴权+CSRF+对象级权限 | 后台此前无订单页，退款需人工入口 | 后台/退款（M3.3a） |
+| 2026-06-22 | **退款依赖持久化 Stripe payment_intent**：在 `checkout.session.completed` 时存 payment_intent+provider 到订单/支付记录（退款退到 intent 非 session）；退款 webhook(`charge.refunded`)复用「双校验+同事务幂等」同步状态 | 不存 intent 则无法退款；状态同步防重复 | 退款（M3.3a） |
+| 2026-06-22 | **PayPal 沙箱 webhook 本地用 webhook 模拟器验收**；真实端到端(顾客批准→真 webhook)推迟 M4(有 HTTPS/域名后) | PayPal 无 stripe listen 等价物、本地无公网 URL；不引隧道依赖(默认无外部依赖) | PayPal/验收（M3.3b/M4） |
+| 2026-06-22 | **PayPal 与 Stripe 对称**：env 覆盖旁路(`PAYPAL_CLIENT_ID/SECRET`)、密钥加密存、hosted 审批+intent=CAPTURE(不做两段授权)、退款整数分、同事务幂等 | 一致性、北极星代码最少 | PayPal（M3.3b） |
 | 2026-06-21 | **暂不钉 Stripe-Version，触发点=发版硬化(M4 前后)，修法=client 初始化显式钉死 API 版本**(请求加 `Stripe-Version` 头)。理由：Kartwo 分发到**不可控的商家账号**，各账号 Dashboard 默认 API 版本不同，不钉则同一份二进制在不同商家上行为可能漂移；M3.2 只读稳定字段(id/type/client_reference_id/payment_status/amount_total/currency)故当前安全。**仅记录，暂不改代码** | 可复现/抗版本漂移 vs 控范围 | 支付/硬化（M4 前后落地） |
 
 ---
