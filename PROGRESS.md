@@ -32,7 +32,7 @@
 - M3.3 PayPal 沙箱 + 退款(整数分) + 向导支付步骤 —— **拆 3 小片**（2026-06-22 拍板）：
   - [x] **M3.3a 退款(Stripe)**（✅ 已验收，真实沙箱退款通过）：迁移 0009(payment_provider/payment_ref 列 + refund 表)；webhook 落 payment_intent；后台手动整单全额退款(Stripe /v1/refunds，整数分，先退款后落库)；charge.refunded webhook 同步状态(双校验+同事务幂等)；订单状态 refunded；最小后台订单页(列表+详情+退款按钮)；单测(退款幸福路径/重复拒/未付拒/charge.refunded 幂等)；自驱实测(订单API/守卫409·404/charge.refunded→refunded)
   - [ ] **M3.3b PayPal 沙箱**：PayPal Orders v2 hosted 审批+CAPTURE + webhook 验签(模拟器验收) + PayPal 退款 + env 覆盖旁路；并入支付路由
-  - [ ] **M3.3c 向导支付步骤**：收款配置纳入开店向导（大白话引导，可跳过稍后配）
+  - [ ] **M3.3c 向导支付步骤**：收款配置纳入开店向导（大白话引导，可跳过稍后配）；**+ 未付订单页加「去支付」按钮**（顾客中途取消/弃单后重新发起付款，复用结算跳转逻辑）（2026-06-23 并入）
 
 ## 历史里程碑明细（M2 · 切 3 片，✅ v0.2.0）
 - [x] **M2.1 店面浏览 + 内嵌主题 + SEO 基建**（✅ 已验收）：SSR 目录/详情(Go template)、canonical/OG/JSON-LD(Product+AggregateOffer)、sitemap.xml/robots.txt、WebP 响应式图、Admin 迁至 /admin/、店面占 /；单测+HTTP 测+实测
