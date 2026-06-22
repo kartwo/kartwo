@@ -24,6 +24,7 @@ const stripeAPIBase = "https://api.stripe.com"
 type StripeProvider struct {
 	keys       *KeyCache
 	httpClient *http.Client
+	apiBase    string // Stripe REST 基址；可在测试中改指 httptest
 	tolerance  time.Duration
 	now        func() time.Time
 }
@@ -33,6 +34,7 @@ func NewStripeProvider(keys *KeyCache) *StripeProvider {
 	return &StripeProvider{
 		keys:       keys,
 		httpClient: &http.Client{Timeout: 20 * time.Second},
+		apiBase:    stripeAPIBase,
 		tolerance:  defaultTolerance,
 		now:        time.Now,
 	}
@@ -67,7 +69,7 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, ord OrderForPayment)
 	}
 	form.Set("line_items[0][price_data][product_data][name]", name)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, stripeAPIBase+"/v1/checkout/sessions", strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.apiBase+"/v1/checkout/sessions", strings.NewReader(form.Encode()))
 	if err != nil {
 		return PaymentSession{}, fmt.Errorf("payment: 构造 Stripe 请求失败: %w", err)
 	}
@@ -109,15 +111,17 @@ func (p *StripeProvider) VerifyWebhook(payload []byte, sigHeader string) (Webhoo
 		return WebhookEvent{}, err
 	}
 
+	// 同时容纳 checkout.session（付款）与 charge（退款）两种 object 形态：字段并存、按需取用。
 	var ev struct {
 		ID   string `json:"id"`
 		Type string `json:"type"`
 		Data struct {
 			Object struct {
-				ClientReferenceID string `json:"client_reference_id"`
-				PaymentStatus     string `json:"payment_status"`
-				AmountTotal       int64  `json:"amount_total"`
-				Currency          string `json:"currency"`
+				ClientReferenceID string `json:"client_reference_id"` // checkout.session
+				PaymentStatus     string `json:"payment_status"`      // checkout.session
+				AmountTotal       int64  `json:"amount_total"`        // checkout.session
+				Currency          string `json:"currency"`            // 二者皆有
+				PaymentIntent     string `json:"payment_intent"`      // 二者皆有（退款引用锚点）
 				Metadata          struct {
 					OrderRef string `json:"order_ref"`
 				} `json:"metadata"`
@@ -136,15 +140,49 @@ func (p *StripeProvider) VerifyWebhook(payload []byte, sigHeader string) (Webhoo
 		ID:            ev.ID,
 		Type:          ev.Type,
 		OrderRef:      ref,
+		PaymentRef:    ev.Data.Object.PaymentIntent,
 		PaymentStatus: ev.Data.Object.PaymentStatus,
 		AmountCents:   ev.Data.Object.AmountTotal,
 		Currency:      ev.Data.Object.Currency,
 	}, nil
 }
 
-// Refund 退款（整数分）——留 M3.3 实现。
-func (p *StripeProvider) Refund(_ context.Context, _ string, _ int64) error {
-	return ErrNotImplemented
+// Refund 整数分退款：POST /v1/refunds {payment_intent, amount}。退到 payment_intent（非 session）。
+func (p *StripeProvider) Refund(ctx context.Context, paymentIntent string, amountCents int64) (string, error) {
+	secret, ok := p.keys.secretKey()
+	if !ok {
+		return "", ErrLocked
+	}
+	if paymentIntent == "" {
+		return "", fmt.Errorf("payment: 缺支付引用(payment_intent)，无法退款")
+	}
+	form := url.Values{}
+	form.Set("payment_intent", paymentIntent)
+	form.Set("amount", strconv.FormatInt(amountCents, 10))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.apiBase+"/v1/refunds", strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", fmt.Errorf("payment: 构造 Stripe 退款请求失败: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+secret)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("payment: 调用 Stripe 退款失败: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("payment: Stripe 退款失败 (%d): %s", resp.StatusCode, stripeErrMsg(body))
+	}
+	var out struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil || out.ID == "" {
+		return "", fmt.Errorf("payment: 解析 Stripe 退款响应失败")
+	}
+	return out.ID, nil
 }
 
 // stripeErrMsg 从 Stripe 错误响应里抽人话消息（失败则返回原文截断）。

@@ -60,8 +60,9 @@ type PaymentSession struct {
 // WebhookEvent 是 VerifyWebhook 验签通过后规范化的事件（供幂等处理）。
 type WebhookEvent struct {
 	ID            string // 网关事件 ID（幂等去重键）
-	Type          string // 如 checkout.session.completed
-	OrderRef      string // 我方订单 public_id（来自 client_reference_id）
+	Type          string // 如 checkout.session.completed / charge.refunded
+	OrderRef      string // 我方订单 public_id（来自 client_reference_id；退款事件无）
+	PaymentRef    string // 网关支付引用（Stripe payment_intent）；用于退款与退款事件回查订单
 	PaymentStatus string // 如 paid（不假设事件类型即已付，须显式校验）
 	AmountCents   int64  // 网关侧成交总额（分）
 	Currency      string // 网关侧币种
@@ -72,5 +73,6 @@ type PaymentProvider interface {
 	Name() string
 	CreatePayment(ctx context.Context, ord OrderForPayment) (PaymentSession, error)
 	VerifyWebhook(payload []byte, sigHeader string) (WebhookEvent, error)
-	Refund(ctx context.Context, reference string, amountCents int64) error // 退款留 M3.3
+	// Refund 整数分退款，返回网关退款 ID（provider_refund_id）。
+	Refund(ctx context.Context, reference string, amountCents int64) (string, error)
 }

@@ -9,6 +9,27 @@ import (
 	"context"
 )
 
+const insertRefund = `-- name: InsertRefund :exec
+INSERT INTO refund (order_id, provider, provider_refund_id, amount_cents) VALUES (?, ?, ?, ?)
+`
+
+type InsertRefundParams struct {
+	OrderID          int64  `db:"order_id" json:"order_id"`
+	Provider         string `db:"provider" json:"provider"`
+	ProviderRefundID string `db:"provider_refund_id" json:"provider_refund_id"`
+	AmountCents      int64  `db:"amount_cents" json:"amount_cents"`
+}
+
+func (q *Queries) InsertRefund(ctx context.Context, arg InsertRefundParams) error {
+	_, err := q.db.ExecContext(ctx, insertRefund,
+		arg.OrderID,
+		arg.Provider,
+		arg.ProviderRefundID,
+		arg.AmountCents,
+	)
+	return err
+}
+
 const insertWebhookEvent = `-- name: InsertWebhookEvent :exec
 
 INSERT INTO webhook_event (provider, event_id, event_type, order_ref) VALUES (?, ?, ?, ?)
@@ -36,11 +57,41 @@ func (q *Queries) InsertWebhookEvent(ctx context.Context, arg InsertWebhookEvent
 }
 
 const markOrderPaidByPublicID = `-- name: MarkOrderPaidByPublicID :execrows
-UPDATE "order" SET status = 'paid', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id = ? AND status = 'pending'
+UPDATE "order" SET status = 'paid', payment_provider = ?, payment_ref = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id = ? AND status = 'pending'
 `
 
-func (q *Queries) MarkOrderPaidByPublicID(ctx context.Context, publicID string) (int64, error) {
-	result, err := q.db.ExecContext(ctx, markOrderPaidByPublicID, publicID)
+type MarkOrderPaidByPublicIDParams struct {
+	PaymentProvider string `db:"payment_provider" json:"payment_provider"`
+	PaymentRef      string `db:"payment_ref" json:"payment_ref"`
+	PublicID        string `db:"public_id" json:"public_id"`
+}
+
+func (q *Queries) MarkOrderPaidByPublicID(ctx context.Context, arg MarkOrderPaidByPublicIDParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markOrderPaidByPublicID, arg.PaymentProvider, arg.PaymentRef, arg.PublicID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const markOrderRefundedByPaymentRef = `-- name: MarkOrderRefundedByPaymentRef :execrows
+UPDATE "order" SET status = 'refunded', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE payment_ref = ? AND status = 'paid'
+`
+
+func (q *Queries) MarkOrderRefundedByPaymentRef(ctx context.Context, paymentRef string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markOrderRefundedByPaymentRef, paymentRef)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const markOrderRefundedByPublicID = `-- name: MarkOrderRefundedByPublicID :execrows
+UPDATE "order" SET status = 'refunded', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id = ? AND status = 'paid'
+`
+
+func (q *Queries) MarkOrderRefundedByPublicID(ctx context.Context, publicID string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markOrderRefundedByPublicID, publicID)
 	if err != nil {
 		return 0, err
 	}

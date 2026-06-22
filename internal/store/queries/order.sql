@@ -22,7 +22,13 @@ UPDATE inventory SET reserved = reserved + ?, updated_at = strftime('%Y-%m-%dT%H
 UPDATE cart SET status = 'converted', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?;
 
 -- name: GetOrderByPublicID :one
-SELECT id, public_id, status, email, ship_name, ship_phone, ship_address, ship_country, currency, subtotal_cents, total_cents, created_at FROM "order" WHERE public_id = ?;
+SELECT id, public_id, status, email, ship_name, ship_phone, ship_address, ship_country, currency, subtotal_cents, total_cents, payment_provider, payment_ref, created_at FROM "order" WHERE public_id = ?;
 
 -- name: ListOrderItems :many
 SELECT product_title, variant_label, sku, unit_cents, quantity, line_cents FROM order_item WHERE order_id = ? ORDER BY id;
+
+-- name: ListOrdersForAdmin :many
+SELECT id, public_id, status, email, currency, total_cents, payment_provider, created_at FROM "order" ORDER BY id DESC;
+
+-- name: ListRefundsByOrder :many
+SELECT provider, provider_refund_id, amount_cents, created_at FROM refund WHERE order_id = ? ORDER BY id;

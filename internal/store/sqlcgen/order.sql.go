@@ -98,22 +98,24 @@ func (q *Queries) GetCustomerByEmail(ctx context.Context, email string) (GetCust
 }
 
 const getOrderByPublicID = `-- name: GetOrderByPublicID :one
-SELECT id, public_id, status, email, ship_name, ship_phone, ship_address, ship_country, currency, subtotal_cents, total_cents, created_at FROM "order" WHERE public_id = ?
+SELECT id, public_id, status, email, ship_name, ship_phone, ship_address, ship_country, currency, subtotal_cents, total_cents, payment_provider, payment_ref, created_at FROM "order" WHERE public_id = ?
 `
 
 type GetOrderByPublicIDRow struct {
-	ID            int64  `db:"id" json:"id"`
-	PublicID      string `db:"public_id" json:"public_id"`
-	Status        string `db:"status" json:"status"`
-	Email         string `db:"email" json:"email"`
-	ShipName      string `db:"ship_name" json:"ship_name"`
-	ShipPhone     string `db:"ship_phone" json:"ship_phone"`
-	ShipAddress   string `db:"ship_address" json:"ship_address"`
-	ShipCountry   string `db:"ship_country" json:"ship_country"`
-	Currency      string `db:"currency" json:"currency"`
-	SubtotalCents int64  `db:"subtotal_cents" json:"subtotal_cents"`
-	TotalCents    int64  `db:"total_cents" json:"total_cents"`
-	CreatedAt     string `db:"created_at" json:"created_at"`
+	ID              int64  `db:"id" json:"id"`
+	PublicID        string `db:"public_id" json:"public_id"`
+	Status          string `db:"status" json:"status"`
+	Email           string `db:"email" json:"email"`
+	ShipName        string `db:"ship_name" json:"ship_name"`
+	ShipPhone       string `db:"ship_phone" json:"ship_phone"`
+	ShipAddress     string `db:"ship_address" json:"ship_address"`
+	ShipCountry     string `db:"ship_country" json:"ship_country"`
+	Currency        string `db:"currency" json:"currency"`
+	SubtotalCents   int64  `db:"subtotal_cents" json:"subtotal_cents"`
+	TotalCents      int64  `db:"total_cents" json:"total_cents"`
+	PaymentProvider string `db:"payment_provider" json:"payment_provider"`
+	PaymentRef      string `db:"payment_ref" json:"payment_ref"`
+	CreatedAt       string `db:"created_at" json:"created_at"`
 }
 
 func (q *Queries) GetOrderByPublicID(ctx context.Context, publicID string) (GetOrderByPublicIDRow, error) {
@@ -131,6 +133,8 @@ func (q *Queries) GetOrderByPublicID(ctx context.Context, publicID string) (GetO
 		&i.Currency,
 		&i.SubtotalCents,
 		&i.TotalCents,
+		&i.PaymentProvider,
+		&i.PaymentRef,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -165,6 +169,92 @@ func (q *Queries) ListOrderItems(ctx context.Context, orderID int64) ([]ListOrde
 			&i.UnitCents,
 			&i.Quantity,
 			&i.LineCents,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrdersForAdmin = `-- name: ListOrdersForAdmin :many
+SELECT id, public_id, status, email, currency, total_cents, payment_provider, created_at FROM "order" ORDER BY id DESC
+`
+
+type ListOrdersForAdminRow struct {
+	ID              int64  `db:"id" json:"id"`
+	PublicID        string `db:"public_id" json:"public_id"`
+	Status          string `db:"status" json:"status"`
+	Email           string `db:"email" json:"email"`
+	Currency        string `db:"currency" json:"currency"`
+	TotalCents      int64  `db:"total_cents" json:"total_cents"`
+	PaymentProvider string `db:"payment_provider" json:"payment_provider"`
+	CreatedAt       string `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) ListOrdersForAdmin(ctx context.Context) ([]ListOrdersForAdminRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOrdersForAdmin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOrdersForAdminRow{}
+	for rows.Next() {
+		var i ListOrdersForAdminRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.Status,
+			&i.Email,
+			&i.Currency,
+			&i.TotalCents,
+			&i.PaymentProvider,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRefundsByOrder = `-- name: ListRefundsByOrder :many
+SELECT provider, provider_refund_id, amount_cents, created_at FROM refund WHERE order_id = ? ORDER BY id
+`
+
+type ListRefundsByOrderRow struct {
+	Provider         string `db:"provider" json:"provider"`
+	ProviderRefundID string `db:"provider_refund_id" json:"provider_refund_id"`
+	AmountCents      int64  `db:"amount_cents" json:"amount_cents"`
+	CreatedAt        string `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) ListRefundsByOrder(ctx context.Context, orderID int64) ([]ListRefundsByOrderRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRefundsByOrder, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRefundsByOrderRow{}
+	for rows.Next() {
+		var i ListRefundsByOrderRow
+		if err := rows.Scan(
+			&i.Provider,
+			&i.ProviderRefundID,
+			&i.AmountCents,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

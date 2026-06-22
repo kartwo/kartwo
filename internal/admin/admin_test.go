@@ -118,7 +118,7 @@ func newHTTP(t *testing.T) (*HTTP, http.Handler) {
 	svc := newSvc(t)
 	root := t.TempDir() + "/media"
 	md := media.New(svc.db, media.NewLocalBackend(root), media.NewDefaultPolicy(root, 10<<20, 0), 20)
-	h := NewHTTP(svc, catalog.New(svc.db), md, settings.New(svc.db), false)
+	h := NewHTTP(svc, catalog.New(svc.db), md, settings.New(svc.db), nil, nil, false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux

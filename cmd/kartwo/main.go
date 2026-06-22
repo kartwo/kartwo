@@ -197,8 +197,9 @@ func runServe(logger *slog.Logger) error {
 		logger.Info("收款密钥来源", "source", "db", "note", "走后台收款页加密库（默认）")
 	}
 
-	adminHTTP := admin.NewHTTP(adminSvc, catalog.New(st.DB), mediaSvc, settingsSvc, cfg.Env == "prod")
-	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), order.New(st.DB, settingsSvc), settingsSvc, paySvc, cfg.ShopName, cfg.BaseURL, cfg.Env == "prod")
+	orderSvc := order.New(st.DB, settingsSvc)
+	adminHTTP := admin.NewHTTP(adminSvc, catalog.New(st.DB), mediaSvc, settingsSvc, orderSvc, paySvc, cfg.Env == "prod")
+	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, cfg.ShopName, cfg.BaseURL, cfg.Env == "prod")
 	payHTTP := payment.NewHTTP(paySvc)
 	srv := server.New(cfg, st, Version, adminHTTP, storeHTTP, payHTTP)
 	httpServer := &http.Server{

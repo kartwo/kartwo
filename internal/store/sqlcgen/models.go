@@ -96,20 +96,22 @@ type Meta struct {
 }
 
 type Order struct {
-	ID            int64  `db:"id" json:"id"`
-	PublicID      string `db:"public_id" json:"public_id"`
-	CustomerID    int64  `db:"customer_id" json:"customer_id"`
-	Status        string `db:"status" json:"status"`
-	Email         string `db:"email" json:"email"`
-	ShipName      string `db:"ship_name" json:"ship_name"`
-	ShipPhone     string `db:"ship_phone" json:"ship_phone"`
-	ShipAddress   string `db:"ship_address" json:"ship_address"`
-	ShipCountry   string `db:"ship_country" json:"ship_country"`
-	Currency      string `db:"currency" json:"currency"`
-	SubtotalCents int64  `db:"subtotal_cents" json:"subtotal_cents"`
-	TotalCents    int64  `db:"total_cents" json:"total_cents"`
-	CreatedAt     string `db:"created_at" json:"created_at"`
-	UpdatedAt     string `db:"updated_at" json:"updated_at"`
+	ID              int64  `db:"id" json:"id"`
+	PublicID        string `db:"public_id" json:"public_id"`
+	CustomerID      int64  `db:"customer_id" json:"customer_id"`
+	Status          string `db:"status" json:"status"`
+	Email           string `db:"email" json:"email"`
+	ShipName        string `db:"ship_name" json:"ship_name"`
+	ShipPhone       string `db:"ship_phone" json:"ship_phone"`
+	ShipAddress     string `db:"ship_address" json:"ship_address"`
+	ShipCountry     string `db:"ship_country" json:"ship_country"`
+	Currency        string `db:"currency" json:"currency"`
+	SubtotalCents   int64  `db:"subtotal_cents" json:"subtotal_cents"`
+	TotalCents      int64  `db:"total_cents" json:"total_cents"`
+	CreatedAt       string `db:"created_at" json:"created_at"`
+	UpdatedAt       string `db:"updated_at" json:"updated_at"`
+	PaymentProvider string `db:"payment_provider" json:"payment_provider"`
+	PaymentRef      string `db:"payment_ref" json:"payment_ref"`
 }
 
 type OrderItem struct {
@@ -157,6 +159,15 @@ type ProductOptionValue struct {
 	Position  int64  `db:"position" json:"position"`
 	CreatedAt string `db:"created_at" json:"created_at"`
 	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
+type Refund struct {
+	ID               int64  `db:"id" json:"id"`
+	OrderID          int64  `db:"order_id" json:"order_id"`
+	Provider         string `db:"provider" json:"provider"`
+	ProviderRefundID string `db:"provider_refund_id" json:"provider_refund_id"`
+	AmountCents      int64  `db:"amount_cents" json:"amount_cents"`
+	CreatedAt        string `db:"created_at" json:"created_at"`
 }
 
 type Session struct {

@@ -13,6 +13,8 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 	"time"
@@ -249,6 +251,106 @@ func TestWebhookLockedReturnsErrLocked(t *testing.T) {
 	hdr := signStripe(testWhsec, time.Now().Unix(), body)
 	if err := svc.HandleWebhook(context.Background(), body, hdr); err != ErrLocked {
 		t.Fatalf("锁定应返回 ErrLocked（让网关重投）: %v", err)
+	}
+}
+
+// ---- 退款（M3.3a）----
+
+func seedPaidOrder(t *testing.T, db *sql.DB, ref string, cents int64, payRef string) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `INSERT INTO customer (public_id, email, name) VALUES (?, ?, 'A')`, "c-"+ref, ref+"@b.com"); err != nil {
+		t.Fatal(err)
+	}
+	var cid int64
+	if err := db.QueryRowContext(ctx, `SELECT id FROM customer WHERE public_id=?`, "c-"+ref).Scan(&cid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO "order" (public_id, customer_id, status, email, ship_name, ship_address, currency, subtotal_cents, total_cents, payment_provider, payment_ref)
+		 VALUES (?, ?, 'paid', ?, 'A', 'addr', 'USD', ?, ?, 'stripe', ?)`,
+		ref, cid, ref+"@b.com", cents, cents, payRef); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func refundCount(t *testing.T, db *sql.DB) int {
+	t.Helper()
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM refund`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func chargeRefundedBody(id, paymentIntent string) []byte {
+	return []byte(fmt.Sprintf(`{"id":%q,"type":"charge.refunded","data":{"object":{"payment_intent":%q,"currency":"usd"}}}`, id, paymentIntent))
+}
+
+func TestRefundHappyPathAndBlocksDouble(t *testing.T) {
+	svc, db, _ := newTestSvc(t)
+	ctx := context.Background()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/refunds" {
+			_, _ = w.Write([]byte(`{"id":"re_test_1"}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+	svc.stripe.apiBase = ts.URL
+
+	seedPaidOrder(t, db, "ORD-R", 2500, "pi_123")
+	if err := svc.Refund(ctx, "ORD-R"); err != nil {
+		t.Fatalf("退款应成功: %v", err)
+	}
+	if st := orderStatus(t, db, "ORD-R"); st != "refunded" {
+		t.Fatalf("订单应 refunded，得 %s", st)
+	}
+	if n := refundCount(t, db); n != 1 {
+		t.Fatalf("应有 1 条退款记录，得 %d", n)
+	}
+	// 已退款再退 → 被拒（状态不可退）。
+	if err := svc.Refund(ctx, "ORD-R"); err != ErrNotRefundable {
+		t.Fatalf("重复退款应 ErrNotRefundable: %v", err)
+	}
+}
+
+func TestRefundNotRefundableWhenPending(t *testing.T) {
+	svc, db, _ := newTestSvc(t)
+	ctx := context.Background()
+	seedOrder(t, db, "ORD-P", 2500, "USD") // pending
+	if err := svc.Refund(ctx, "ORD-P"); err != ErrNotRefundable {
+		t.Fatalf("未付订单退款应 ErrNotRefundable: %v", err)
+	}
+	if st := orderStatus(t, db, "ORD-P"); st != "pending" {
+		t.Fatalf("订单应仍 pending，得 %s", st)
+	}
+}
+
+func TestChargeRefundedWebhookSyncsStatus(t *testing.T) {
+	svc, db, _ := newTestSvc(t)
+	ctx := context.Background()
+	seedPaidOrder(t, db, "ORD-CW", 2500, "pi_w")
+
+	body := chargeRefundedBody("evt_cr1", "pi_w")
+	hdr := signStripe(testWhsec, time.Now().Unix(), body)
+
+	if err := svc.HandleWebhook(ctx, body, hdr); err != nil {
+		t.Fatalf("charge.refunded 应处理: %v", err)
+	}
+	if st := orderStatus(t, db, "ORD-CW"); st != "refunded" {
+		t.Fatalf("订单应同步 refunded，得 %s", st)
+	}
+	// 幂等重投。
+	if err := svc.HandleWebhook(ctx, body, hdr); err != nil {
+		t.Fatalf("重投应幂等: %v", err)
+	}
+	if st := orderStatus(t, db, "ORD-CW"); st != "refunded" {
+		t.Fatalf("重投后仍 refunded，得 %s", st)
+	}
+	if n := eventCount(t, db); n != 1 {
+		t.Fatalf("应只 1 条事件，得 %d", n)
 	}
 }
 
