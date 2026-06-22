@@ -8,9 +8,9 @@
 ---
 
 ## 当前状态
-- **阶段**：**M3.3a 已验收通过**（退款 Stripe：真实沙箱后台按钮退款→订单 refunded + charge.refunded 幂等同步，全绿）。
-- **下一步**：进 **M3.3b**（PayPal 沙箱）；另有一个小决策待拍：pending 订单页是否加「去支付」按钮。
-- **最新 git tag**：`v0.2.0`（M2）；M3 收官（M3.3a/b/c 完）合主干再打 `v0.3.0`。
+- **阶段**：**M3.3b-1 已完成、待 Derek 人工验收**（PayPal 付款：Orders v2 建单+hosted 审批+同步 capture + 结算页支付方式选择 + PayPal 密钥/env 旁路）。
+- **下一步**：Derek 按 `docs/test/m3.3b-1.md` 验收（PayPal 沙箱建应用→收款页配 client_id/secret→店面选 PayPal 付款→订单已付）；过则进 M3.3b-2（PayPal 退款 + webhook）。
+- **最新 git tag**：`v0.2.0`（M2）；M3 收官（M3.3 全完）合主干再打 `v0.3.0`。
 
 ## 里程碑总览
 
@@ -32,7 +32,7 @@
 - M3.3 PayPal 沙箱 + 退款(整数分) + 向导支付步骤 —— **拆 3 小片**（2026-06-22 拍板）：
   - [x] **M3.3a 退款(Stripe)**（✅ 已验收，真实沙箱退款通过）：迁移 0009(payment_provider/payment_ref 列 + refund 表)；webhook 落 payment_intent；后台手动整单全额退款(Stripe /v1/refunds，整数分，先退款后落库)；charge.refunded webhook 同步状态(双校验+同事务幂等)；订单状态 refunded；最小后台订单页(列表+详情+退款按钮)；单测(退款幸福路径/重复拒/未付拒/charge.refunded 幂等)；自驱实测(订单API/守卫409·404/charge.refunded→refunded)
   - M3.3b PayPal 沙箱 —— **再拆 2 片**（2026-06-23 拍板）：
-    - [ ] **M3.3b-1 PayPal 付款**：Orders v2 建单+hosted 审批+同步 capture(已付判定) + 结算页支付方式选择(卡/PayPal) + PayPal 密钥(加密存+env 旁路) + 路由分发；沙箱真跑付款
+    - [x] **M3.3b-1 PayPal 付款**（待验收）：PayPalProvider(OAuth token/建单/同步 capture)；已付=capture COMPLETED+对账(custom_id/金额/币种)→pending->paid 落 capture_id；结算页支付方式选择(卡/PayPal，单个则隐藏)；/paypal/return 同步 capture；PayPal 密钥(client_id 明文/secret 加密)+收款页双区+**每通道独立 env 旁路**；金额 分↔小数串；单测(金额转换/AvailableMethods/建单/capture→paid/金额不符拒)；自驱实测(env来源/收款页/结算选择器渲染)
     - [ ] **M3.3b-2 PayPal 退款 + webhook**：capture 退款 + webhook 验签(verify-webhook-signature)+幂等(模拟器验收，真实端到端 M4)
   - [ ] **M3.3c 向导支付步骤**：收款配置纳入开店向导（大白话引导，可跳过稍后配）；**+ 未付订单页加「去支付」按钮**（顾客中途取消/弃单后重新发起付款，复用结算跳转逻辑）（2026-06-23 并入）
 
