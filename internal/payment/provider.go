@@ -28,6 +28,8 @@ const (
 	KeyPayPalClientID = "pay.paypal.client_id"
 	// KeyPayPalSecret PayPal 应用 secret（加密存）。
 	KeyPayPalSecret = "pay.paypal.secret"
+	// KeyPayPalWebhookID PayPal Webhook ID（在线验签用；非密钥，明文）。
+	KeyPayPalWebhookID = "pay.paypal.webhook_id"
 )
 
 var (

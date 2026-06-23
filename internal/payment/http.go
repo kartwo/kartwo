@@ -25,6 +25,30 @@ func NewHTTP(svc *Service) *HTTP { return &HTTP{svc: svc} }
 // Register 注册 Webhook 路由。务必不挂任何会预读/改写 body 的中间件，否则验签必败。
 func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /webhooks/stripe", h.stripeWebhook)
+	mux.HandleFunc("POST /webhooks/paypal", h.paypalWebhook)
+}
+
+func (h *HTTP) paypalWebhook(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxWebhookBody))
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	err = h.svc.HandlePayPalWebhook(r.Context(), body, r.Header)
+	switch {
+	case err == nil:
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"received":true}`))
+	case errors.Is(err, ErrLocked):
+		// 未配 webhook_id：返回非 2xx 交 PayPal 重投。
+		http.Error(w, "paypal webhook not configured", http.StatusServiceUnavailable)
+	case errors.Is(err, ErrBadSignature):
+		http.Error(w, "invalid signature", http.StatusBadRequest)
+	case errors.Is(err, ErrMismatch):
+		http.Error(w, "order mismatch", http.StatusBadRequest)
+	default:
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
 }
 
 func (h *HTTP) stripeWebhook(w http.ResponseWriter, r *http.Request) {

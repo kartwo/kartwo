@@ -8,6 +8,7 @@ package payment
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -124,6 +125,135 @@ func TestCapturePayPalMarksPaid(t *testing.T) {
 		t.Fatalf("支付引用落库不符: provider=%s ref=%s", prov, payref)
 	}
 }
+
+func seedPaidPayPal(t *testing.T, db *sql.DB, ref string, cents int64, captureID string) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `INSERT INTO customer (public_id, email, name) VALUES (?, ?, 'A')`, "c-"+ref, ref+"@b.com"); err != nil {
+		t.Fatal(err)
+	}
+	var cid int64
+	if err := db.QueryRowContext(ctx, `SELECT id FROM customer WHERE public_id=?`, "c-"+ref).Scan(&cid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO "order" (public_id, customer_id, status, email, ship_name, ship_address, currency, subtotal_cents, total_cents, payment_provider, payment_ref)
+		 VALUES (?, ?, 'paid', ?, 'A', 'addr', 'USD', ?, ?, 'paypal', ?)`,
+		ref, cid, ref+"@b.com", cents, cents, captureID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPayPalRefund(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/oauth2/token":
+			_, _ = w.Write([]byte(`{"access_token":"tok","expires_in":3600}`))
+		case strings.HasSuffix(r.URL.Path, "/refund"):
+			_, _ = w.Write([]byte(`{"id":"RF1","status":"COMPLETED"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}
+	svc, db, _ := newPayPalSvc(t, handler)
+	ctx := context.Background()
+	seedPaidPayPal(t, db, "ORD-PP", 9900, "CAP1")
+
+	if err := svc.Refund(ctx, "ORD-PP"); err != nil {
+		t.Fatalf("PayPal 退款应成功: %v", err)
+	}
+	if st := orderStatus(t, db, "ORD-PP"); st != "refunded" {
+		t.Fatalf("订单应 refunded，得 %s", st)
+	}
+	var prov, rid string
+	_ = db.QueryRow(`SELECT provider, provider_refund_id FROM refund WHERE provider_refund_id='RF1'`).Scan(&prov, &rid)
+	if prov != "paypal" || rid != "RF1" {
+		t.Fatalf("退款记录不符: provider=%s id=%s", prov, rid)
+	}
+}
+
+// paypalWebhookSvc 构造带 webhook_id 的服务 + 可控验签结果的 mock。
+func paypalWebhookSvc(t *testing.T, verifyStatus string) (*Service, *sql.DB) {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:"+t.TempDir()+"/t.db?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := migrate.Run(context.Background(), db, migrations.FS); err != nil {
+		t.Fatal(err)
+	}
+	settingsSvc := settings.New(db)
+	cache := &KeyCache{settings: settingsSvc, paypalEnv: resolvePayPalEnv(fakeEnv(map[string]string{
+		envPayPalClientID: "id_x", envPayPalSecret: "sec_x", envPayPalWebhookID: "WH-1",
+	}))}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/oauth2/token":
+			_, _ = w.Write([]byte(`{"access_token":"tok","expires_in":3600}`))
+		case "/v1/notifications/verify-webhook-signature":
+			_, _ = w.Write([]byte(`{"verification_status":"` + verifyStatus + `"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(ts.Close)
+	svc := NewService(db, settingsSvc, cache)
+	svc.paypal.apiBase = ts.URL
+	return svc, db
+}
+
+func TestPayPalWebhookCaptureCompleted(t *testing.T) {
+	svc, db := paypalWebhookSvc(t, "SUCCESS")
+	ctx := context.Background()
+	seedOrder(t, db, "ORD-PP", 9900, "USD") // pending
+	body := []byte(`{"id":"EVT1","event_type":"PAYMENT.CAPTURE.COMPLETED","resource":{"id":"CAP1","custom_id":"ORD-PP","amount":{"value":"99.00","currency_code":"USD"}}}`)
+
+	if err := svc.HandlePayPalWebhook(ctx, body, http.Header{}); err != nil {
+		t.Fatalf("COMPLETED 应处理: %v", err)
+	}
+	if st := orderStatus(t, db, "ORD-PP"); st != "paid" {
+		t.Fatalf("订单应 paid，得 %s", st)
+	}
+	// 幂等。
+	if err := svc.HandlePayPalWebhook(ctx, body, http.Header{}); err != nil {
+		t.Fatalf("重投应幂等: %v", err)
+	}
+	if n := eventCount(t, db); n != 1 {
+		t.Fatalf("事件应 1 条，得 %d", n)
+	}
+}
+
+func TestPayPalWebhookRefunded(t *testing.T) {
+	svc, db := paypalWebhookSvc(t, "SUCCESS")
+	ctx := context.Background()
+	seedPaidPayPal(t, db, "ORD-PP", 9900, "CAP1")
+	body := []byte(`{"id":"EVT2","event_type":"PAYMENT.CAPTURE.REFUNDED","resource":{"id":"RF9","links":[{"rel":"up","href":"https://api/v2/payments/captures/CAP1"}]}}`)
+
+	if err := svc.HandlePayPalWebhook(ctx, body, http.Header{}); err != nil {
+		t.Fatalf("REFUNDED 应处理: %v", err)
+	}
+	if st := orderStatus(t, db, "ORD-PP"); st != "refunded" {
+		t.Fatalf("订单应 refunded（按 capture id 同步），得 %s", st)
+	}
+}
+
+func TestPayPalWebhookBadSignature(t *testing.T) {
+	svc, db := paypalWebhookSvc(t, "FAILURE")
+	ctx := context.Background()
+	seedOrder(t, db, "ORD-PP", 9900, "USD")
+	body := []byte(`{"id":"EVT3","event_type":"PAYMENT.CAPTURE.COMPLETED","resource":{"id":"CAP1","custom_id":"ORD-PP","amount":{"value":"99.00","currency_code":"USD"}}}`)
+
+	if err := svc.HandlePayPalWebhook(ctx, body, http.Header{}); !errorIsBadSig(err) {
+		t.Fatalf("验签失败应 ErrBadSignature: %v", err)
+	}
+	if st := orderStatus(t, db, "ORD-PP"); st != "pending" {
+		t.Fatalf("验签失败不应改单，得 %s", st)
+	}
+}
+
+func errorIsBadSig(err error) bool { return errors.Is(err, ErrBadSignature) }
 
 func TestCapturePayPalAmountMismatch(t *testing.T) {
 	body := `{"status":"COMPLETED","purchase_units":[{"custom_id":"ORD-PP","payments":{"captures":[{"id":"CAP1","amount":{"currency_code":"USD","value":"1.00"}}]}}]}`

@@ -205,14 +205,117 @@ func (p *PayPalProvider) Capture(ctx context.Context, paypalOrderID string) (Cap
 	return res, nil
 }
 
-// Refund 退款（整数分）——留 M3.3b-2 实现。
-func (p *PayPalProvider) Refund(_ context.Context, _ string, _ int64) (string, error) {
-	return "", ErrNotImplemented
+// Refund 对 capture 整单全额退款：POST /v2/payments/captures/{capture}/refund（空 body=全额）。返回退款 ID。
+// v1 仅全额，故忽略 amountCents（空 body 让 PayPal 退全部已捕获金额）。
+func (p *PayPalProvider) Refund(ctx context.Context, captureID string, _ int64) (string, error) {
+	if captureID == "" {
+		return "", fmt.Errorf("payment: 缺 capture 引用，无法退款")
+	}
+	token, err := p.accessToken(ctx)
+	if err != nil {
+		return "", err
+	}
+	raw, err := p.doJSON(ctx, token, http.MethodPost, "/v2/payments/captures/"+url.PathEscape(captureID)+"/refund", map[string]any{})
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil || out.ID == "" {
+		return "", fmt.Errorf("payment: 解析 PayPal 退款响应失败")
+	}
+	return out.ID, nil
 }
 
-// VerifyWebhook 验签——留 M3.3b-2 实现。
+// VerifyWebhook 接口占位——PayPal webhook 多头验签走 VerifyWebhookPayPal（不同签名），不经此通用接口。
 func (p *PayPalProvider) VerifyWebhook(_ []byte, _ string) (WebhookEvent, error) {
 	return WebhookEvent{}, ErrNotImplemented
+}
+
+// VerifyWebhookPayPal 在线验签（/v1/notifications/verify-webhook-signature，需 webhook_id + 多个 PayPal 头）+ 规范化事件。
+// 注：PayPal 模拟器事件过不了真实验签（已知限制），真实端到端验收推迟 M4；此处逻辑+单测(mock)就位。
+func (p *PayPalProvider) VerifyWebhookPayPal(ctx context.Context, payload []byte, h http.Header) (WebhookEvent, error) {
+	webhookID, ok := p.keys.paypalWebhookID()
+	if !ok {
+		return WebhookEvent{}, ErrLocked
+	}
+	token, err := p.accessToken(ctx)
+	if err != nil {
+		return WebhookEvent{}, err
+	}
+	var event json.RawMessage = payload
+	verifyReq := map[string]any{
+		"auth_algo":         h.Get("Paypal-Auth-Algo"),
+		"cert_url":          h.Get("Paypal-Cert-Url"),
+		"transmission_id":   h.Get("Paypal-Transmission-Id"),
+		"transmission_sig":  h.Get("Paypal-Transmission-Sig"),
+		"transmission_time": h.Get("Paypal-Transmission-Time"),
+		"webhook_id":        webhookID,
+		"webhook_event":     event,
+	}
+	raw, err := p.doJSON(ctx, token, http.MethodPost, "/v1/notifications/verify-webhook-signature", verifyReq)
+	if err != nil {
+		return WebhookEvent{}, err
+	}
+	var vr struct {
+		VerificationStatus string `json:"verification_status"`
+	}
+	if err := json.Unmarshal(raw, &vr); err != nil || vr.VerificationStatus != "SUCCESS" {
+		return WebhookEvent{}, ErrSigMismatch
+	}
+	return parsePayPalEvent(payload)
+}
+
+// parsePayPalEvent 规范化 PayPal 事件（capture 完成/退款）。
+func parsePayPalEvent(payload []byte) (WebhookEvent, error) {
+	var ev struct {
+		ID       string `json:"id"`
+		Type     string `json:"event_type"`
+		Resource struct {
+			ID       string `json:"id"`        // capture id（COMPLETED）/ refund id（REFUNDED）
+			CustomID string `json:"custom_id"` // 我方订单 public_id（COMPLETED 时有）
+			Amount   struct {
+				Value        string `json:"value"`
+				CurrencyCode string `json:"currency_code"`
+			} `json:"amount"`
+			Links []struct {
+				Href string `json:"href"`
+				Rel  string `json:"rel"`
+			} `json:"links"`
+		} `json:"resource"`
+	}
+	if err := json.Unmarshal(payload, &ev); err != nil {
+		return WebhookEvent{}, fmt.Errorf("payment: 解析 PayPal 事件失败: %w", err)
+	}
+	out := WebhookEvent{ID: ev.ID, Type: ev.Type, OrderRef: ev.Resource.CustomID, Currency: ev.Resource.Amount.CurrencyCode}
+	if ev.Resource.Amount.Value != "" {
+		out.AmountCents, _ = decimalToCents(ev.Resource.Amount.Value)
+	}
+	switch ev.Type {
+	case "PAYMENT.CAPTURE.COMPLETED":
+		out.PaymentRef = ev.Resource.ID // capture id
+	case "PAYMENT.CAPTURE.REFUNDED":
+		out.PaymentRef = captureIDFromLinks(ev.Resource.Links) // 退款事件：从 links 取 capture id
+	}
+	return out, nil
+}
+
+// captureIDFromLinks 从 PayPal 退款资源的 links 里取被退款的 capture id（href 形如 .../captures/{id}）。
+func captureIDFromLinks(links []struct {
+	Href string `json:"href"`
+	Rel  string `json:"rel"`
+}) string {
+	for _, l := range links {
+		if i := strings.Index(l.Href, "/captures/"); i >= 0 {
+			rest := l.Href[i+len("/captures/"):]
+			if j := strings.IndexByte(rest, '/'); j >= 0 {
+				rest = rest[:j]
+			}
+			return rest
+		}
+	}
+	return ""
 }
 
 // doJSON 发一个带 Bearer 的 JSON 请求，返回响应体（4xx+ 视为错误）。

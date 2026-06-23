@@ -39,14 +39,15 @@ func (h *HTTP) getPayment(w http.ResponseWriter, r *http.Request) {
 	paypal := map[string]any{"source": "db", "readonly": false}
 	if st.PayPalSource == "env" {
 		paypal = map[string]any{"source": "env", "readonly": true, "mode": st.PayPalMode,
-			"client_id": st.PayPalClientID, "has_secret": st.PayPalHasSecret}
+			"client_id": st.PayPalClientID, "has_secret": st.PayPalHasSecret, "webhook_id": st.PayPalWebhookID}
 	} else {
 		mode, err := h.settings.Get(ctx, payment.KeyPayPalMode)
 		if errors.Is(err, settings.ErrNotFound) || strings.TrimSpace(mode) == "" {
 			mode = "sandbox"
 		}
 		cid, _ := h.settings.Get(ctx, payment.KeyPayPalClientID)
-		paypal["mode"], paypal["client_id"] = mode, cid
+		wid, _ := h.settings.Get(ctx, payment.KeyPayPalWebhookID)
+		paypal["mode"], paypal["client_id"], paypal["webhook_id"] = mode, cid, wid
 		paypal["has_secret"] = h.settingExists(ctx, payment.KeyPayPalSecret)
 	}
 
@@ -63,9 +64,10 @@ func (h *HTTP) setPayment(w http.ResponseWriter, r *http.Request) {
 			WebhookSecret string `json:"webhook_secret"`
 		} `json:"stripe"`
 		PayPal *struct {
-			Mode     string `json:"mode"`
-			ClientID string `json:"client_id"`
-			Secret   string `json:"secret"`
+			Mode      string `json:"mode"`
+			ClientID  string `json:"client_id"`
+			Secret    string `json:"secret"`
+			WebhookID string `json:"webhook_id"`
 		} `json:"paypal"`
 	}
 	if !readJSON(w, r, &req) {
@@ -111,6 +113,7 @@ func (h *HTTP) setPayment(w http.ResponseWriter, r *http.Request) {
 		}
 		if !h.saveSetting(ctx, w, payment.KeyPayPalMode, mode, false, kek) ||
 			!h.saveSetting(ctx, w, payment.KeyPayPalClientID, strings.TrimSpace(req.PayPal.ClientID), false, kek) ||
+			!h.saveSetting(ctx, w, payment.KeyPayPalWebhookID, strings.TrimSpace(req.PayPal.WebhookID), false, kek) ||
 			!h.saveSetting(ctx, w, payment.KeyPayPalSecret, strings.TrimSpace(req.PayPal.Secret), true, kek) {
 			return
 		}

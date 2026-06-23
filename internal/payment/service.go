@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/kartwo/kartwo/internal/settings"
@@ -127,17 +128,36 @@ func (s *Service) HandleWebhook(ctx context.Context, payload []byte, sigHeader s
 		if ev.PaymentStatus != "paid" {
 			return nil // 完成但尚未付清（如异步付款待定）：确认收到、暂不改单。
 		}
-		return s.markPaid(ctx, ev)
+		return s.markPaid(ctx, "stripe", ev)
 	case "charge.refunded":
-		return s.markRefundedFromWebhook(ctx, ev)
+		return s.markRefundedFromWebhook(ctx, "stripe", ev)
 	default:
 		return nil // 其它事件：确认收到、无需动作。
 	}
 }
 
+// HandlePayPalWebhook 处理 PayPal Webhook：在线验签 + 幂等。COMPLETED→已付(备份)，REFUNDED→已退款(同步)。
+func (s *Service) HandlePayPalWebhook(ctx context.Context, payload []byte, headers http.Header) error {
+	ev, err := s.paypal.VerifyWebhookPayPal(ctx, payload, headers)
+	if err != nil {
+		return err
+	}
+	switch ev.Type {
+	case "PAYMENT.CAPTURE.COMPLETED":
+		if ev.OrderRef == "" {
+			return nil
+		}
+		return s.markPaid(ctx, "paypal", ev)
+	case "PAYMENT.CAPTURE.REFUNDED":
+		return s.markRefundedFromWebhook(ctx, "paypal", ev)
+	default:
+		return nil
+	}
+}
+
 // markPaid 在【同一事务】内完成：去重 INSERT（冲突即幂等返回）→ 第二道比对订单/金额 → pending->paid。
 // 杜绝「已标记已见过但未处理」的丢单：要么都成、要么都回滚。
-func (s *Service) markPaid(ctx context.Context, ev WebhookEvent) error {
+func (s *Service) markPaid(ctx context.Context, provider string, ev WebhookEvent) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("payment: 开启事务失败: %w", err)
@@ -147,7 +167,7 @@ func (s *Service) markPaid(ctx context.Context, ev WebhookEvent) error {
 
 	// 1) 去重：事件 ID 唯一约束。冲突=此前已处理过 → 幂等放行（不重复改单）。
 	if err := q.InsertWebhookEvent(ctx, sqlcgen.InsertWebhookEventParams{
-		Provider: "stripe", EventID: ev.ID, EventType: ev.Type, OrderRef: ev.OrderRef,
+		Provider: provider, EventID: ev.ID, EventType: ev.Type, OrderRef: ev.OrderRef,
 	}); err != nil {
 		if isUniqueViolation(err) {
 			return nil // 已处理过，回 2xx。
@@ -168,7 +188,7 @@ func (s *Service) markPaid(ctx context.Context, ev WebhookEvent) error {
 
 	// 3) pending->paid（条件更新；非 pending 则 0 行，天然幂等、不回退已取消单）。同时落支付引用供退款。
 	if _, err := q.MarkOrderPaidByPublicID(ctx, sqlcgen.MarkOrderPaidByPublicIDParams{
-		PaymentProvider: "stripe", PaymentRef: ev.PaymentRef, PublicID: ev.OrderRef,
+		PaymentProvider: provider, PaymentRef: ev.PaymentRef, PublicID: ev.OrderRef,
 	}); err != nil {
 		return fmt.Errorf("payment: 更新订单状态失败: %w", err)
 	}
@@ -179,9 +199,9 @@ func (s *Service) markPaid(ctx context.Context, ev WebhookEvent) error {
 	return nil
 }
 
-// markRefundedFromWebhook 处理 charge.refunded：去重 + 按 payment_ref 把订单 paid->refunded（同事务幂等）。
+// markRefundedFromWebhook 处理退款事件：去重 + 按 payment_ref 把订单 paid->refunded（同事务幂等）。
 // v1 仅同步订单状态（退款记录由后台手动退款路径写；外部 Dashboard 退款也能据此回正状态）。
-func (s *Service) markRefundedFromWebhook(ctx context.Context, ev WebhookEvent) error {
+func (s *Service) markRefundedFromWebhook(ctx context.Context, provider string, ev WebhookEvent) error {
 	if ev.PaymentRef == "" {
 		return nil // 无支付引用无法回查订单：确认收到、忽略。
 	}
@@ -193,7 +213,7 @@ func (s *Service) markRefundedFromWebhook(ctx context.Context, ev WebhookEvent) 
 	q := s.q.WithTx(tx)
 
 	if err := q.InsertWebhookEvent(ctx, sqlcgen.InsertWebhookEventParams{
-		Provider: "stripe", EventID: ev.ID, EventType: ev.Type, OrderRef: ev.OrderRef,
+		Provider: provider, EventID: ev.ID, EventType: ev.Type, OrderRef: ev.OrderRef,
 	}); err != nil {
 		if isUniqueViolation(err) {
 			return nil // 已处理过，幂等放行。

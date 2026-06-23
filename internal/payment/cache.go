@@ -24,6 +24,7 @@ const (
 	envPayPalClientID    = "PAYPAL_CLIENT_ID"
 	envPayPalSecret      = "PAYPAL_SECRET" //nolint:gosec // 环境变量「名」，非凭证本身
 	envPayPalMode        = "PAYPAL_MODE"
+	envPayPalWebhookID   = "PAYPAL_WEBHOOK_ID"
 )
 
 // CacheStatus 是不含密钥明文的状态快照，供后台收款页/诊断展示。
@@ -37,6 +38,7 @@ type CacheStatus struct {
 	PayPalMode        string
 	PayPalClientID    string
 	PayPalHasSecret   bool
+	PayPalWebhookID   string
 }
 
 // stripeEnv 是启动时解析的 Stripe 环境变量覆盖；active=false 表示走加密库默认路径。
@@ -50,10 +52,11 @@ type stripeEnv struct {
 
 // paypalEnv 是启动时解析的 PayPal 环境变量覆盖。
 type paypalEnv struct {
-	active   bool
-	mode     string
-	clientID string
-	secret   string
+	active    bool
+	mode      string
+	clientID  string
+	secret    string
+	webhookID string
 }
 
 func resolveStripeEnv(getenv func(string) string) stripeEnv {
@@ -88,7 +91,8 @@ func resolvePayPalEnv(getenv func(string) string) paypalEnv {
 	}
 	return paypalEnv{
 		active: true, mode: mode, clientID: id,
-		secret: strings.TrimSpace(getenv(envPayPalSecret)),
+		secret:    strings.TrimSpace(getenv(envPayPalSecret)),
+		webhookID: strings.TrimSpace(getenv(envPayPalWebhookID)),
 	}
 }
 
@@ -104,7 +108,7 @@ type KeyCache struct {
 	// Stripe（库来源）
 	sMode, sPublishable, sSecret, sWebhook string
 	// PayPal（库来源）
-	pMode, pClientID, pSecret string
+	pMode, pClientID, pSecret, pWebhookID string
 }
 
 // NewKeyCache 构造缓存。读取一次环境变量覆盖（不落库、不进日志）。
@@ -122,7 +126,7 @@ func (c *KeyCache) EnvOverride() bool { return c.stripeEnv.active || c.paypalEnv
 // Unlock 用 KEK 解密收款密钥载入内存（库来源默认路径）。
 // 某通道 env 覆盖激活时，该通道为 no-op：不读、不解密其库内值（杜绝跨源混用）。
 func (c *KeyCache) Unlock(ctx context.Context, kek []byte) error {
-	var sMode, sPub, sSecret, sWebhook, pMode, pID, pSecret string
+	var sMode, sPub, sSecret, sWebhook, pMode, pID, pSecret, pWebhookID string
 
 	if !c.stripeEnv.active {
 		sMode, _ = c.settings.Get(ctx, KeyStripeMode)
@@ -147,6 +151,7 @@ func (c *KeyCache) Unlock(ctx context.Context, kek []byte) error {
 			pMode = "sandbox"
 		}
 		pID, _ = c.settings.Get(ctx, KeyPayPalClientID)
+		pWebhookID, _ = c.settings.Get(ctx, KeyPayPalWebhookID)
 		b3, err := c.settings.GetEncrypted(ctx, KeyPayPalSecret, kek)
 		if err != nil && !errors.Is(err, settings.ErrNotFound) {
 			return err
@@ -157,7 +162,7 @@ func (c *KeyCache) Unlock(ctx context.Context, kek []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.sMode, c.sPublishable, c.sSecret, c.sWebhook = sMode, sPub, sSecret, sWebhook
-	c.pMode, c.pClientID, c.pSecret = pMode, pID, pSecret
+	c.pMode, c.pClientID, c.pSecret, c.pWebhookID = pMode, pID, pSecret, pWebhookID
 	return nil
 }
 
@@ -166,7 +171,7 @@ func (c *KeyCache) Lock() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.sMode, c.sPublishable, c.sSecret, c.sWebhook = "", "", "", ""
-	c.pMode, c.pClientID, c.pSecret = "", "", ""
+	c.pMode, c.pClientID, c.pSecret, c.pWebhookID = "", "", "", ""
 }
 
 // secretKey 返回 Stripe sk_*；未解锁/未配置返回 false。env 覆盖优先。
@@ -200,6 +205,16 @@ func (c *KeyCache) paypalCreds() (clientID, secret, mode string, ok bool) {
 	return c.pClientID, c.pSecret, c.pMode, c.pClientID != "" && c.pSecret != ""
 }
 
+// paypalWebhookID 返回 PayPal Webhook ID；未配置返回 false。env 覆盖优先。
+func (c *KeyCache) paypalWebhookID() (string, bool) {
+	if c.paypalEnv.active {
+		return c.paypalEnv.webhookID, c.paypalEnv.webhookID != ""
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.pWebhookID, c.pWebhookID != ""
+}
+
 // Status 返回不含密钥明文的状态快照（双通道）。
 func (c *KeyCache) Status() CacheStatus {
 	c.mu.RLock()
@@ -218,10 +233,10 @@ func (c *KeyCache) Status() CacheStatus {
 	if c.paypalEnv.active {
 		e := c.paypalEnv
 		st.PayPalSource, st.PayPalMode, st.PayPalClientID = "env", e.mode, e.clientID
-		st.PayPalHasSecret = e.secret != ""
+		st.PayPalHasSecret, st.PayPalWebhookID = e.secret != "", e.webhookID
 	} else {
 		st.PayPalMode, st.PayPalClientID = orDefault(c.pMode, "sandbox"), c.pClientID
-		st.PayPalHasSecret = c.pSecret != ""
+		st.PayPalHasSecret, st.PayPalWebhookID = c.pSecret != "", c.pWebhookID
 	}
 	return st
 }
