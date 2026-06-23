@@ -11,7 +11,7 @@ const busy = ref(false)
 // Stripe
 const s = ref({ source: 'db', readonly: false, mode: 'test', publishable: '', has_secret: false, has_webhook: false, secret: '', webhook_secret: '' })
 // PayPal
-const p = ref({ source: 'db', readonly: false, mode: 'sandbox', client_id: '', has_secret: false, secret: '' })
+const p = ref({ source: 'db', readonly: false, mode: 'sandbox', client_id: '', has_secret: false, secret: '', webhook_id: '' })
 
 async function load() {
   err.value = ''
@@ -29,7 +29,7 @@ async function saveStripe() {
   await save({ stripe: { mode: s.value.mode, publishable: (s.value.publishable || '').trim(), secret: s.value.secret.trim(), webhook_secret: s.value.webhook_secret.trim() } })
 }
 async function savePaypal() {
-  await save({ paypal: { mode: p.value.mode, client_id: (p.value.client_id || '').trim(), secret: p.value.secret.trim() } })
+  await save({ paypal: { mode: p.value.mode, client_id: (p.value.client_id || '').trim(), secret: p.value.secret.trim(), webhook_id: (p.value.webhook_id || '').trim() } })
 }
 async function save(payload) {
   if (busy.value) return
@@ -85,6 +85,8 @@ onMounted(load)
       <input v-model="p.client_id" placeholder="AY…" autocomplete="off" :disabled="p.readonly" />
       <label>Secret</label>
       <input v-model="p.secret" type="password" :placeholder="p.readonly ? '由环境变量提供' : (p.has_secret ? '已保存，留空不改' : 'EM…')" autocomplete="off" :disabled="p.readonly" />
+      <label>Webhook ID（退款/对账回调验签用，可后填）</label>
+      <input v-model="p.webhook_id" placeholder="WH-…" autocomplete="off" :disabled="p.readonly" />
       <div class="spacer"></div>
       <button class="primary" :disabled="busy || p.readonly" @click="savePaypal">保存 PayPal</button>
     </div>
