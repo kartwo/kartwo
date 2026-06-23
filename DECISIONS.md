@@ -72,6 +72,9 @@
 | 2026-06-23 | **M3.3b 再拆 2 片**：3.3b-1 PayPal 付款(建单+审批+capture+结算支付方式选择UI，沙箱真跑付款) / 3.3b-2 PayPal 退款+webhook(模拟器验收) | 单片偏大、守「十几分钟可测完」铁律 | 节奏（M3.3b） |
 | 2026-06-23 | **PayPal「已付」=同步 capture**：顾客批准跳回后我方主动 capture，响应 COMPLETED 即 paid(存 capture_id 作 payment_ref)；webhook 仅幂等补充同步 | capture 是 PayPal 权威同步信号；不卡在 webhook 验签限制上、happy-path 最稳 | PayPal（M3.3b-1） |
 | 2026-06-23 | PayPal 金额 v1 仅 2 位小数币种(USD)：整数分↔小数字符串转换；多位/零位小数币种后置 | PayPal 用小数字符串、与内核整数分需转换；控范围 | PayPal（M3.3b-1） |
+| 2026-06-23 | PayPal 全额退款=capture refund **空 body**(让 PayPal 退全部已捕获额)，忽略金额参数；复用既有退款编排，后台退款按钮对 PayPal 单即生效 | v1 仅全额、最简；无需传金额/币种 | PayPal（M3.3b-2） |
+| 2026-06-23 | PayPal webhook **不走通用 VerifyWebhook 接口**(它单头、PayPal 需多头)，单独 `VerifyWebhookPayPal`(在线 verify-webhook-signature + webhook_id)；webhook_id 作明文配置项(+env PAYPAL_WEBHOOK_ID)；模拟器验收、真实验签 M4 | PayPal 验签是在线多头调用、与 Stripe 本地 HMAC 异构；模拟器过不了真实验签 | PayPal/webhook（M3.3b-2/M4） |
+| 2026-06-23 | PayPal webhook 仅作**对账备份**：COMPLETED 备份改已付(happy-path 靠同步 capture)、REFUNDED 同步已退款(按 links 取 capture id)；不写退款记录(同 Stripe) | 付款/退款 happy-path 不依赖 webhook，webhook 只兜底外部改动 | PayPal/webhook（M3.3b-2） |
 | 2026-06-21 | **暂不钉 Stripe-Version，触发点=发版硬化(M4 前后)，修法=client 初始化显式钉死 API 版本**(请求加 `Stripe-Version` 头)。理由：Kartwo 分发到**不可控的商家账号**，各账号 Dashboard 默认 API 版本不同，不钉则同一份二进制在不同商家上行为可能漂移；M3.2 只读稳定字段(id/type/client_reference_id/payment_status/amount_total/currency)故当前安全。**仅记录，暂不改代码** | 可复现/抗版本漂移 vs 控范围 | 支付/硬化（M4 前后落地） |
 
 ---
