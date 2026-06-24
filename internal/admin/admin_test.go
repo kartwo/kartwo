@@ -148,6 +148,38 @@ func doJSON(t *testing.T, mux http.Handler, method, path, body string, cookies [
 	return apiResp{StatusCode: res.StatusCode, Cookies: res.Cookies(), Body: b}
 }
 
+func TestWizardPayment(t *testing.T) {
+	_, mux := newHTTP(t)
+	doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"supersecret"}`, nil, "")
+	lr := doJSON(t, mux, "POST", "/admin/api/login", `{"username":"admin","password":"supersecret"}`, nil, "")
+	var csrf string
+	for _, c := range lr.Cookies {
+		if c.Name == csrfCookie {
+			csrf = c.Value
+		}
+	}
+
+	// 未配收款、未跳过 → needed=true。
+	r := doJSON(t, mux, "GET", "/admin/api/wizard/payment", "", lr.Cookies, "")
+	if r.StatusCode != http.StatusOK || !bytes.Contains(r.Body, []byte(`"needed":true`)) {
+		t.Fatalf("初始应 needed=true: %d %s", r.StatusCode, r.Body)
+	}
+	// 跳过（写操作需 CSRF）。
+	s := doJSON(t, mux, "POST", "/admin/api/wizard/payment/skip", "", lr.Cookies, csrf)
+	if s.StatusCode != http.StatusOK {
+		t.Fatalf("skip 应 200: %d %s", s.StatusCode, s.Body)
+	}
+	// 跳过后 → needed=false。
+	r2 := doJSON(t, mux, "GET", "/admin/api/wizard/payment", "", lr.Cookies, "")
+	if !bytes.Contains(r2.Body, []byte(`"needed":false`)) {
+		t.Fatalf("跳过后应 needed=false: %s", r2.Body)
+	}
+	// skip 缺 CSRF → 403。
+	if bad := doJSON(t, mux, "POST", "/admin/api/wizard/payment/skip", "", lr.Cookies, ""); bad.StatusCode != http.StatusForbidden {
+		t.Fatalf("缺 CSRF 应 403，得 %d", bad.StatusCode)
+	}
+}
+
 func TestHTTPSetupLoginMeLogout(t *testing.T) {
 	_, mux := newHTTP(t)
 

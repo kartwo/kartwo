@@ -151,3 +151,25 @@ func (h *HTTP) settingExists(ctx context.Context, key string) bool {
 	_, err := h.settings.Get(ctx, key)
 	return err == nil
 }
+
+// keyWizardPaymentSkipped 标记商家在开店向导里跳过了收款配置（稍后再配）。
+const keyWizardPaymentSkipped = "wizard.payment_skipped"
+
+// wizardPaymentStatus 报告开店向导是否仍需展示「配置收款」步骤。
+// needed = 未配任何收款密钥 且 未跳过；配好或跳过后不再打扰。
+func (h *HTTP) wizardPaymentStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	st, _ := h.svc.PaymentStatus()
+	configured := st.StripeHasSecret || st.PayPalHasSecret
+	skipped := h.settingExists(ctx, keyWizardPaymentSkipped)
+	writeJSON(w, http.StatusOK, map[string]any{"needed": !configured && !skipped, "configured": configured})
+}
+
+// wizardPaymentSkip 记录「稍后再配」，使向导不再展示收款步骤（商家随时可从收款页配置）。
+func (h *HTTP) wizardPaymentSkip(w http.ResponseWriter, r *http.Request) {
+	if err := h.settings.SetPlain(r.Context(), keyWizardPaymentSkipped, "1"); err != nil {
+		writeErr(w, http.StatusInternalServerError, "保存失败")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}

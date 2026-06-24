@@ -1,7 +1,29 @@
 {{define "content"}}
 {{$o := .Order}}
-<h1>Order placed ✓</h1>
-<p class="muted">Thank you for your order! Order <strong>{{$o.PublicID}}</strong> — status: {{$o.Status}} (awaiting payment; online payment coming soon).</p>
+{{if eq $o.Status "paid"}}<h1>Payment received ✓</h1>
+{{else if eq $o.Status "refunded"}}<h1>Order refunded</h1>
+{{else}}<h1>Order placed ✓</h1>{{end}}
+<p class="muted">Order <strong>{{$o.PublicID}}</strong> — status: {{$o.Status}}.</p>
+
+{{if eq $o.Status "pending"}}
+<div class="panel" style="border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin:1rem 0">
+  <strong>This order isn't paid yet.</strong>
+  <p class="muted" style="font-size:.9rem;margin:.3rem 0 .6rem">Complete payment to confirm your order.</p>
+  {{if .Methods}}
+  <form method="post" action="/order/{{$o.PublicID}}/pay">
+    {{if gt (len .Methods) 1}}
+    {{range $i, $m := .Methods}}
+    <label style="display:block;font-weight:normal">
+      <input type="radio" name="payment_method" value="{{$m}}"{{if eq $i 0}} checked{{end}} />
+      {{if eq $m "stripe"}}Credit / debit card{{else if eq $m "paypal"}}PayPal{{else}}{{$m}}{{end}}
+    </label>
+    {{end}}
+    {{else}}<input type="hidden" name="payment_method" value="{{index .Methods 0}}" />{{end}}
+    <button class="btn" type="submit" style="margin-top:.5rem">Pay now</button>
+  </form>
+  {{else}}<p class="muted" style="font-size:.85rem">Online payment is being set up. Please check back soon.</p>{{end}}
+</div>
+{{end}}
 
 <div class="detail">
   <div>

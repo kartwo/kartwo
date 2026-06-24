@@ -88,6 +88,7 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /checkout", h.checkoutPage)
 	mux.HandleFunc("POST /checkout", h.checkoutSubmit)
 	mux.HandleFunc("GET /order/{id}", h.orderPage)
+	mux.HandleFunc("POST /order/{id}/pay", h.orderPay)   // 未付订单「去支付」重新发起
 	mux.HandleFunc("GET /paypal/return", h.paypalReturn) // PayPal 审批后跳回做同步 capture
 }
 

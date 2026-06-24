@@ -86,7 +86,7 @@ func (h *HTTP) checkoutSubmit(w http.ResponseWriter, r *http.Request) {
 		methods := h.pay.AvailableMethods(r.Context())
 		if len(methods) > 0 {
 			provider := h.chosenMethod(r, methods)
-			if url, perr := h.startPayment(r, publicID, info.Email, provider); perr == nil {
+			if url, perr := h.startPayment(r, publicID, provider); perr == nil {
 				http.Redirect(w, r, url, http.StatusSeeOther)
 				return
 			}
@@ -109,7 +109,7 @@ func (h *HTTP) chosenMethod(r *http.Request, methods []string) string {
 
 // startPayment 用订单的权威金额/币种发起一次收款，返回网关跳转 URL。
 // PayPal 跳回我方 /paypal/return 做同步 capture；Stripe 跳回订单页（已付由 Webhook 落实）。
-func (h *HTTP) startPayment(r *http.Request, publicID, email, provider string) (string, error) {
+func (h *HTTP) startPayment(r *http.Request, publicID, provider string) (string, error) {
 	o, err := h.order.Get(r.Context(), publicID)
 	if err != nil {
 		return "", err
@@ -117,7 +117,7 @@ func (h *HTTP) startPayment(r *http.Request, publicID, email, provider string) (
 	base := h.base(r)
 	ord := payment.OrderForPayment{
 		PublicID:    publicID,
-		Email:       email,
+		Email:       o.Email,
 		Currency:    o.Currency,
 		AmountCents: o.TotalCents,
 		Description: h.shopName + " — Order",
@@ -167,13 +167,53 @@ func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
+	// 未付订单 + 收款就绪 → 订单页提供「去支付」入口（顾客中途取消/弃单后重新发起）。
+	var payMethods []string
+	if h.pay != nil && o.Status == "pending" {
+		payMethods = h.pay.AvailableMethods(r.Context())
+	}
 	data := map[string]any{
 		"ShopName": h.shopName,
 		"Order":    o,
+		"Methods":  payMethods,
 		"Money":    h.money(r.Context()),
 		"SEO": seo{
 			Title: "Order — " + h.shopName, Description: "Order confirmation", Canonical: h.base(r) + "/order/" + o.PublicID, OGType: "website",
 		},
 	}
 	h.render(w, h.orderTmpl, data)
+}
+
+// orderPay 对未付订单重新发起收款（订单页「去支付」按钮）。
+func (h *HTTP) orderPay(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	publicID := r.PathValue("id")
+	o, err := h.order.Get(r.Context(), publicID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.NotFound(w, r)
+		return
+	} else if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+	// 仅未付订单可再次发起支付（防对已付/已退订单重复收款）。
+	if o.Status != "pending" || h.pay == nil {
+		http.Redirect(w, r, "/order/"+publicID, http.StatusSeeOther)
+		return
+	}
+	methods := h.pay.AvailableMethods(r.Context())
+	if len(methods) == 0 {
+		http.Redirect(w, r, "/order/"+publicID, http.StatusSeeOther)
+		return
+	}
+	provider := h.chosenMethod(r, methods)
+	url, perr := h.startPayment(r, publicID, provider)
+	if perr != nil {
+		http.Redirect(w, r, "/order/"+publicID+"?payment_error=1", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, url, http.StatusSeeOther)
 }

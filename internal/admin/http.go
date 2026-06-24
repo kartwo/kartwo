@@ -77,6 +77,10 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("GET /admin/api/settings/payment", protect(h.getPayment))
 	mux.Handle("PUT /admin/api/settings/payment", protect(h.setPayment))
 
+	// 向导：收款步骤状态 / 跳过。
+	mux.Handle("GET /admin/api/wizard/payment", protect(h.wizardPaymentStatus))
+	mux.Handle("POST /admin/api/wizard/payment/skip", protect(h.wizardPaymentSkip))
+
 	// 订单 + 退款（M3.3a）。
 	mux.Handle("GET /admin/api/orders", protect(h.listOrders))
 	mux.Handle("GET /admin/api/orders/{id}", protect(h.getOrder))
