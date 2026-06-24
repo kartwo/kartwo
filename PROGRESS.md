@@ -8,8 +8,8 @@
 ---
 
 ## 当前状态
-- **阶段**：**M3.3b-1 + M3.3b-2 已完成、待 Derek 人工验收**（PayPal 付款 + 退款 + webhook）。M3 全部切片代码就绪。
-- **下一步**：Derek 按 `docs/test/m3.3b-1.md`、`docs/test/m3.3b-2.md` 验收 PayPal（建沙箱应用→配收款页→付款→退款）；过则进 **M3.3c**（向导支付步骤 + 未付订单页「去支付」按钮）→ M3 收官合主干打 `v0.3.0`。
+- **阶段**：**M3 全部切片代码就绪（M3.3b-1/b-2/c 待 Derek 一次性人工验收）**。
+- **下一步**：Derek 重启回来、备好 PayPal 沙箱凭证后，一次性起服务，合并走完 M3.3b（Stripe 已过；PayPal 付款/退款）+ M3.3c（向导/去支付）人工验收 → M3 整片收官、合主干打 `v0.3.0`（PayPal webhook 真实验签按惯例推迟 M4，见回归冒烟清单）。
 - **最新 git tag**：`v0.2.0`（M2）。
 
 ## 里程碑总览
@@ -34,7 +34,7 @@
   - M3.3b PayPal 沙箱 —— **再拆 2 片**（2026-06-23 拍板）：
     - [x] **M3.3b-1 PayPal 付款**（待验收）：PayPalProvider(OAuth token/建单/同步 capture)；已付=capture COMPLETED+对账(custom_id/金额/币种)→pending->paid 落 capture_id；结算页支付方式选择(卡/PayPal，单个则隐藏)；/paypal/return 同步 capture；PayPal 密钥(client_id 明文/secret 加密)+收款页双区+**每通道独立 env 旁路**；金额 分↔小数串；单测(金额转换/AvailableMethods/建单/capture→paid/金额不符拒)；自驱实测(env来源/收款页/结算选择器渲染)
     - [x] **M3.3b-2 PayPal 退款 + webhook**（待验收）：capture 全额退款(空 body，复用退款编排，后台退款按钮对 PayPal 单生效)；PayPal webhook(/webhooks/paypal) 在线验签(verify-webhook-signature+webhook_id)+幂等，COMPLETED 备份同步/REFUNDED 状态同步；webhook_id 配置项(明文+env)；单测(退款/验签成败/COMPLETED 幂等/REFUNDED)；模拟器验收，真实端到端 M4
-  - [ ] **M3.3c 向导支付步骤**：收款配置纳入开店向导（大白话引导，可跳过稍后配）；**+ 未付订单页加「去支付」按钮**（顾客中途取消/弃单后重新发起付款，复用结算跳转逻辑）（2026-06-23 并入）
+  - [x] **M3.3c 向导支付步骤 + 未付订单页「去支付」**（待验收）：开店向导加「配置收款」步骤(市场后、大白话引导、可跳过稍后配，跳过持久化不再打扰)；needed=未配且未跳过；PaymentWizard 复用收款页组件；未付订单页「Pay now」(按可用通道，仅 pending 可再发起、防对已付/已退重复收款)；单测(向导 needed/skip/CSRF、orderPay 仅 pending+Pay now 渲染)
 
 ## 历史里程碑明细（M2 · 切 3 片，✅ v0.2.0）
 - [x] **M2.1 店面浏览 + 内嵌主题 + SEO 基建**（✅ 已验收）：SSR 目录/详情(Go template)、canonical/OG/JSON-LD(Product+AggregateOffer)、sitemap.xml/robots.txt、WebP 响应式图、Admin 迁至 /admin/、店面占 /；单测+HTTP 测+实测

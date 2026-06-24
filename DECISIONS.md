@@ -75,6 +75,8 @@
 | 2026-06-23 | PayPal 全额退款=capture refund **空 body**(让 PayPal 退全部已捕获额)，忽略金额参数；复用既有退款编排，后台退款按钮对 PayPal 单即生效 | v1 仅全额、最简；无需传金额/币种 | PayPal（M3.3b-2） |
 | 2026-06-23 | PayPal webhook **不走通用 VerifyWebhook 接口**(它单头、PayPal 需多头)，单独 `VerifyWebhookPayPal`(在线 verify-webhook-signature + webhook_id)；webhook_id 作明文配置项(+env PAYPAL_WEBHOOK_ID)；模拟器验收、真实验签 M4 | PayPal 验签是在线多头调用、与 Stripe 本地 HMAC 异构；模拟器过不了真实验签 | PayPal/webhook（M3.3b-2/M4） |
 | 2026-06-23 | PayPal webhook 仅作**对账备份**：COMPLETED 备份改已付(happy-path 靠同步 capture)、REFUNDED 同步已退款(按 links 取 capture id)；不写退款记录(同 Stripe) | 付款/退款 happy-path 不依赖 webhook，webhook 只兜底外部改动 | PayPal/webhook（M3.3b-2） |
+| 2026-06-24 | 向导「配置收款」步骤：needed=未配任何密钥 且 未跳过(`wizard.payment_skipped` 持久化)；配好或跳过后不再打扰，PaymentWizard 复用收款页组件 | 北极星引导但不强制；跳过持久化避免每次登录被烦 | 向导（M3.3c） |
+| 2026-06-24 | 未付订单页「去支付」：**仅 pending 可重新发起**收款(复用结算跳转/方法选择)，已付/已退订单拒绝(防重复收款) | 顾客中途取消/弃单后能重付；状态守卫防重复扣款 | 店面/订单（M3.3c） |
 | 2026-06-21 | **暂不钉 Stripe-Version，触发点=发版硬化(M4 前后)，修法=client 初始化显式钉死 API 版本**(请求加 `Stripe-Version` 头)。理由：Kartwo 分发到**不可控的商家账号**，各账号 Dashboard 默认 API 版本不同，不钉则同一份二进制在不同商家上行为可能漂移；M3.2 只读稳定字段(id/type/client_reference_id/payment_status/amount_total/currency)故当前安全。**仅记录，暂不改代码** | 可复现/抗版本漂移 vs 控范围 | 支付/硬化（M4 前后落地） |
 
 ---
