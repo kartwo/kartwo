@@ -58,6 +58,8 @@ export const api = {
 
   getPayment: () => request('GET', '/settings/payment'),
   setPayment: (payload) => request('PUT', '/settings/payment', payload),
+  wizardPayment: () => request('GET', '/wizard/payment'),
+  wizardPaymentSkip: () => request('POST', '/wizard/payment/skip'),
 
   listOrders: () => request('GET', '/orders'),
   getOrder: (id) => request('GET', '/orders/' + id),

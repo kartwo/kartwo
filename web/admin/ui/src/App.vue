@@ -3,11 +3,13 @@
 import { ref, onMounted, onUnmounted, provide } from 'vue'
 import { api, APIError } from './api.js'
 import MarketSelect from './views/MarketSelect.vue'
+import PaymentWizard from './views/PaymentWizard.vue'
 
 const loading = ref(true)
 const initialized = ref(false)
 const authed = ref(false)
 const marketConfigured = ref(false)
+const paymentStepNeeded = ref(false)
 const username = ref('')
 const form = ref({ user: '', pass: '' })
 const err = ref('')
@@ -26,6 +28,9 @@ async function refresh() {
         username.value = me.username
         const mk = await api.getMarket()
         marketConfigured.value = !!mk.configured
+        if (marketConfigured.value) {
+          try { paymentStepNeeded.value = !!(await api.wizardPayment()).needed } catch (_) { paymentStepNeeded.value = false }
+        }
       } catch (e) {
         authed.value = false
       }
@@ -35,7 +40,11 @@ async function refresh() {
   }
 }
 
-function onMarketConfigured() { marketConfigured.value = true }
+async function onMarketConfigured() {
+  marketConfigured.value = true
+  try { paymentStepNeeded.value = !!(await api.wizardPayment()).needed } catch (_) { paymentStepNeeded.value = false }
+}
+function onPaymentStepDone() { paymentStepNeeded.value = false }
 onMounted(() => window.addEventListener('market-configured', onMarketConfigured))
 onUnmounted(() => window.removeEventListener('market-configured', onMarketConfigured))
 
@@ -111,6 +120,15 @@ onMounted(refresh)
       <button @click="doLogout">登出</button>
     </header>
     <MarketSelect />
+  </template>
+
+  <!-- 市场已选、收款未配且未跳过：走「配置收款」向导步骤 -->
+  <template v-else-if="paymentStepNeeded">
+    <header class="app-header">
+      <div class="brand">Kartwo Admin · 开店向导</div>
+      <button @click="doLogout">登出</button>
+    </header>
+    <PaymentWizard @done="onPaymentStepDone" />
   </template>
 
   <!-- 已登录：应用 -->
