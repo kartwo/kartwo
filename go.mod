@@ -6,7 +6,7 @@ require (
 	github.com/gen2brain/webp v0.5.5
 	github.com/google/uuid v1.6.0
 	golang.org/x/crypto v0.53.0
-	golang.org/x/image v0.42.0
+	golang.org/x/image v0.43.0
 	modernc.org/sqlite v1.52.0
 )
 
