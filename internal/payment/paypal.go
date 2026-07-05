@@ -179,8 +179,9 @@ func (p *PayPalProvider) Capture(ctx context.Context, paypalOrderID string) (Cap
 			CustomID string `json:"custom_id"`
 			Payments struct {
 				Captures []struct {
-					ID     string `json:"id"`
-					Amount struct {
+					ID       string `json:"id"`
+					CustomID string `json:"custom_id"` // PayPal capture 响应把 custom_id 回填在 capture 对象上
+					Amount   struct {
 						CurrencyCode string `json:"currency_code"`
 						Value        string `json:"value"`
 					} `json:"amount"`
@@ -200,6 +201,10 @@ func (p *PayPalProvider) Capture(ctx context.Context, paypalOrderID string) (Cap
 			res.CaptureID = cap0.ID
 			res.Currency = cap0.Amount.CurrencyCode
 			res.AmountCents, _ = decimalToCents(cap0.Amount.Value)
+			// capture 响应里 custom_id 通常在 capture 对象、而非 purchase_unit 顶层；顶层缺失时回退取此处。
+			if res.OrderRef == "" {
+				res.OrderRef = cap0.CustomID
+			}
 		}
 	}
 	return res, nil

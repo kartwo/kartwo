@@ -8,6 +8,7 @@ package storefront
 import (
 	"database/sql"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/kartwo/kartwo/internal/order"
@@ -137,12 +138,16 @@ func (h *HTTP) startPayment(r *http.Request, publicID, provider string) (string,
 func (h *HTTP) paypalReturn(w http.ResponseWriter, r *http.Request) {
 	ppOrderID := r.URL.Query().Get("token")
 	if ppOrderID == "" || h.pay == nil {
+		// 缺 token / 支付未启用：记下原始 query 以便定位（PayPal 是否换了参数名/未带回）。
+		slog.Warn("PayPal 跳回无法 capture：缺 token 或支付未启用",
+			"token_present", ppOrderID != "", "pay_enabled", h.pay != nil, "raw_query", r.URL.RawQuery)
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 	orderRef, err := h.pay.CapturePayPal(r.Context(), ppOrderID)
 	if err != nil {
 		// capture 失败/不匹配：回订单页（若能定位），订单保持 pending。
+		slog.Error("PayPal 跳回 capture 失败", "paypal_order_id", ppOrderID, "order_ref", orderRef, "err", err)
 		if orderRef != "" {
 			http.Redirect(w, r, "/order/"+orderRef+"?payment_error=1", http.StatusSeeOther)
 			return
@@ -150,6 +155,7 @@ func (h *HTTP) paypalReturn(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
+	slog.Info("PayPal 跳回 capture 成功，订单已付", "paypal_order_id", ppOrderID, "order_ref", orderRef)
 	http.Redirect(w, r, "/order/"+orderRef+"?paid=1", http.StatusSeeOther)
 }
 

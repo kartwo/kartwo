@@ -103,7 +103,9 @@ func TestPayPalStartCheckout(t *testing.T) {
 }
 
 func TestCapturePayPalMarksPaid(t *testing.T) {
-	body := `{"status":"COMPLETED","purchase_units":[{"custom_id":"ORD-PP","payments":{"captures":[{"id":"CAP1","amount":{"currency_code":"USD","value":"99.00"}}]}}]}`
+	// 还原 PayPal capture 响应真实结构：custom_id 在 capture 对象上（而非 purchase_unit 顶层）。
+	// 回归护栏——曾因读错层级导致 custom_id 恒空、钱已扣却订单不转 paid（见 DECISIONS 2026-06-25）。
+	body := `{"status":"COMPLETED","purchase_units":[{"payments":{"captures":[{"id":"CAP1","custom_id":"ORD-PP","amount":{"currency_code":"USD","value":"99.00"}}]}}]}`
 	svc, db, _ := newPayPalSvc(t, paypalMock(body))
 	ctx := context.Background()
 	seedOrder(t, db, "ORD-PP", 9900, "USD")
@@ -123,6 +125,25 @@ func TestCapturePayPalMarksPaid(t *testing.T) {
 	_ = db.QueryRow(`SELECT payment_provider, payment_ref FROM "order" WHERE public_id='ORD-PP'`).Scan(&prov, &payref)
 	if prov != "paypal" || payref != "CAP1" {
 		t.Fatalf("支付引用落库不符: provider=%s ref=%s", prov, payref)
+	}
+}
+
+func TestCapturePayPalCustomIDAtPurchaseUnit(t *testing.T) {
+	// 兼容性护栏：部分流程把 custom_id 放在 purchase_unit 顶层——顶层在时优先取，回退不应吞掉它。
+	body := `{"status":"COMPLETED","purchase_units":[{"custom_id":"ORD-PP","payments":{"captures":[{"id":"CAP1","amount":{"currency_code":"USD","value":"99.00"}}]}}]}`
+	svc, db, _ := newPayPalSvc(t, paypalMock(body))
+	ctx := context.Background()
+	seedOrder(t, db, "ORD-PP", 9900, "USD")
+
+	ref, err := svc.CapturePayPal(ctx, "PPORDER1")
+	if err != nil {
+		t.Fatalf("capture 应成功: %v", err)
+	}
+	if ref != "ORD-PP" {
+		t.Fatalf("订单 ref=%q", ref)
+	}
+	if st := orderStatus(t, db, "ORD-PP"); st != "paid" {
+		t.Fatalf("订单应 paid，得 %s", st)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -92,18 +93,27 @@ func (s *Service) StartCheckout(ctx context.Context, provider string, ord OrderF
 func (s *Service) CapturePayPal(ctx context.Context, paypalOrderID string) (string, error) {
 	res, err := s.paypal.Capture(ctx, paypalOrderID)
 	if err != nil {
+		// PayPal capture API 调用失败：err 内含 PayPal 返回的状态码+原因（doJSON 已带出）。
+		slog.Error("PayPal capture 调用失败", "paypal_order_id", paypalOrderID, "err", err)
 		return "", err
 	}
+	slog.Info("PayPal capture 返回", "paypal_order_id", paypalOrderID, "completed", res.Completed,
+		"order_ref", res.OrderRef, "amount_cents", res.AmountCents, "currency", res.Currency, "capture_id", res.CaptureID)
 	if !res.Completed || res.OrderRef == "" {
+		slog.Warn("PayPal capture 未完成或缺 custom_id", "completed", res.Completed, "order_ref", res.OrderRef)
 		return res.OrderRef, ErrMismatch
 	}
 	ord, err := s.q.GetOrderByPublicID(ctx, res.OrderRef)
 	if errors.Is(err, sql.ErrNoRows) {
+		slog.Warn("PayPal capture 对账：库内无此订单", "order_ref", res.OrderRef)
 		return res.OrderRef, ErrMismatch
 	} else if err != nil {
 		return res.OrderRef, fmt.Errorf("payment: 取订单失败: %w", err)
 	}
 	if ord.TotalCents != res.AmountCents || !strings.EqualFold(ord.Currency, res.Currency) {
+		slog.Warn("PayPal capture 对账：金额/币种不符", "order_ref", res.OrderRef,
+			"order_cents", ord.TotalCents, "capture_cents", res.AmountCents,
+			"order_currency", ord.Currency, "capture_currency", res.Currency)
 		return res.OrderRef, ErrMismatch
 	}
 	if _, err := s.q.MarkOrderPaidByPublicID(ctx, sqlcgen.MarkOrderPaidByPublicIDParams{
@@ -111,6 +121,7 @@ func (s *Service) CapturePayPal(ctx context.Context, paypalOrderID string) (stri
 	}); err != nil {
 		return res.OrderRef, fmt.Errorf("payment: 更新订单状态失败: %w", err)
 	}
+	slog.Info("PayPal 订单已付", "order_ref", res.OrderRef, "capture_id", res.CaptureID)
 	return res.OrderRef, nil
 }
 

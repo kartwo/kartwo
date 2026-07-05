@@ -78,6 +78,7 @@
 | 2026-06-24 | 向导「配置收款」步骤：needed=未配任何密钥 且 未跳过(`wizard.payment_skipped` 持久化)；配好或跳过后不再打扰，PaymentWizard 复用收款页组件 | 北极星引导但不强制；跳过持久化避免每次登录被烦 | 向导（M3.3c） |
 | 2026-06-24 | 未付订单页「去支付」：**仅 pending 可重新发起**收款(复用结算跳转/方法选择)，已付/已退订单拒绝(防重复收款) | 顾客中途取消/弃单后能重付；状态守卫防重复扣款 | 店面/订单（M3.3c） |
 | 2026-06-21 | **暂不钉 Stripe-Version，触发点=发版硬化(M4 前后)，修法=client 初始化显式钉死 API 版本**(请求加 `Stripe-Version` 头)。理由：Kartwo 分发到**不可控的商家账号**，各账号 Dashboard 默认 API 版本不同，不钉则同一份二进制在不同商家上行为可能漂移；M3.2 只读稳定字段(id/type/client_reference_id/payment_status/amount_total/currency)故当前安全。**仅记录，暂不改代码** | 可复现/抗版本漂移 vs 控范围 | 支付/硬化（M4 前后落地） |
+| 2026-06-25 | **修复 PayPal capture 同步对账 bug**：capture 响应的 `custom_id` 在 `purchase_units[].payments.captures[].custom_id`（capture 对象）而非 purchase_unit 顶层；原解析只读顶层 → custom_id 恒空 → 对账判 mismatch → **钱已 capture 但订单不转 paid**（人工验收实测复现）。修法：解析器顶层缺失时回退取 capture 对象的 custom_id（两形态均覆盖）。同时给整条跳回/capture 链路补结构化日志（不记密钥），修正单测 mock 还原真实结构(custom_id 在 capture 对象)+新增顶层兼容护栏，红→绿坐实 | 静默失败+钱货不一致是支付严重 bug；测试 mock 失真才漏过 | 支付/PayPal（M3.3b-1） |
 
 ---
 
