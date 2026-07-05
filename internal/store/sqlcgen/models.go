@@ -96,20 +96,22 @@ type Meta struct {
 }
 
 type Order struct {
-	ID            int64  `db:"id" json:"id"`
-	PublicID      string `db:"public_id" json:"public_id"`
-	CustomerID    int64  `db:"customer_id" json:"customer_id"`
-	Status        string `db:"status" json:"status"`
-	Email         string `db:"email" json:"email"`
-	ShipName      string `db:"ship_name" json:"ship_name"`
-	ShipPhone     string `db:"ship_phone" json:"ship_phone"`
-	ShipAddress   string `db:"ship_address" json:"ship_address"`
-	ShipCountry   string `db:"ship_country" json:"ship_country"`
-	Currency      string `db:"currency" json:"currency"`
-	SubtotalCents int64  `db:"subtotal_cents" json:"subtotal_cents"`
-	TotalCents    int64  `db:"total_cents" json:"total_cents"`
-	CreatedAt     string `db:"created_at" json:"created_at"`
-	UpdatedAt     string `db:"updated_at" json:"updated_at"`
+	ID              int64  `db:"id" json:"id"`
+	PublicID        string `db:"public_id" json:"public_id"`
+	CustomerID      int64  `db:"customer_id" json:"customer_id"`
+	Status          string `db:"status" json:"status"`
+	Email           string `db:"email" json:"email"`
+	ShipName        string `db:"ship_name" json:"ship_name"`
+	ShipPhone       string `db:"ship_phone" json:"ship_phone"`
+	ShipAddress     string `db:"ship_address" json:"ship_address"`
+	ShipCountry     string `db:"ship_country" json:"ship_country"`
+	Currency        string `db:"currency" json:"currency"`
+	SubtotalCents   int64  `db:"subtotal_cents" json:"subtotal_cents"`
+	TotalCents      int64  `db:"total_cents" json:"total_cents"`
+	CreatedAt       string `db:"created_at" json:"created_at"`
+	UpdatedAt       string `db:"updated_at" json:"updated_at"`
+	PaymentProvider string `db:"payment_provider" json:"payment_provider"`
+	PaymentRef      string `db:"payment_ref" json:"payment_ref"`
 }
 
 type OrderItem struct {
@@ -159,6 +161,15 @@ type ProductOptionValue struct {
 	UpdatedAt string `db:"updated_at" json:"updated_at"`
 }
 
+type Refund struct {
+	ID               int64  `db:"id" json:"id"`
+	OrderID          int64  `db:"order_id" json:"order_id"`
+	Provider         string `db:"provider" json:"provider"`
+	ProviderRefundID string `db:"provider_refund_id" json:"provider_refund_id"`
+	AmountCents      int64  `db:"amount_cents" json:"amount_cents"`
+	CreatedAt        string `db:"created_at" json:"created_at"`
+}
+
 type Session struct {
 	ID        int64  `db:"id" json:"id"`
 	Token     string `db:"token" json:"token"`
@@ -166,6 +177,13 @@ type Session struct {
 	CsrfToken string `db:"csrf_token" json:"csrf_token"`
 	ExpiresAt string `db:"expires_at" json:"expires_at"`
 	CreatedAt string `db:"created_at" json:"created_at"`
+}
+
+type Setting struct {
+	Key       string `db:"key" json:"key"`
+	Value     string `db:"value" json:"value"`
+	Encrypted int64  `db:"encrypted" json:"encrypted"`
+	UpdatedAt string `db:"updated_at" json:"updated_at"`
 }
 
 type Variant struct {
@@ -185,4 +203,13 @@ type VariantOptionValue struct {
 	VariantID int64 `db:"variant_id" json:"variant_id"`
 	OptionID  int64 `db:"option_id" json:"option_id"`
 	ValueID   int64 `db:"value_id" json:"value_id"`
+}
+
+type WebhookEvent struct {
+	ID         int64  `db:"id" json:"id"`
+	Provider   string `db:"provider" json:"provider"`
+	EventID    string `db:"event_id" json:"event_id"`
+	EventType  string `db:"event_type" json:"event_type"`
+	OrderRef   string `db:"order_ref" json:"order_ref"`
+	ReceivedAt string `db:"received_at" json:"received_at"`
 }

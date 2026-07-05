@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/png"
 	"io"
@@ -17,9 +18,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/kartwo/kartwo/internal/auth"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
+	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/migrations"
 
 	"database/sql"
@@ -111,13 +114,104 @@ func TestKEKStableAcrossLogins(t *testing.T) {
 	}
 }
 
+// TestConfigSurvivesRestartAndRelogin 回归护栏：加密配置必须跨进程重启 + 重新登录持久存活。
+// 信任关键路径——商家重启服务、重新登录，收款密钥等加密设置不得丢失；错误口令则绝不吐明文。
+// 流程：初始化(生成并存 KEK 盐)→登录派生 KEK→加密落库收款密钥→关库(丢弃内存 KEK，模拟进程退出)
+//
+//	→同库重开→重新登录(读既存盐重派生 KEK)→成功解密取回原值；错误口令派生的 KEK 解密失败(ErrDecrypt)且不返明文。
+func TestConfigSurvivesRestartAndRelogin(t *testing.T) {
+	ctx := context.Background()
+	dsn := "file:" + t.TempDir() + "/persist.db?_pragma=foreign_keys(ON)"
+	const (
+		username  = "merchant"
+		password  = "correct-horse-battery"
+		wrongPass = "correct-horse-battery!" // 仅一字之差，足以派生出不同 KEK
+		secretKey = "pay.stripe.secret"
+	)
+	secret := []byte("sk_test_value_must_survive_restart")
+
+	// ---- 第一次「启动」：初始化 → 登录派生 KEK → 加密落库收款密钥 ----
+	db1, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatalf("打开库失败: %v", err)
+	}
+	db1.SetMaxOpenConns(1)
+	if _, err := migrate.Run(ctx, db1, migrations.FS); err != nil {
+		t.Fatalf("迁移失败: %v", err)
+	}
+	svc1 := New(db1)
+	if err := svc1.Initialize(ctx, username, password); err != nil {
+		t.Fatalf("初始化失败: %v", err)
+	}
+	sess1, err := svc1.Login(ctx, username, password)
+	if err != nil {
+		t.Fatalf("登录失败: %v", err)
+	}
+	kek1, ok := svc1.Key(sess1.Token)
+	if !ok {
+		t.Fatal("登录后应持有会话 KEK")
+	}
+	if err := settings.New(db1).SetEncrypted(ctx, secretKey, secret, kek1); err != nil {
+		t.Fatalf("加密落库失败: %v", err)
+	}
+	// 模拟进程退出：关库即丢弃内存金库里的 KEK（密文仍在磁盘）。
+	if err := db1.Close(); err != nil {
+		t.Fatalf("关库失败: %v", err)
+	}
+
+	// ---- 第二次「启动」：同库重开，内存 KEK 已不复存在 ----
+	db2, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatalf("重开库失败: %v", err)
+	}
+	db2.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db2.Close() })
+	if _, err := migrate.Run(ctx, db2, migrations.FS); err != nil { // 重启迁移应幂等
+		t.Fatalf("重启迁移应幂等: %v", err)
+	}
+	svc2 := New(db2)
+	set2 := settings.New(db2)
+
+	// 磁盘上存的应是密文，不含明文（重启后亦然）。
+	if raw, err := set2.Get(ctx, secretKey); err != nil || bytes.Contains([]byte(raw), secret) {
+		t.Fatalf("磁盘上不应含明文密钥: err=%v", err)
+	}
+
+	// 正确口令重新登录 → 读既存盐重派生 KEK → 解密取回原值（= 跨重启/重登持久存活）。
+	sess2, err := svc2.Login(ctx, username, password)
+	if err != nil {
+		t.Fatalf("重启后登录失败: %v", err)
+	}
+	kek2, ok := svc2.Key(sess2.Token)
+	if !ok {
+		t.Fatal("重启后登录应重新派生 KEK")
+	}
+	got, err := set2.GetEncrypted(ctx, secretKey, kek2)
+	if err != nil || !bytes.Equal(got, secret) {
+		t.Fatalf("重启后应能解密取回原收款密钥: err=%v got=%q", err, got)
+	}
+
+	// 错误口令派生出的 KEK 解不开（AES-GCM 认证失败），且绝不吐明文。
+	wrongKEK, err := svc2.deriveKEK(ctx, wrongPass)
+	if err != nil {
+		t.Fatalf("派生 KEK 本身不应因口令错误而报错（错应发生在解密阶段）: %v", err)
+	}
+	bad, err := set2.GetEncrypted(ctx, secretKey, wrongKEK)
+	if !errors.Is(err, auth.ErrDecrypt) {
+		t.Fatalf("错误口令应解密失败(ErrDecrypt)，得 err=%v", err)
+	}
+	if bad != nil {
+		t.Fatalf("解密失败时绝不应返回明文，得 %q", bad)
+	}
+}
+
 // ---- HTTP 层 ----
 
 func newHTTP(t *testing.T) (*HTTP, http.Handler) {
 	svc := newSvc(t)
 	root := t.TempDir() + "/media"
 	md := media.New(svc.db, media.NewLocalBackend(root), media.NewDefaultPolicy(root, 10<<20, 0), 20)
-	h := NewHTTP(svc, catalog.New(svc.db), md, false)
+	h := NewHTTP(svc, catalog.New(svc.db), md, settings.New(svc.db), nil, nil, false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
@@ -145,6 +239,38 @@ func doJSON(t *testing.T, mux http.Handler, method, path, body string, cookies [
 	defer func() { _ = res.Body.Close() }()
 	b, _ := io.ReadAll(res.Body)
 	return apiResp{StatusCode: res.StatusCode, Cookies: res.Cookies(), Body: b}
+}
+
+func TestWizardPayment(t *testing.T) {
+	_, mux := newHTTP(t)
+	doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"supersecret"}`, nil, "")
+	lr := doJSON(t, mux, "POST", "/admin/api/login", `{"username":"admin","password":"supersecret"}`, nil, "")
+	var csrf string
+	for _, c := range lr.Cookies {
+		if c.Name == csrfCookie {
+			csrf = c.Value
+		}
+	}
+
+	// 未配收款、未跳过 → needed=true。
+	r := doJSON(t, mux, "GET", "/admin/api/wizard/payment", "", lr.Cookies, "")
+	if r.StatusCode != http.StatusOK || !bytes.Contains(r.Body, []byte(`"needed":true`)) {
+		t.Fatalf("初始应 needed=true: %d %s", r.StatusCode, r.Body)
+	}
+	// 跳过（写操作需 CSRF）。
+	s := doJSON(t, mux, "POST", "/admin/api/wizard/payment/skip", "", lr.Cookies, csrf)
+	if s.StatusCode != http.StatusOK {
+		t.Fatalf("skip 应 200: %d %s", s.StatusCode, s.Body)
+	}
+	// 跳过后 → needed=false。
+	r2 := doJSON(t, mux, "GET", "/admin/api/wizard/payment", "", lr.Cookies, "")
+	if !bytes.Contains(r2.Body, []byte(`"needed":false`)) {
+		t.Fatalf("跳过后应 needed=false: %s", r2.Body)
+	}
+	// skip 缺 CSRF → 403。
+	if bad := doJSON(t, mux, "POST", "/admin/api/wizard/payment/skip", "", lr.Cookies, ""); bad.StatusCode != http.StatusForbidden {
+		t.Fatalf("缺 CSRF 应 403，得 %d", bad.StatusCode)
+	}
 }
 
 func TestHTTPSetupLoginMeLogout(t *testing.T) {
@@ -372,6 +498,54 @@ func TestHTTPMediaUpload(t *testing.T) {
 	// 删除
 	if dr := doJSON(t, mux, "DELETE", "/admin/api/media/"+lst.Media[0].PublicID, "", auth, csrf); dr.StatusCode != http.StatusOK {
 		t.Fatalf("删图 = %d，期望 200", dr.StatusCode)
+	}
+}
+
+func TestHTTPMarkets(t *testing.T) {
+	_, mux := newHTTP(t)
+	sess, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+
+	resp := doJSON(t, mux, "GET", "/admin/api/markets", "", auth, "")
+	var ml struct {
+		Markets []struct {
+			Code      string `json:"code"`
+			Available bool   `json:"available"`
+		} `json:"markets"`
+	}
+	_ = json.Unmarshal(resp.Body, &ml)
+	var hasUS, hasSoon bool
+	for _, m := range ml.Markets {
+		if m.Code == "US" && m.Available {
+			hasUS = true
+		}
+		if !m.Available {
+			hasSoon = true
+		}
+	}
+	if !hasUS || !hasSoon {
+		t.Fatalf("市场列表异常: %+v", ml.Markets)
+	}
+
+	resp = doJSON(t, mux, "GET", "/admin/api/settings/market", "", auth, "")
+	var cur struct {
+		Configured bool `json:"configured"`
+	}
+	_ = json.Unmarshal(resp.Body, &cur)
+	if cur.Configured {
+		t.Fatal("初始应未配置市场")
+	}
+
+	if r := doJSON(t, mux, "PUT", "/admin/api/settings/market", `{"code":"MENA"}`, auth, csrf); r.StatusCode != http.StatusConflict {
+		t.Fatalf("选即将上线市场 = %d，期望 409", r.StatusCode)
+	}
+	if r := doJSON(t, mux, "PUT", "/admin/api/settings/market", `{"code":"US"}`, auth, csrf); r.StatusCode != http.StatusOK {
+		t.Fatalf("选美国 = %d，期望 200", r.StatusCode)
+	}
+	resp = doJSON(t, mux, "GET", "/admin/api/settings/market", "", auth, "")
+	_ = json.Unmarshal(resp.Body, &cur)
+	if !cur.Configured {
+		t.Fatal("选定后应为已配置")
 	}
 }
 

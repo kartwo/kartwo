@@ -15,13 +15,72 @@ import (
 	"testing"
 
 	"github.com/kartwo/kartwo/internal/cart"
-	"github.com/kartwo/kartwo/internal/order"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/migrate"
+	"github.com/kartwo/kartwo/internal/order"
+	"github.com/kartwo/kartwo/internal/payment"
+	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/migrations"
 
 	_ "modernc.org/sqlite"
 )
+
+// fakeGateway 是 PaymentGateway 的测试替身。
+type fakeGateway struct {
+	methods []string
+	url     string
+}
+
+func (f fakeGateway) AvailableMethods(context.Context) []string { return f.methods }
+func (f fakeGateway) StartCheckout(context.Context, string, payment.OrderForPayment) (string, error) {
+	return f.url, nil
+}
+func (f fakeGateway) CapturePayPal(context.Context, string) (string, error) { return "", nil }
+
+func TestOrderPayPendingOnly(t *testing.T) {
+	sf, _, db := setup(t)
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `INSERT INTO customer (public_id,email,name) VALUES ('c1','a@b.com','A')`); err != nil {
+		t.Fatal(err)
+	}
+	var cid int64
+	if err := db.QueryRowContext(ctx, `SELECT id FROM customer WHERE public_id='c1'`).Scan(&cid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO "order" (public_id,customer_id,status,email,ship_name,ship_address,currency,subtotal_cents,total_cents) VALUES ('ORD1',?,'pending','a@b.com','A','addr','USD',9900,9900)`, cid); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db),
+		fakeGateway{methods: []string{"stripe"}, url: "https://gw/pay"}, "Shop", "https://shop", false)
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	pay := func() (int, string) {
+		req := httptest.NewRequest("POST", "/order/ORD1/pay", strings.NewReader("payment_method=stripe"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec.Code, rec.Header().Get("Location")
+	}
+
+	// pending → 跳网关。
+	if code, loc := pay(); code != http.StatusSeeOther || loc != "https://gw/pay" {
+		t.Fatalf("pending 应跳网关，得 %d %s", code, loc)
+	}
+	// 订单页应渲染「Pay now」。
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/order/ORD1", nil))
+	if !strings.Contains(rec.Body.String(), "Pay now") {
+		t.Fatal("未付订单页应有 Pay now 按钮")
+	}
+	// 标记已付 → 去支付被拒（跳回订单页，不重复收款）。
+	if _, err := db.ExecContext(ctx, `UPDATE "order" SET status='paid' WHERE public_id='ORD1'`); err != nil {
+		t.Fatal(err)
+	}
+	if code, loc := pay(); code != http.StatusSeeOther || loc != "/order/ORD1" {
+		t.Fatalf("已付不应再支付，应跳订单页，得 %d %s", code, loc)
+	}
+}
 
 func setup(t *testing.T) (*Service, *catalog.Service, *sql.DB) {
 	t.Helper()
@@ -40,7 +99,7 @@ func setup(t *testing.T) (*Service, *catalog.Service, *sql.DB) {
 func activeTee(slug string) catalog.ProductInput {
 	return catalog.ProductInput{
 		Title: "T恤", Slug: slug, Status: "active",
-		Options:  []catalog.OptionInput{{Name: "尺码", Values: []string{"S", "M"}}},
+		Options: []catalog.OptionInput{{Name: "尺码", Values: []string{"S", "M"}}},
 		Variants: []catalog.VariantInput{
 			{PriceCents: 9900, Quantity: 5, Selections: []catalog.Selection{{Option: "尺码", Value: "S"}}},
 			{PriceCents: 12900, Quantity: 0, Selections: []catalog.Selection{{Option: "尺码", Value: "M"}}},
@@ -102,7 +161,7 @@ func newHTTP(t *testing.T) (*HTTP, http.Handler) {
 	if _, err := cat.CreateProduct(context.Background(), activeTee("tee")); err != nil {
 		t.Fatal(err)
 	}
-	h := NewHTTP(sf, cart.New(db), order.New(db, "CNY"), "测试店", "CNY", "https://shop.example", false)
+	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db), nil, "测试店", "https://shop.example", false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux

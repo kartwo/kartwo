@@ -1,13 +1,13 @@
 {{define "content"}}
-<h1>全部商品</h1>
-{{if not .Items}}<p class="muted">店铺还没有上架商品。</p>{{end}}
+<h1>Shop</h1>
+{{if not .Items}}<p class="muted">No products available yet.</p>{{end}}
 <div class="grid">
   {{range .Items}}
   <a class="card" href="/p/{{.Slug}}">
     {{if .ThumbURL}}<img class="ph" src="{{.ThumbURL}}" alt="{{.Title}}" loading="lazy" width="300" height="300" />{{else}}<span class="ph"></span>{{end}}
     <div class="body">
       <div class="t">{{.Title}}</div>
-      <div class="price">{{money .FromCents}} 起</div>
+      <div class="price">From {{call $.Money .FromCents}}</div>
     </div>
   </a>
   {{end}}

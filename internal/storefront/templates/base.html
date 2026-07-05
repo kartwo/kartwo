@@ -1,6 +1,6 @@
 {{define "base"}}<!DOCTYPE html>
-<!-- Kartwo 店面 / Storefront. 作者：仗键天涯(daxing) 3442535897@qq.com -->
-<html lang="zh-CN">
+<!-- Kartwo 店面 / Storefront (v1 默认英文). 作者：仗键天涯(daxing) 3442535897@qq.com -->
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -61,10 +61,10 @@
 </head>
 <body>
   <header class="site"><div class="wrap"><a class="brand" href="/">{{.ShopName}}</a>
-    <nav><a href="/">全部商品</a><a href="/cart" class="cart-link">购物车<span class="cart-badge" data-cart-count></span></a></nav>
+    <nav><a href="/">Shop</a><a href="/cart" class="cart-link">Cart<span class="cart-badge" data-cart-count></span></a></nav>
   </div></header>
   <main><div class="wrap">{{template "content" .}}</div></main>
-  <footer class="site"><div class="wrap">由 Kartwo 驱动 · {{.ShopName}}</div></footer>
+  <footer class="site"><div class="wrap">Powered by Kartwo · {{.ShopName}}</div></footer>
   <script src="/static/cart.js" defer></script>
 </body>
 </html>{{end}}

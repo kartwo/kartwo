@@ -16,6 +16,7 @@ import (
 	"github.com/kartwo/kartwo/internal/cart"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/migrate"
+	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/migrations"
 
 	_ "modernc.org/sqlite"
@@ -32,7 +33,7 @@ func setup(t *testing.T) (*sql.DB, *Service, *cart.Service, *catalog.Service) {
 	if _, err := migrate.Run(context.Background(), db, migrations.FS); err != nil {
 		t.Fatal(err)
 	}
-	return db, New(db, "CNY"), cart.New(db), catalog.New(db)
+	return db, New(db, settings.New(db)), cart.New(db), catalog.New(db)
 }
 
 // seedVariant 建一个单变体商品，库存 stock，返回变体 public_id。

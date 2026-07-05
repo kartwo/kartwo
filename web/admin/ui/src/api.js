@@ -52,6 +52,19 @@ export const api = {
   deleteProduct: (id) => request('DELETE', '/products/' + id),
   setInventory: (variantId, quantity) => request('PATCH', '/variants/' + variantId + '/inventory', { quantity }),
 
+  markets: () => request('GET', '/markets'),
+  getMarket: () => request('GET', '/settings/market'),
+  setMarket: (code) => request('PUT', '/settings/market', { code }),
+
+  getPayment: () => request('GET', '/settings/payment'),
+  setPayment: (payload) => request('PUT', '/settings/payment', payload),
+  wizardPayment: () => request('GET', '/wizard/payment'),
+  wizardPaymentSkip: () => request('POST', '/wizard/payment/skip'),
+
+  listOrders: () => request('GET', '/orders'),
+  getOrder: (id) => request('GET', '/orders/' + id),
+  refundOrder: (id) => request('POST', '/orders/' + id + '/refund'),
+
   listMedia: (productId) => request('GET', '/products/' + productId + '/media'),
   deleteMedia: (mediaId) => request('DELETE', '/media/' + mediaId),
   uploadMedia: (productId, file) => {

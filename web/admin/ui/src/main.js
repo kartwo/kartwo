@@ -6,6 +6,10 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import App from './App.vue'
 import ProductList from './views/ProductList.vue'
 import ProductEdit from './views/ProductEdit.vue'
+import MarketSelect from './views/MarketSelect.vue'
+import PaymentSettings from './views/PaymentSettings.vue'
+import OrderList from './views/OrderList.vue'
+import OrderDetail from './views/OrderDetail.vue'
 import './style.css'
 
 const router = createRouter({
@@ -15,6 +19,10 @@ const router = createRouter({
     { path: '/products', component: ProductList },
     { path: '/products/new', component: ProductEdit },
     { path: '/products/:id', component: ProductEdit, props: true },
+    { path: '/market', component: MarketSelect },
+    { path: '/payment', component: PaymentSettings },
+    { path: '/orders', component: OrderList },
+    { path: '/orders/:id', component: OrderDetail, props: true },
   ],
 })
 

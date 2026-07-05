@@ -1,33 +1,55 @@
 {{define "content"}}
 {{$o := .Order}}
-<h1>订单已提交 ✓</h1>
-<p class="muted">感谢下单！订单号 <strong>{{$o.PublicID}}</strong>，状态：{{$o.Status}}（待付款，在线支付将在后续启用）。</p>
+{{if eq $o.Status "paid"}}<h1>Payment received ✓</h1>
+{{else if eq $o.Status "refunded"}}<h1>Order refunded</h1>
+{{else}}<h1>Order placed ✓</h1>{{end}}
+<p class="muted">Order <strong>{{$o.PublicID}}</strong> — status: {{$o.Status}}.</p>
+
+{{if eq $o.Status "pending"}}
+<div class="panel" style="border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin:1rem 0">
+  <strong>This order isn't paid yet.</strong>
+  <p class="muted" style="font-size:.9rem;margin:.3rem 0 .6rem">Complete payment to confirm your order.</p>
+  {{if .Methods}}
+  <form method="post" action="/order/{{$o.PublicID}}/pay">
+    {{if gt (len .Methods) 1}}
+    {{range $i, $m := .Methods}}
+    <label style="display:block;font-weight:normal">
+      <input type="radio" name="payment_method" value="{{$m}}"{{if eq $i 0}} checked{{end}} />
+      {{if eq $m "stripe"}}Credit / debit card{{else if eq $m "paypal"}}PayPal{{else}}{{$m}}{{end}}
+    </label>
+    {{end}}
+    {{else}}<input type="hidden" name="payment_method" value="{{index .Methods 0}}" />{{end}}
+    <button class="btn" type="submit" style="margin-top:.5rem">Pay now</button>
+  </form>
+  {{else}}<p class="muted" style="font-size:.85rem">Online payment is being set up. Please check back soon.</p>{{end}}
+</div>
+{{end}}
 
 <div class="detail">
   <div>
-    <h3>订单明细</h3>
+    <h3>Order details</h3>
     <table class="cart-table">
-      <thead><tr><th>商品</th><th>规格</th><th>单价</th><th>数量</th><th>小计</th></tr></thead>
+      <thead><tr><th>Product</th><th>Options</th><th>Price</th><th>Qty</th><th>Subtotal</th></tr></thead>
       <tbody>
         {{range $o.Lines}}
         <tr>
           <td>{{.Title}}</td>
           <td class="muted">{{.Spec}}</td>
-          <td>{{money .UnitCents}}</td>
+          <td>{{call $.Money .UnitCents}}</td>
           <td>{{.Quantity}}</td>
-          <td>{{money .LineCents}}</td>
+          <td>{{call $.Money .LineCents}}</td>
         </tr>
         {{end}}
       </tbody>
     </table>
-    <div class="cart-foot"><div class="total">合计：<strong>{{money $o.TotalCents}}</strong></div></div>
+    <div class="cart-foot"><div class="total">Total: <strong>{{call $.Money $o.TotalCents}}</strong></div></div>
   </div>
   <div>
-    <h3>收货信息</h3>
+    <h3>Shipping details</h3>
     <p>{{$o.ShipName}}{{if $o.ShipPhone}} · {{$o.ShipPhone}}{{end}}<br>
     {{$o.Email}}<br>
     <span style="white-space:pre-wrap">{{$o.ShipAddress}}</span>{{if $o.ShipCountry}}<br>{{$o.ShipCountry}}{{end}}</p>
-    <p><a href="/">← 继续购物</a></p>
+    <p><a href="/">← Continue shopping</a></p>
   </div>
 </div>
 {{end}}

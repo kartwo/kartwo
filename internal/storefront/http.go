@@ -14,9 +14,20 @@ import (
 	"net/http"
 	"strings"
 
+	"context"
+
 	"github.com/kartwo/kartwo/internal/cart"
 	"github.com/kartwo/kartwo/internal/order"
+	"github.com/kartwo/kartwo/internal/payment"
+	"github.com/kartwo/kartwo/internal/settings"
 )
+
+// PaymentGateway 收款网关（由 internal/payment 实现）。nil 表示未接入收款，结算退化为「下单未付」。
+type PaymentGateway interface {
+	AvailableMethods(ctx context.Context) []string
+	StartCheckout(ctx context.Context, provider string, ord payment.OrderForPayment) (string, error)
+	CapturePayPal(ctx context.Context, paypalOrderID string) (string, error)
+}
 
 //go:embed templates/*.html static/*
 var tmplFS embed.FS
@@ -26,8 +37,9 @@ type HTTP struct {
 	svc       *Service
 	cart      *cart.Service
 	order     *order.Service
+	settings  *settings.Service
+	pay       PaymentGateway // 可为 nil（未接入收款）
 	shopName  string
-	currency  string
 	baseURL   string // 配置基址；空则按请求推导
 	secure    bool   // prod 下 cookie 加 Secure
 	homeTmpl  *template.Template
@@ -37,14 +49,13 @@ type HTTP struct {
 	orderTmpl *template.Template
 }
 
-// NewHTTP 构建店面 HTTP 层。
-func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, shopName, currency, baseURL string, secure bool) *HTTP {
-	funcs := template.FuncMap{"money": moneyFunc(currency)}
+// NewHTTP 构建店面 HTTP 层。货币按当前主攻市场逐请求解析（向导切市场即时生效）。
+func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, settingsSvc *settings.Service, pay PaymentGateway, shopName, baseURL string, secure bool) *HTTP {
 	parse := func(page string) *template.Template {
-		return template.Must(template.New("").Funcs(funcs).ParseFS(tmplFS, "templates/base.html", page))
+		return template.Must(template.New("").ParseFS(tmplFS, "templates/base.html", page))
 	}
 	return &HTTP{
-		svc: svc, cart: cartSvc, order: orderSvc, shopName: shopName, currency: currency,
+		svc: svc, cart: cartSvc, order: orderSvc, settings: settingsSvc, pay: pay, shopName: shopName,
 		baseURL: strings.TrimRight(baseURL, "/"), secure: secure,
 		homeTmpl:  parse("templates/home.html"),
 		prodTmpl:  parse("templates/product.html"),
@@ -53,6 +64,12 @@ func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, shopN
 		orderTmpl: parse("templates/order.html"),
 	}
 }
+
+// cur 解析当前请求的货币代码（按主攻市场）。
+func (h *HTTP) cur(ctx context.Context) string { return h.settings.Currency(ctx) }
+
+// money 返回当前请求的金额格式化器（供模板 {{call $.Money .Cents}}）。
+func (h *HTTP) money(ctx context.Context) func(int64) string { return moneyFunc(h.cur(ctx)) }
 
 // Register 注册店面路由（公开，无鉴权）。
 func (h *HTTP) Register(mux *http.ServeMux) {
@@ -71,6 +88,8 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /checkout", h.checkoutPage)
 	mux.HandleFunc("POST /checkout", h.checkoutSubmit)
 	mux.HandleFunc("GET /order/{id}", h.orderPage)
+	mux.HandleFunc("POST /order/{id}/pay", h.orderPay)   // 未付订单「去支付」重新发起
+	mux.HandleFunc("GET /paypal/return", h.paypalReturn) // PayPal 审批后跳回做同步 capture
 }
 
 type seo struct {
@@ -96,7 +115,7 @@ func (h *HTTP) base(r *http.Request) string {
 func (h *HTTP) home(w http.ResponseWriter, r *http.Request) {
 	items, err := h.svc.ListCatalog(r.Context())
 	if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
 	canonical := h.base(r) + "/"
@@ -106,8 +125,9 @@ func (h *HTTP) home(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{
 		"ShopName": h.shopName,
 		"Items":    items,
+		"Money":    h.money(r.Context()),
 		"SEO": seo{
-			Title: h.shopName + " — 全部商品", Description: h.shopName + " 的商品目录",
+			Title: h.shopName + " — Shop", Description: h.shopName + " catalog",
 			Canonical: canonical, OGType: "website", JSONLD: jsonLD(ld),
 		},
 	}
@@ -121,7 +141,7 @@ func (h *HTTP) product(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	} else if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
 	canonical := h.base(r) + "/p/" + p.Slug
@@ -132,24 +152,25 @@ func (h *HTTP) product(w http.ResponseWriter, r *http.Request) {
 	data := map[string]any{
 		"ShopName": h.shopName,
 		"Product":  p,
+		"Money":    h.money(r.Context()),
 		"SEO": seo{
 			Title:       p.Title + " — " + h.shopName,
 			Description: seoDescription(p.Description, p.Title),
 			Canonical:   canonical, OGType: "product", OGImage: ogImage,
-			JSONLD: jsonLD(h.productLD(p, canonical, ogImage)),
+			JSONLD: jsonLD(h.productLD(r.Context(), p, canonical, ogImage)),
 		},
 	}
 	h.render(w, h.prodTmpl, data)
 }
 
 // productLD 构建 schema.org/Product 结构化数据（含 offers 价格/库存）。
-func (h *HTTP) productLD(p *ProductPage, canonical, image string) map[string]any {
+func (h *HTTP) productLD(ctx context.Context, p *ProductPage, canonical, image string) map[string]any {
 	avail := "https://schema.org/OutOfStock"
 	if p.InStock {
 		avail = "https://schema.org/InStock"
 	}
 	offers := map[string]any{
-		"@type": "AggregateOffer", "priceCurrency": h.currency,
+		"@type": "AggregateOffer", "priceCurrency": h.cur(ctx),
 		"lowPrice": cents2str(p.MinCents), "highPrice": cents2str(p.MaxCents),
 		"offerCount": len(p.Variants), "availability": avail, "url": canonical,
 	}
@@ -167,7 +188,7 @@ func (h *HTTP) productLD(p *ProductPage, canonical, image string) map[string]any
 func (h *HTTP) sitemap(w http.ResponseWriter, r *http.Request) {
 	items, err := h.svc.ListCatalog(r.Context())
 	if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
 	base := h.base(r)
@@ -191,7 +212,7 @@ func (h *HTTP) robots(w http.ResponseWriter, r *http.Request) {
 func (h *HTTP) render(w http.ResponseWriter, t *template.Template, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.ExecuteTemplate(w, "base", data); err != nil {
-		http.Error(w, "渲染失败", http.StatusInternalServerError)
+		http.Error(w, "Render error", http.StatusInternalServerError)
 	}
 }
 

@@ -50,7 +50,38 @@
 | 2026-06-18 | **仓库 LICENSE 文件采用 MIT**（署名 2026 仗键天涯(daxing)），覆盖 GitHub 自动生成的 Apache-2.0 | 与"内核 MIT、Open Core"一致；MIT 最宽松主流，利开源引流+卖企业 | 全局/许可 |
 | 2026-06-19 | **主攻市场 = 可扩展"市场框架"，v1 只点亮美国** | 支付/货币/语言/RTL/合规皆按市场配置；加新市场=插模块不返工；美国用 Stripe/PayPal/USD/en，无 RTL/i18n，销售税占位 | 全局/市场（M3） |
 | 2026-06-19 | 向导加「选择主攻市场」步骤，文案大白话讲清 为何选/选了启用什么/可后调；不可用市场标"即将上线" | 非技术商家也懂、降低选择压力、正向信号 | 向导/市场（M3） |
+| 2026-06-20 | **v1 店面(storefront)默认界面文案=英文**（因 v1 只点亮美国，面向美国顾客）；**完整多语言框架(商家自由切换/添加)仍在 v1.1**；Admin 后台保持中文 | 中文店面美国顾客看不懂=北极星打折；UI 文案改英文是小改、多语言框架才是大件后置 | 店面/i18n（v1 英文，框架 v1.1） |
 | 2026-06-19 | 美国销售税 nexus v1 按简单常量/占位，完整税务后置 | 税务复杂、不在 M3 钻进去 | 合规/税务（v1+ 后置） |
+| 2026-06-20 | **Stripe 集成用瘦 HTTP 客户端直连 API，不引官方 SDK** | 契合「单静态二进制/默认无外部依赖」；验签是安全命门，手写 raw-byte HMAC 比黑盒 SDK 更可审计、可单测；建会话/退款仅表单 POST | 支付（M3.2） |
+| 2026-06-20 | **KEK-at-webhook = 方案 A**：登录解锁时把收款密钥解密入进程级内存缓存（绑定 KEK 金库：登录载入/登出销毁/改密钥即时重载），绝不落盘 | 不破坏「密钥加密存」铁律、对单租户自部署够用；代价=冷启动后需登录一次激活收款（诊断页兜底） | 支付/安全（M3.2） |
+| 2026-06-20 | **密钥锁定时 Webhook 一律返回非 2xx（503）交 Stripe 重投；不自建事件 spool、不存未验签 payload** | 漏投全交网关重投机制兜底；杜绝「存了未验签原始数据」的攻击面与复杂度 | 支付/安全（M3.2） |
+| 2026-06-20 | **Webhook 回调幂等：去重 INSERT（(provider,event_id) 唯一）与订单 pending→paid 在同一事务**（冲突即幂等返 2xx；pending 条件更新） | 杜绝「已标记已见过但未处理」丢单；状态机条件更新天然防重复副作用 | 支付/可靠性（M3.2） |
+| 2026-06-20 | **Webhook 双校验**：①对原始字节 HMAC-SHA256 验签+时间戳容差防重放 ②比对订单号+金额+币种与库内订单一致；②前必先确认 session.payment_status=='paid'（不假设事件类型即已付） | 拒伪造/张冠李戴/篡改金额；按 ARCHITECTURE §9/§11 | 支付/安全（M3.2） |
+| 2026-06-20 | **whsec 作后台收款页普通可编辑配置项**，明确区分本地 CLI 转发密钥与正式 Dashboard 端点密钥，均不写死 | 本地测试(stripe listen)与正式端点 whsec 不同，需可随时替换 | 支付（M3.2） |
+| 2026-06-21 | **密钥来源=混合**：加密存后台为默认/主来源(§14 不变)，新增**可选 env 覆盖旁路**(`STRIPE_SECRET_KEY` 等)，优先级 env>加密库、**覆盖非双写**(不读库内值)、env 模式收款页只读、无锁定态、env 值不落库不进日志 | 给技术运维/本地联调一条 12-factor 路；普通商家仍走 UI 保北极星；单一来源杜绝跨源歧义；§14 仍权威、不收回任何决策 | 支付/安全（M3.2 增量） |
+| 2026-06-21 | 上一条「密钥纪律=一律从 env 读」系表述错误，**已更正**：保密纪律(不硬编码/不进日志git/不回贴对话)不变，但密钥来源仍以加密存后台为默认 | 避免误拆已实现的加密存+方案A 设计 | 支付（澄清） |
+| 2026-06-21 | **env 半设(有 secret 缺 whsec)启动 WARN 且绝不回退库取 whsec**；**env LIVE 密钥启动 WARN**；mode 推断按 `_live_` 段(兼容受限密钥 rk_) | 杜绝半回退歧义、防误上 LIVE、兼容 Stripe 推荐的 rk_ 受限密钥 | 支付/安全（M3.2 护栏） |
+| 2026-06-21 | 经 `/stripe:stripe-best-practices` 复核：webhook 双校验**无偏离**官方推荐；Checkout Sessions(非 Charges)、不传 `payment_method_types`(启用动态支付方式)、推荐 rk_ 已采纳；IP allowlist 留 M5 硬化 | 锁定合规、记录有意未做项 | 支付（M3.2 复核） |
+| 2026-06-22 | **M3.3 拆 3 小片**：3.3a 退款(Stripe) / 3.3b PayPal 沙箱 / 3.3c 向导支付步骤，各自独立验收 | 原 M3.3 三件大事超「十几分钟可测完」铁律 | 节奏（M3.3） |
+| 2026-06-22 | **退款 v1 仅整单全额退款**，订单转 `refunded`；保留 `refund` 记录表结构，部分退款后续易加 | 落地最简、验收最快，不镀金 | 退款（M3.3a） |
+| 2026-06-22 | **退款触发=新建最小后台订单页（列表+详情+退款按钮）**，鉴权+CSRF+对象级权限 | 后台此前无订单页，退款需人工入口 | 后台/退款（M3.3a） |
+| 2026-06-22 | **退款依赖持久化 Stripe payment_intent**：在 `checkout.session.completed` 时存 payment_intent+provider 到订单/支付记录（退款退到 intent 非 session）；退款 webhook(`charge.refunded`)复用「双校验+同事务幂等」同步状态 | 不存 intent 则无法退款；状态同步防重复 | 退款（M3.3a） |
+| 2026-06-22 | **PayPal 沙箱 webhook 本地用 webhook 模拟器验收**；真实端到端(顾客批准→真 webhook)推迟 M4(有 HTTPS/域名后) | PayPal 无 stripe listen 等价物、本地无公网 URL；不引隧道依赖(默认无外部依赖) | PayPal/验收（M3.3b/M4） |
+| 2026-06-22 | **PayPal 与 Stripe 对称**：env 覆盖旁路(`PAYPAL_CLIENT_ID/SECRET`)、密钥加密存、hosted 审批+intent=CAPTURE(不做两段授权)、退款整数分、同事务幂等 | 一致性、北极星代码最少 | PayPal（M3.3b） |
+| 2026-06-22 | 退款**先调网关、成功后才落库**(写 refund 记录 + paid→refunded 同事务)；`charge.refunded` webhook **只同步订单状态、不写退款记录**(记录由手动退款路径写，UNIQUE(provider_refund_id) 兜底) | 避免「库里已退钱没退」；避免跨源退款记录去重复杂度 | 退款（M3.3a 实现） |
+| 2026-06-23 | **M3.3b 再拆 2 片**：3.3b-1 PayPal 付款(建单+审批+capture+结算支付方式选择UI，沙箱真跑付款) / 3.3b-2 PayPal 退款+webhook(模拟器验收) | 单片偏大、守「十几分钟可测完」铁律 | 节奏（M3.3b） |
+| 2026-06-23 | **PayPal「已付」=同步 capture**：顾客批准跳回后我方主动 capture，响应 COMPLETED 即 paid(存 capture_id 作 payment_ref)；webhook 仅幂等补充同步 | capture 是 PayPal 权威同步信号；不卡在 webhook 验签限制上、happy-path 最稳 | PayPal（M3.3b-1） |
+| 2026-06-23 | PayPal 金额 v1 仅 2 位小数币种(USD)：整数分↔小数字符串转换；多位/零位小数币种后置 | PayPal 用小数字符串、与内核整数分需转换；控范围 | PayPal（M3.3b-1） |
+| 2026-06-23 | PayPal 全额退款=capture refund **空 body**(让 PayPal 退全部已捕获额)，忽略金额参数；复用既有退款编排，后台退款按钮对 PayPal 单即生效 | v1 仅全额、最简；无需传金额/币种 | PayPal（M3.3b-2） |
+| 2026-06-23 | PayPal webhook **不走通用 VerifyWebhook 接口**(它单头、PayPal 需多头)，单独 `VerifyWebhookPayPal`(在线 verify-webhook-signature + webhook_id)；webhook_id 作明文配置项(+env PAYPAL_WEBHOOK_ID)；模拟器验收、真实验签 M4 | PayPal 验签是在线多头调用、与 Stripe 本地 HMAC 异构；模拟器过不了真实验签 | PayPal/webhook（M3.3b-2/M4） |
+| 2026-06-23 | PayPal webhook 仅作**对账备份**：COMPLETED 备份改已付(happy-path 靠同步 capture)、REFUNDED 同步已退款(按 links 取 capture id)；不写退款记录(同 Stripe) | 付款/退款 happy-path 不依赖 webhook，webhook 只兜底外部改动 | PayPal/webhook（M3.3b-2） |
+| 2026-06-24 | 向导「配置收款」步骤：needed=未配任何密钥 且 未跳过(`wizard.payment_skipped` 持久化)；配好或跳过后不再打扰，PaymentWizard 复用收款页组件 | 北极星引导但不强制；跳过持久化避免每次登录被烦 | 向导（M3.3c） |
+| 2026-06-24 | 未付订单页「去支付」：**仅 pending 可重新发起**收款(复用结算跳转/方法选择)，已付/已退订单拒绝(防重复收款) | 顾客中途取消/弃单后能重付；状态守卫防重复扣款 | 店面/订单（M3.3c） |
+| 2026-06-21 | **暂不钉 Stripe-Version，触发点=发版硬化(M4 前后)，修法=client 初始化显式钉死 API 版本**(请求加 `Stripe-Version` 头)。理由：Kartwo 分发到**不可控的商家账号**，各账号 Dashboard 默认 API 版本不同，不钉则同一份二进制在不同商家上行为可能漂移；M3.2 只读稳定字段(id/type/client_reference_id/payment_status/amount_total/currency)故当前安全。**仅记录，暂不改代码** | 可复现/抗版本漂移 vs 控范围 | 支付/硬化（M4 前后落地） |
+| 2026-06-25 | **修复 PayPal capture 同步对账 bug**：capture 响应的 `custom_id` 在 `purchase_units[].payments.captures[].custom_id`（capture 对象）而非 purchase_unit 顶层；原解析只读顶层 → custom_id 恒空 → 对账判 mismatch → **钱已 capture 但订单不转 paid**（人工验收实测复现）。修法：解析器顶层缺失时回退取 capture 对象的 custom_id（两形态均覆盖）。同时给整条跳回/capture 链路补结构化日志（不记密钥），修正单测 mock 还原真实结构(custom_id 在 capture 对象)+新增顶层兼容护栏，红→绿坐实 | 静默失败+钱货不一致是支付严重 bug；测试 mock 失真才漏过 | 支付/PayPal（M3.3b-1） |
+| 2026-07-05 | **观测性对齐**：退款成功路（手动+webhook 同步）与 Stripe webhook 落 paid 路补 INFO 结构化日志（provider/order_ref/refund_id 或 payment_ref/amount_cents，不记密钥）。此前 Stripe 成功路/退款成功路无 INFO，排障只能查 DB | 支付关键状态变更需可观测；Stripe/PayPal 两路对称 | 支付/观测性（M3 收官） |
+| 2026-07-05 | **v0.3.0 前发现并修复 GO-2026-5061**：`golang.org/x/image` WebP 解码 panic DoS，govulncheck 判定被本仓调用（media 上传解码路径，管理员鉴权面、真实危害低）。**升 v0.42.0→v0.43.0**（纯补丁 bump），门禁复绿。**低危+零成本=直接修，不拖 M4、不开例外**——破例会侵蚀「无高危方可合主干」门禁纪律的先例价值 | 安全门禁是硬约束；机械补丁无理由拖延 | 安全/依赖（M3 收官） |
+| 2026-07-05 | **验收数据教训**：M3 人工验收库曾放 `/tmp/kartwo_m3final_data`，被系统清理导致整库丢失（管理员+市场+凭证+订单+退款）不可恢复。此后**验收数据一律用持久路径 `~/kartwo-data`，严禁 /tmp、/private/tmp、/var/folders**；二进制也构建到项目内 `.bin/` 而非 /tmp。细则见 `docs/test/acceptance-data-dir.md`。验收沙箱库内订单（含弃单 `019f32bd`，TLS 抖动中断的 pending 残留）均为**测试夹具、非正式账目** | 易失目录放验收数据已致一次真实数据丢失 | 运维/验收流程 |
 
 ---
 

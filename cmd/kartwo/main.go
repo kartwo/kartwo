@@ -28,7 +28,9 @@ import (
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
 	"github.com/kartwo/kartwo/internal/order"
+	"github.com/kartwo/kartwo/internal/payment"
 	"github.com/kartwo/kartwo/internal/server"
+	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/internal/store"
 	"github.com/kartwo/kartwo/internal/storefront"
 	"github.com/kartwo/kartwo/migrations"
@@ -169,9 +171,36 @@ func runServe(logger *slog.Logger) error {
 	defer func() { _ = st.Close() }()
 
 	mediaSvc := newMediaService(cfg, st)
-	adminHTTP := admin.NewHTTP(admin.New(st.DB), catalog.New(st.DB), mediaSvc, cfg.Env == "prod")
-	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), order.New(st.DB, cfg.Currency), cfg.ShopName, cfg.Currency, cfg.BaseURL, cfg.Env == "prod")
-	srv := server.New(cfg, st, Version, adminHTTP, storeHTTP)
+	settingsSvc := settings.New(st.DB)
+
+	// 收款密钥内存缓存（绑定 KEK 金库：登录解锁/登出销毁）+ 支付编排服务。
+	payCache := payment.NewKeyCache(settingsSvc)
+	adminSvc := admin.New(st.DB)
+	adminSvc.SetPaymentKeys(payCache)
+	paySvc := payment.NewService(st.DB, settingsSvc, payCache)
+	// 仅记录密钥「来源」，绝不打印任何密钥值。
+	payStatus := payCache.Status()
+	logger.Info("收款密钥来源", "stripe", payStatus.StripeSource, "stripe_mode", payStatus.StripeMode,
+		"paypal", payStatus.PayPalSource, "paypal_mode", payStatus.PayPalMode)
+	// Stripe env 半设：设了 secret 却没设 whsec —— 明确告警，且绝不回退加密库取 whsec。
+	if payStatus.StripeSource == "env" && payStatus.StripeHasSecret && !payStatus.StripeHasWebhook {
+		logger.Warn("env Stripe 密钥不完整",
+			"detail", "已设 STRIPE_SECRET_KEY 但缺 STRIPE_WEBHOOK_SECRET；Webhook 将不可用(返 503)，且不会回退加密库取 whsec",
+			"fix", "请补设 STRIPE_WEBHOOK_SECRET(由 stripe listen 现场生成)，或清空全部 STRIPE_* 改用后台加密库")
+	}
+	// LIVE 防误：env 路径无 §7 沙箱兜底，正式模式显眼告警。
+	if payStatus.StripeSource == "env" && payStatus.StripeMode == "live" {
+		logger.Warn("⚠️ Stripe 处于 LIVE 正式模式", "detail", "env 路径无沙箱兜底，将产生真实收款；请确认")
+	}
+	if payStatus.PayPalSource == "env" && payStatus.PayPalMode == "live" {
+		logger.Warn("⚠️ PayPal 处于 LIVE 正式模式", "detail", "env 路径无沙箱兜底，将产生真实收款；请确认")
+	}
+
+	orderSvc := order.New(st.DB, settingsSvc)
+	adminHTTP := admin.NewHTTP(adminSvc, catalog.New(st.DB), mediaSvc, settingsSvc, orderSvc, paySvc, cfg.Env == "prod")
+	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, cfg.ShopName, cfg.BaseURL, cfg.Env == "prod")
+	payHTTP := payment.NewHTTP(paySvc)
+	srv := server.New(cfg, st, Version, adminHTTP, storeHTTP, payHTTP)
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           srv,

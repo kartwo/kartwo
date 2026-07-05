@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/internal/store/sqlcgen"
 )
 
@@ -30,12 +31,12 @@ var (
 type Service struct {
 	db       *sql.DB
 	q        *sqlcgen.Queries
-	currency string
+	settings *settings.Service
 }
 
-// New 构造下单服务。
-func New(db *sql.DB, currency string) *Service {
-	return &Service{db: db, q: sqlcgen.New(db), currency: currency}
+// New 构造下单服务（货币按当前主攻市场解析）。
+func New(db *sql.DB, settingsSvc *settings.Service) *Service {
+	return &Service{db: db, q: sqlcgen.New(db), settings: settingsSvc}
 }
 
 // CheckoutInfo 为访客结算填写的信息。
@@ -59,18 +60,39 @@ type OrderLine struct {
 
 // Order 订单视图。
 type Order struct {
-	PublicID      string
-	Status        string
-	Email         string
-	ShipName      string
-	ShipPhone     string
-	ShipAddress   string
-	ShipCountry   string
-	Currency      string
-	SubtotalCents int64
-	TotalCents    int64
-	CreatedAt     string
-	Lines         []OrderLine
+	PublicID        string
+	Status          string
+	Email           string
+	ShipName        string
+	ShipPhone       string
+	ShipAddress     string
+	ShipCountry     string
+	Currency        string
+	SubtotalCents   int64
+	TotalCents      int64
+	PaymentProvider string
+	CreatedAt       string
+	Lines           []OrderLine
+	Refunds         []RefundView // 仅后台详情填充
+}
+
+// OrderSummary 后台订单列表项。
+type OrderSummary struct {
+	PublicID        string
+	Status          string
+	Email           string
+	Currency        string
+	TotalCents      int64
+	PaymentProvider string
+	CreatedAt       string
+}
+
+// RefundView 退款记录视图。
+type RefundView struct {
+	Provider         string
+	ProviderRefundID string
+	AmountCents      int64
+	CreatedAt        string
 }
 
 func (in CheckoutInfo) validate() error {
@@ -99,6 +121,9 @@ func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo)
 	if len(items) == 0 {
 		return "", ErrEmptyCart
 	}
+
+	// 货币在开事务前解析（事务持有唯一连接时再查会死锁）。
+	currency := s.settings.Currency(ctx)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -140,7 +165,7 @@ func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo)
 	orderID, err := q.CreateOrder(ctx, sqlcgen.CreateOrderParams{
 		PublicID: publicID, CustomerID: cust.ID, Email: info.Email,
 		ShipName: info.Name, ShipPhone: info.Phone, ShipAddress: info.Address, ShipCountry: info.Country,
-		Currency: s.currency, SubtotalCents: subtotal, TotalCents: subtotal, // v1: 税/运 = 0
+		Currency: currency, SubtotalCents: subtotal, TotalCents: subtotal, // v1: 税/运 = 0
 	})
 	if err != nil {
 		return "", fmt.Errorf("order: 建订单失败: %w", err)
@@ -187,7 +212,7 @@ func (s *Service) Get(ctx context.Context, publicID string) (*Order, error) {
 	out := &Order{
 		PublicID: o.PublicID, Status: o.Status, Email: o.Email, ShipName: o.ShipName, ShipPhone: o.ShipPhone,
 		ShipAddress: o.ShipAddress, ShipCountry: o.ShipCountry, Currency: o.Currency,
-		SubtotalCents: o.SubtotalCents, TotalCents: o.TotalCents, CreatedAt: o.CreatedAt,
+		SubtotalCents: o.SubtotalCents, TotalCents: o.TotalCents, PaymentProvider: o.PaymentProvider, CreatedAt: o.CreatedAt,
 	}
 	its, err := s.q.ListOrderItems(ctx, o.ID)
 	if err != nil {
@@ -197,6 +222,44 @@ func (s *Service) Get(ctx context.Context, publicID string) (*Order, error) {
 		out.Lines = append(out.Lines, OrderLine{
 			Title: it.ProductTitle, Spec: it.VariantLabel, SKU: it.Sku,
 			UnitCents: it.UnitCents, Quantity: it.Quantity, LineCents: it.LineCents,
+		})
+	}
+	return out, nil
+}
+
+// AdminList 返回后台订单列表（按时间倒序）。
+func (s *Service) AdminList(ctx context.Context) ([]OrderSummary, error) {
+	rows, err := s.q.ListOrdersForAdmin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("order: 列订单失败: %w", err)
+	}
+	out := make([]OrderSummary, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, OrderSummary{
+			PublicID: r.PublicID, Status: r.Status, Email: r.Email, Currency: r.Currency,
+			TotalCents: r.TotalCents, PaymentProvider: r.PaymentProvider, CreatedAt: r.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
+// AdminGet 返回后台订单详情（含行与退款记录）。不存在返回 sql.ErrNoRows。
+func (s *Service) AdminGet(ctx context.Context, publicID string) (*Order, error) {
+	out, err := s.Get(ctx, publicID)
+	if err != nil {
+		return nil, err
+	}
+	o, err := s.q.GetOrderByPublicID(ctx, publicID)
+	if err != nil {
+		return nil, fmt.Errorf("order: 取订单失败: %w", err)
+	}
+	rfs, err := s.q.ListRefundsByOrder(ctx, o.ID)
+	if err != nil {
+		return nil, fmt.Errorf("order: 列退款失败: %w", err)
+	}
+	for _, r := range rfs {
+		out.Refunds = append(out.Refunds, RefundView{
+			Provider: r.Provider, ProviderRefundID: r.ProviderRefundID, AmountCents: r.AmountCents, CreatedAt: r.CreatedAt,
 		})
 	}
 	return out, nil

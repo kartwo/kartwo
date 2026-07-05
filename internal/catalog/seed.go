@@ -37,21 +37,21 @@ func (s *Service) SeedDemo(ctx context.Context) (productID int64, created bool, 
 
 	pid, err := q.CreateProduct(ctx, sqlcgen.CreateProductParams{
 		PublicID:    uuid.Must(uuid.NewV7()).String(),
-		Title:       "演示 T 恤 / Demo Tee",
+		Title:       "Demo Tee",
 		Slug:        demoProductSlug,
-		Description: "用于演示通用双轴变体（尺码×颜色）的示例商品",
+		Description: "A sample product demonstrating two-axis variants (Size × Color).",
 		Status:      "active",
 	})
 	if err != nil {
 		return 0, false, fmt.Errorf("catalog: 建商品失败: %w", err)
 	}
 
-	// 轴 1：尺码；轴 2：颜色。两轴笛卡尔积 = 6 个变体。
-	sizeOptID, sizeValIDs, err := s.createAxis(ctx, q, pid, 0, "尺码", []string{"S", "M", "L"})
+	// 轴 1：Size；轴 2：Color。两轴笛卡尔积 = 6 个变体（演示数据用英文，店面默认英文）。
+	sizeOptID, sizeValIDs, err := s.createAxis(ctx, q, pid, 0, "Size", []string{"S", "M", "L"})
 	if err != nil {
 		return 0, false, err
 	}
-	colorOptID, colorValIDs, err := s.createAxis(ctx, q, pid, 1, "颜色", []string{"黑", "白"})
+	colorOptID, colorValIDs, err := s.createAxis(ctx, q, pid, 1, "Color", []string{"Black", "White"})
 	if err != nil {
 		return 0, false, err
 	}
@@ -87,7 +87,7 @@ func (s *Service) SeedDemo(ctx context.Context) (productID int64, created bool, 
 	// 分类：服装 / Apparel，并关联商品。
 	cid, err := q.CreateCategory(ctx, sqlcgen.CreateCategoryParams{
 		PublicID: uuid.Must(uuid.NewV7()).String(),
-		Name:     "服装 / Apparel",
+		Name:     "Apparel",
 		Slug:     "apparel",
 		ParentID: sql.NullInt64{},
 		Position: 0,

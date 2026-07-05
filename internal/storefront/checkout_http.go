@@ -8,9 +8,11 @@ package storefront
 import (
 	"database/sql"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/kartwo/kartwo/internal/order"
+	"github.com/kartwo/kartwo/internal/payment"
 )
 
 func (h *HTTP) checkoutPage(w http.ResponseWriter, r *http.Request) {
@@ -21,20 +23,26 @@ func (h *HTTP) checkoutPage(w http.ResponseWriter, r *http.Request) {
 func (h *HTTP) renderCheckout(w http.ResponseWriter, r *http.Request, errMsg string) {
 	id, err := h.cartCtx(w, r)
 	if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
 	view, err := h.cart.View(r.Context(), id)
 	if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
+	}
+	var methods []string
+	if h.pay != nil {
+		methods = h.pay.AvailableMethods(r.Context())
 	}
 	data := map[string]any{
 		"ShopName": h.shopName,
 		"Cart":     view,
 		"Error":    errMsg,
+		"Money":    h.money(r.Context()),
+		"Methods":  methods, // 可用支付方式（stripe/paypal）；>1 时结算页显示选择
 		"SEO": seo{
-			Title: "结算 — " + h.shopName, Description: "结算", Canonical: h.base(r) + "/checkout", OGType: "website",
+			Title: "Checkout — " + h.shopName, Description: "Checkout", Canonical: h.base(r) + "/checkout", OGType: "website",
 		},
 	}
 	h.render(w, h.ckoutTmpl, data)
@@ -47,7 +55,7 @@ func (h *HTTP) checkoutSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := h.cartCtx(w, r)
 	if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
 	info := order.CheckoutInfo{
@@ -61,19 +69,99 @@ func (h *HTTP) checkoutSubmit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, order.ErrEmptyCart):
-			h.renderCheckout(w, r, "购物车是空的")
+			h.renderCheckout(w, r, "Your cart is empty.")
 		case errors.Is(err, order.ErrOutOfStock):
-			h.renderCheckout(w, r, "库存不足："+err.Error())
+			h.renderCheckout(w, r, "Sorry, some items are no longer in stock. Please adjust your cart.")
 		case errors.Is(err, order.ErrInvalidInfo):
-			h.renderCheckout(w, r, "请填写完整正确的收货信息（邮箱/收货人/地址）")
+			h.renderCheckout(w, r, "Please enter a valid email, full name and shipping address.")
 		default:
-			http.Error(w, "内部错误", http.StatusInternalServerError)
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		}
 		return
 	}
 	// 下单成功：清购物车 cookie（车已转换；下次购物自动新建）。
-	http.SetCookie(w, &http.Cookie{Name: cartCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: h.secure, SameSite: http.SameSiteLaxMode})
+	h.clearCartCookie(w)
+
+	// 收款已就绪 → 发起托管收银会话并跳转网关。Stripe「已付」以 Webhook 为准；PayPal 以同步 capture 为准。
+	if h.pay != nil {
+		methods := h.pay.AvailableMethods(r.Context())
+		if len(methods) > 0 {
+			provider := h.chosenMethod(r, methods)
+			if url, perr := h.startPayment(r, publicID, provider); perr == nil {
+				http.Redirect(w, r, url, http.StatusSeeOther)
+				return
+			}
+			// 发起收款失败：落到订单页（订单为未付，可后续重试收款）。
+		}
+	}
 	http.Redirect(w, r, "/order/"+publicID, http.StatusSeeOther)
+}
+
+// chosenMethod 取顾客选的支付方式（须在可用列表内），默认第一个可用。
+func (h *HTTP) chosenMethod(r *http.Request, methods []string) string {
+	want := r.PostFormValue("payment_method")
+	for _, m := range methods {
+		if m == want {
+			return m
+		}
+	}
+	return methods[0]
+}
+
+// startPayment 用订单的权威金额/币种发起一次收款，返回网关跳转 URL。
+// PayPal 跳回我方 /paypal/return 做同步 capture；Stripe 跳回订单页（已付由 Webhook 落实）。
+func (h *HTTP) startPayment(r *http.Request, publicID, provider string) (string, error) {
+	o, err := h.order.Get(r.Context(), publicID)
+	if err != nil {
+		return "", err
+	}
+	base := h.base(r)
+	ord := payment.OrderForPayment{
+		PublicID:    publicID,
+		Email:       o.Email,
+		Currency:    o.Currency,
+		AmountCents: o.TotalCents,
+		Description: h.shopName + " — Order",
+	}
+	switch provider {
+	case "paypal":
+		ord.SuccessURL = base + "/paypal/return"
+		ord.CancelURL = base + "/order/" + publicID + "?canceled=1"
+	default: // stripe
+		ord.SuccessURL = base + "/order/" + publicID + "?paid=1"
+		ord.CancelURL = base + "/order/" + publicID + "?canceled=1"
+	}
+	return h.pay.StartCheckout(r.Context(), provider, ord)
+}
+
+// paypalReturn 顾客在 PayPal 批准后跳回：用 ?token=<paypal_order_id> 做同步 capture，成功即订单已付。
+func (h *HTTP) paypalReturn(w http.ResponseWriter, r *http.Request) {
+	ppOrderID := r.URL.Query().Get("token")
+	if ppOrderID == "" || h.pay == nil {
+		// 缺 token / 支付未启用：记下原始 query 以便定位（PayPal 是否换了参数名/未带回）。
+		slog.Warn("PayPal 跳回无法 capture：缺 token 或支付未启用",
+			"token_present", ppOrderID != "", "pay_enabled", h.pay != nil, "raw_query", r.URL.RawQuery)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	orderRef, err := h.pay.CapturePayPal(r.Context(), ppOrderID)
+	if err != nil {
+		// capture 失败/不匹配：回订单页（若能定位），订单保持 pending。
+		slog.Error("PayPal 跳回 capture 失败", "paypal_order_id", ppOrderID, "order_ref", orderRef, "err", err)
+		if orderRef != "" {
+			http.Redirect(w, r, "/order/"+orderRef+"?payment_error=1", http.StatusSeeOther)
+			return
+		}
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	slog.Info("PayPal 跳回 capture 成功，订单已付", "paypal_order_id", ppOrderID, "order_ref", orderRef)
+	http.Redirect(w, r, "/order/"+orderRef+"?paid=1", http.StatusSeeOther)
+}
+
+// clearCartCookie 清空购物车 cookie。
+func (h *HTTP) clearCartCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{Name: cartCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: h.secure, SameSite: http.SameSiteLaxMode})
 }
 
 func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
@@ -82,15 +170,56 @@ func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	} else if err != nil {
-		http.Error(w, "内部错误", http.StatusInternalServerError)
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
+	}
+	// 未付订单 + 收款就绪 → 订单页提供「去支付」入口（顾客中途取消/弃单后重新发起）。
+	var payMethods []string
+	if h.pay != nil && o.Status == "pending" {
+		payMethods = h.pay.AvailableMethods(r.Context())
 	}
 	data := map[string]any{
 		"ShopName": h.shopName,
 		"Order":    o,
+		"Methods":  payMethods,
+		"Money":    h.money(r.Context()),
 		"SEO": seo{
-			Title: "订单确认 — " + h.shopName, Description: "订单确认", Canonical: h.base(r) + "/order/" + o.PublicID, OGType: "website",
+			Title: "Order — " + h.shopName, Description: "Order confirmation", Canonical: h.base(r) + "/order/" + o.PublicID, OGType: "website",
 		},
 	}
 	h.render(w, h.orderTmpl, data)
+}
+
+// orderPay 对未付订单重新发起收款（订单页「去支付」按钮）。
+func (h *HTTP) orderPay(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	publicID := r.PathValue("id")
+	o, err := h.order.Get(r.Context(), publicID)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.NotFound(w, r)
+		return
+	} else if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+	// 仅未付订单可再次发起支付（防对已付/已退订单重复收款）。
+	if o.Status != "pending" || h.pay == nil {
+		http.Redirect(w, r, "/order/"+publicID, http.StatusSeeOther)
+		return
+	}
+	methods := h.pay.AvailableMethods(r.Context())
+	if len(methods) == 0 {
+		http.Redirect(w, r, "/order/"+publicID, http.StatusSeeOther)
+		return
+	}
+	provider := h.chosenMethod(r, methods)
+	url, perr := h.startPayment(r, publicID, provider)
+	if perr != nil {
+		http.Redirect(w, r, "/order/"+publicID+"?payment_error=1", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, url, http.StatusSeeOther)
 }
