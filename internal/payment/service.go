@@ -238,6 +238,8 @@ func (s *Service) markRefundedFromWebhook(ctx context.Context, provider string, 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("payment: 提交事务失败: %w", err)
 	}
+	slog.Info("退款 webhook 已同步订单状态", "provider", provider, "order_ref", ev.OrderRef,
+		"payment_ref", ev.PaymentRef, "event_id", ev.ID)
 	return nil
 }
 
@@ -290,6 +292,8 @@ func (s *Service) Refund(ctx context.Context, orderPublicID string) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("payment: 提交事务失败: %w", err)
 	}
+	slog.Info("退款成功", "provider", ord.PaymentProvider, "order_ref", orderPublicID,
+		"refund_id", refundID, "amount_cents", ord.TotalCents)
 	return nil
 }
 
