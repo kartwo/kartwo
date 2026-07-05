@@ -207,6 +207,9 @@ func (s *Service) markPaid(ctx context.Context, provider string, ev WebhookEvent
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("payment: 提交事务失败: %w", err)
 	}
+	// webhook 落 paid 成功路记 INFO：Stripe 与 PayPal（webhook 备份路）观测性对齐。
+	slog.Info("订单已付（webhook）", "provider", provider, "order_ref", ev.OrderRef,
+		"payment_ref", ev.PaymentRef, "amount_cents", ev.AmountCents, "event_id", ev.ID)
 	return nil
 }
 
