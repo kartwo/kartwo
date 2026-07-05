@@ -8,9 +8,9 @@
 ---
 
 ## 当前状态
-- **阶段**：**M3 全部切片代码就绪（M3.3b-1/b-2/c 待 Derek 一次性人工验收）**。
-- **下一步**：Derek 重启回来、备好 PayPal 沙箱凭证后，一次性起服务，合并走完 M3.3b（Stripe 已过；PayPal 付款/退款）+ M3.3c（向导/去支付）人工验收 → M3 整片收官、合主干打 `v0.3.0`（PayPal webhook 真实验签按惯例推迟 M4，见回归冒烟清单）。
-- **最新 git tag**：`v0.2.0`（M2）。
+- **阶段**：**M3 全部切片人工验收通过，已合主干打 `v0.3.0`（M3 收官）**。①PayPal 付 ②取消守卫 ③Stripe 抽验(webhook 驱动+C4 闸) ④Pay now 补付/已付无 Pay now ⑤PayPal 退款 ⑥向导跳过路，均实测通过（2026-07-05）。
+- **下一步**：**进入 M4**（自动 HTTPS + 向导完整 + 30 分钟开店北极星）。**承接项：PayPal webhook 真实端到端验签**（公网 HTTPS + 真实 verify-webhook-signature），M3 只过模拟器，**不得默认已验**，见回归冒烟清单。
+- **最新 git tag**：`v0.3.0`（M3）。
 
 ## 里程碑总览
 
@@ -19,22 +19,27 @@
 | M0 | 地基与骨架（含数据层选型落地、CI 安全门禁、生成各 .md） | ✅ 已验收通过（v0.0.0） |
 | M1 | 核心数据模型 + Admin 基础 + 媒体上传 + StoragePolicy（切 5 片） | ✅ 已验收通过（v0.1.0） |
 | M2 | 店面 + 购物车 + 下单（防超卖）+ SEO 基建（切 3 片） | ✅ 已验收通过（v0.2.0） |
-| M3 | 支付路由 + Stripe/PayPal + 沙箱 + 退款 + 市场框架（切 3 片） | 🟡 进行中（M3.1/M3.2/M3.3a 已验收；做 M3.3b） |
+| M3 | 支付路由 + Stripe/PayPal + 沙箱 + 退款 + 市场框架（切 3 片） | ✅ 已验收通过（v0.3.0） |
 | M4 | 自动 HTTPS + 向导完整 + 30 分钟开店（北极星）**+ 承接：PayPal webhook 真实端到端验收（M3.3b-2 推迟项）** | ⬜ 未开始 |
 | M5 | 数据导入(含301) + 诊断页 + 备份/导出/升级 | ⬜ 未开始 |
 | M6 | v1.1 硬化（审计/签名/i18n/法律模板/Woo导入/S3）+ 验收 | ⬜ 未开始 |
 
 > 状态图例：⬜ 未开始 ｜ 🟡 进行中 ｜ ✅ 已验收通过
 
-## 当前里程碑明细（M3 · 切 3 片）
+## 历史里程碑明细（M3 · 切 3 片，✅ v0.3.0）
 - [x] **M3.1 市场框架 + 向导市场选择 + 加密设置地基**（✅ 已验收，含店面默认英文补丁）：可扩展 Market 注册表(US 点亮/其余即将上线)、AES-GCM(KEK)加密设置、向导市场步骤(大白话文案)、店面货币随市场；单测+实测
 - [x] **M3.2 支付路由 + Stripe Checkout 沙箱 + Webhook 双校验（拒伪造/幂等）**（✅ 已验收，真实沙箱 A1~A3 通过）：PaymentProvider 抽象 + 瘦 Stripe 客户端(不引 SDK)；结算就绪即跳 Stripe 托管收银台、订单 public_id 作对账锚点；Webhook 双校验(原始字节 HMAC+时间戳防重放 + 订单号/金额/币种比对 + 显式 payment_status=='paid')；回调幂等(去重 INSERT 与 pending→paid 同一事务)；KEK 收款密钥内存缓存(登录解锁/登出销毁/改密钥即时重载)，锁定时 Webhook 返 503 交网关重投；后台收款页(sk/whsec 加密存)；**可选 env 覆盖旁路**(env>加密库/覆盖非双写/env模式收款页只读/不落库不进日志/记来源)；单测覆盖验签四态+双校验+幂等+缓存生命周期+env覆盖；实测 locked→503、env模式forged→400(不锁定)
 - M3.3 PayPal 沙箱 + 退款(整数分) + 向导支付步骤 —— **拆 3 小片**（2026-06-22 拍板）：
   - [x] **M3.3a 退款(Stripe)**（✅ 已验收，真实沙箱退款通过）：迁移 0009(payment_provider/payment_ref 列 + refund 表)；webhook 落 payment_intent；后台手动整单全额退款(Stripe /v1/refunds，整数分，先退款后落库)；charge.refunded webhook 同步状态(双校验+同事务幂等)；订单状态 refunded；最小后台订单页(列表+详情+退款按钮)；单测(退款幸福路径/重复拒/未付拒/charge.refunded 幂等)；自驱实测(订单API/守卫409·404/charge.refunded→refunded)
   - M3.3b PayPal 沙箱 —— **再拆 2 片**（2026-06-23 拍板）：
-    - [x] **M3.3b-1 PayPal 付款**（待验收）：PayPalProvider(OAuth token/建单/同步 capture)；已付=capture COMPLETED+对账(custom_id/金额/币种)→pending->paid 落 capture_id；结算页支付方式选择(卡/PayPal，单个则隐藏)；/paypal/return 同步 capture；PayPal 密钥(client_id 明文/secret 加密)+收款页双区+**每通道独立 env 旁路**；金额 分↔小数串；单测(金额转换/AvailableMethods/建单/capture→paid/金额不符拒)；自驱实测(env来源/收款页/结算选择器渲染)
-    - [x] **M3.3b-2 PayPal 退款 + webhook**（待验收）：capture 全额退款(空 body，复用退款编排，后台退款按钮对 PayPal 单生效)；PayPal webhook(/webhooks/paypal) 在线验签(verify-webhook-signature+webhook_id)+幂等，COMPLETED 备份同步/REFUNDED 状态同步；webhook_id 配置项(明文+env)；单测(退款/验签成败/COMPLETED 幂等/REFUNDED)；模拟器验收，真实端到端 M4
-  - [x] **M3.3c 向导支付步骤 + 未付订单页「去支付」**（待验收）：开店向导加「配置收款」步骤(市场后、大白话引导、可跳过稍后配，跳过持久化不再打扰)；needed=未配且未跳过；PaymentWizard 复用收款页组件；未付订单页「Pay now」(按可用通道，仅 pending 可再发起、防对已付/已退重复收款)；单测(向导 needed/skip/CSRF、orderPay 仅 pending+Pay now 渲染)
+    - [x] **M3.3b-1 PayPal 付款**（✅ 已验收，真实沙箱付款通过；含 capture 对账 custom_id 层级修复）：PayPalProvider(OAuth token/建单/同步 capture)；已付=capture COMPLETED+对账(custom_id/金额/币种)→pending->paid 落 capture_id；结算页支付方式选择(卡/PayPal，单个则隐藏)；/paypal/return 同步 capture；PayPal 密钥(client_id 明文/secret 加密)+收款页双区+**每通道独立 env 旁路**；金额 分↔小数串；单测(金额转换/AvailableMethods/建单/capture→paid/金额不符拒)；自驱实测(env来源/收款页/结算选择器渲染)
+    - [x] **M3.3b-2 PayPal 退款 + webhook**（✅ 已验收，真实沙箱退款通过；webhook 真实验签留 M4）：capture 全额退款(空 body，复用退款编排，后台退款按钮对 PayPal 单生效)；PayPal webhook(/webhooks/paypal) 在线验签(verify-webhook-signature+webhook_id)+幂等，COMPLETED 备份同步/REFUNDED 状态同步；webhook_id 配置项(明文+env)；单测(退款/验签成败/COMPLETED 幂等/REFUNDED)；模拟器验收，真实端到端 M4
+  - [x] **M3.3c 向导支付步骤 + 未付订单页「去支付」**（✅ 已验收，跳过路持久化实测通过）：开店向导加「配置收款」步骤(市场后、大白话引导、可跳过稍后配，跳过持久化不再打扰)；needed=未配且未跳过；PaymentWizard 复用收款页组件；未付订单页「Pay now」(按可用通道，仅 pending 可再发起、防对已付/已退重复收款)；单测(向导 needed/skip/CSRF、orderPay 仅 pending+Pay now 渲染)
+
+### M3 收官补齐（v0.3.0 前已全部落地）
+- [x] **退款成功路补 INFO 结构化日志**（手动退款 + 退款 webhook 同步：provider/order_ref/refund_id/amount_cents）——commit `8f88c24`。
+- [x] **Stripe 成功路补 INFO 结构化日志，与 PayPal 观测性对齐**（`markPaid` webhook 落 paid）——commit `53a3831`。
+- [x] **安全门禁修复**：合主干前 govulncheck 报 GO-2026-5061（x/image WebP 解码 DoS，管理员上传面，被本仓调用）→ 升 `golang.org/x/image v0.42.0→v0.43.0`，门禁复绿——commit `df90b5c`。
 
 ## 历史里程碑明细（M2 · 切 3 片，✅ v0.2.0）
 - [x] **M2.1 店面浏览 + 内嵌主题 + SEO 基建**（✅ 已验收）：SSR 目录/详情(Go template)、canonical/OG/JSON-LD(Product+AggregateOffer)、sitemap.xml/robots.txt、WebP 响应式图、Admin 迁至 /admin/、店面占 /；单测+HTTP 测+实测
@@ -72,7 +77,7 @@
 
 ## 回归冒烟清单（每次合主干前 Derek 重跑，随功能增加）
 - [x] （M2 后）开店→浏览→加购→下单 主干可走 ✓
-- [ ] （M3 后）沙箱支付→订单已付→退款 可走（Stripe 全真跑；PayPal 付款/退款真跑，**webhook 真实验签除外**见下）
+- [x] （M3 后）沙箱支付→订单已付→退款 可走（2026-07-05 通过：Stripe 全真跑；PayPal 付款/退款真跑，**webhook 真实验签除外**见下）✓
 - [ ] **（M4 后）PayPal webhook 真实端到端（公网 HTTPS + 真实 verify-webhook-signature）可走** —— M3.3b-2 因模拟器过不了真实验签而推迟至此，**不得因 M3 收官打 tag 而默认为已验**
 - [ ] （M5 后）Shopify CSV 导入→图本地化→301 生成 可走
 
