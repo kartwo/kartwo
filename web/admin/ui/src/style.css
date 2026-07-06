@@ -26,6 +26,8 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .6rem 0 
   padding: .8rem 1.2rem; border-bottom: 1px solid var(--line); background: var(--panel);
 }
 .app-header .brand { font-weight: 700; font-size: 1.1rem; }
+/* 顶部导航链接不逐字换行：.row>* 的 flex:1 会把 CJK 词挤成竖排，nowrap 强制横排 */
+.app-header a { white-space: nowrap; }
 .container { max-width: 880px; margin: 1.4rem auto; padding: 0 1.2rem; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.2rem; }
 .row { display: flex; gap: .8rem; align-items: center; }
