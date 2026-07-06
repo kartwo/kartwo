@@ -8,10 +8,11 @@
 ---
 
 ## 当前状态
-- **阶段**：**M4.1（自动 HTTPS + 债2）代码完成，🟡 待 Derek 人工验收**（分支 `feat/m4-https`）。内嵌 autocert 自动签发/续期、env 覆盖 DB 域名来源、HostPolicy 白名单、HTTP-only 评估态、HSTS 门控、证书缓存 KEK 例外(0700 明文)、ACME 目录可配(LE Staging 预跑)、特权端口人话提示；单测覆盖域名来源优先级/HostPolicy/HSTS 门控/证书目录权限；本地三模式(dev/评估态/带域名)冒烟通过。
-- **债2 Stripe-Version 钉死**：✅ **已了结（2026-07-06，选项 A：我方常量不引 SDK）**——`stripe.go` 钉 `stripeAPIVersion = "2026-06-24.dahlia"`，Checkout 建单+退款出站均带 `Stripe-Version` 头；单测断言两出站请求带头且值=常量。版本经官方 skill 定当前稳定版 + 四发布列车 changelog 核对六字段无 breaking；**真实带头实跑并入 M4.1 段二 Stripe sandbox 验收**（本环境无测试密钥）。
-- **下一步**：Derek 人工验收 M4.1——段一(无需域名：dev/评估态/单测)先验；段二(需灰云子域：LE Staging 预跑→切生产签真证→**债1 PayPal webhook 真实端到端验签**闭环冒烟清单第3条；此段的真实 Stripe sandbox Checkout 顺带**验证债2 Stripe-Version 钉死**真实带头无字段错位)。验收通过→合主干；再进 M4.3（邮件队列）。
-- **最新 git tag**：`v0.3.0`（M3）。
+- **阶段**：**M4.1（自动 HTTPS + 债1 闭环 + 债2）✅ 人工真机验收通过，已合主干**（分支 `feat/m4-https` → `main`，**不打 tag**，v0.4.0 待 M4 整体含 M4.2/M4.3 收官再打）。验收实证：①autocert LE Staging 预跑→生产真证浏览器绿锁、curl HTTP/2 200 证书受信、HSTS 门控正确(评估态无、生产真证才有 max-age=31536000)、HTTP 301 跳转保留路径、domain_source=env；②债1 PayPal webhook 真实端到端验签闭环(真付款→paid、真退款→refunded，退款 webhook 带真实 event_id `WH-9ML49990950259907-…` 同步状态，VerifyWebhookPayPal 真实验签通过，金额整数分实证 amount_cents=9900)；③债2 Stripe-Version 钉死随附。
+- **债1 PayPal webhook 真实验签**：✅ **已了结（2026-07-06 真机验收）**——M3.3b-2 推迟项闭环，冒烟清单第 3 条已勾。
+- **债2 Stripe-Version 钉死**：✅ **已了结（2026-07-06，选项 A：我方常量 `2026-06-24.dahlia` 不引 SDK）**。
+- **下一步**：Derek 定 M4 后续切片范围。**建议优先处理下方【待办·高优先级】商品编辑/改价缺口**（顶"开源版必须完整能开店赚钱"底线），再进 M4.2 向导 / M4.3 邮件。
+- **最新 git tag**：`v0.3.0`（M3）。M4.1 已合主干但按切片纪律不单独打 tag。
 
 ## 里程碑总览
 
@@ -21,11 +22,20 @@
 | M1 | 核心数据模型 + Admin 基础 + 媒体上传 + StoragePolicy（切 5 片） | ✅ 已验收通过（v0.1.0） |
 | M2 | 店面 + 购物车 + 下单（防超卖）+ SEO 基建（切 3 片） | ✅ 已验收通过（v0.2.0） |
 | M3 | 支付路由 + Stripe/PayPal + 沙箱 + 退款 + 市场框架（切 3 片） | ✅ 已验收通过（v0.3.0） |
-| M4 | 自动 HTTPS + 向导完整 + 30 分钟开店（北极星）**+ 承接：PayPal webhook 真实端到端验收（M3.3b-2 推迟项）** | 🟡 进行中（M4.1 代码完成待验收） |
+| M4 | 自动 HTTPS + 向导完整 + 30 分钟开店（北极星）**+ 承接：PayPal webhook 真实端到端验收（M3.3b-2 推迟项）** | 🟡 进行中（M4.1 ✅ 已验收合主干；M4.2 向导 / M4.3 邮件未开始；tag 待整体收官） |
 | M5 | 数据导入(含301) + 诊断页 + 备份/导出/升级 | ⬜ 未开始 |
 | M6 | v1.1 硬化（审计/签名/i18n/法律模板/Woo导入/S3）+ 验收 | ⬜ 未开始 |
 
 > 状态图例：⬜ 未开始 ｜ 🟡 进行中 ｜ ✅ 已验收通过
+
+## 里程碑明细（M4 · 进行中）
+- [x] **M4.1 内嵌 autocert 自动 HTTPS + 债1 PayPal 真实验签闭环 + 债2 Stripe-Version 钉死**（✅ 2026-07-06 真机验收通过，已合主干，不打 tag）：
+  - **自动 HTTPS**：prod 内嵌 autocert 自动签发/续期；域名来源 env 覆盖 DB(`KARTWO_DOMAIN`>settings.domain，不双写不回退，决策1 选 C)；HostPolicy 单域名白名单；HTTP-only 评估态(env/DB 皆无域名，一等受支持态)；HSTS 门控(仅 TLS 真启用时发，评估态严禁)；证书缓存 DirCache 落 `data/certs`(0700/0600 明文，KEK 铁律显式例外，导出排除)；ACME 目录可配(`KARTWO_ACME_DIRECTORY`，可指 LE Staging 预跑)；prod :80(challenge+301跳)/:443(TLS)，特权端口绑定被拒给 setcap/systemd/root 人话提示；单测(域名来源优先级/HostPolicy 白名单/HSTS 门控/证书目录 0700)
+  - **债1（M3.3b-2 推迟项）闭环**：真机 LE Staging 预跑→生产真证浏览器绿锁；真实 sandbox PayPal 付款→paid、退款→refunded，退款 webhook 带真实 event_id 进来经 `VerifyWebhookPayPal` 真实在线验签通过并同步状态；金额整数分实证
+  - **债2**：`stripe.go` 钉 `stripeAPIVersion="2026-06-24.dahlia"`，Checkout 建单+退款出站带 `Stripe-Version` 头；单测断言带头且值=常量；版本经官方 skill + 四发布列车 changelog 核对六字段无 breaking
+  - **交付**：linux/amd64 交叉编译静态二进制 + Ubuntu 24.04 部署验收清单（scp 交付，非正式 release）
+- [ ] **M4.2 向导完整化**（域名步骤 + SMTP 步骤 + 一气呵成）——未开始
+- [ ] **M4.3 邮件队列**（不阻塞下单 + 订单确认信 + 重试）——未开始
 
 ## 历史里程碑明细（M3 · 切 3 片，✅ v0.3.0）
 - [x] **M3.1 市场框架 + 向导市场选择 + 加密设置地基**（✅ 已验收，含店面默认英文补丁）：可扩展 Market 注册表(US 点亮/其余即将上线)、AES-GCM(KEK)加密设置、向导市场步骤(大白话文案)、店面货币随市场；单测+实测
@@ -79,8 +89,19 @@
 ## 回归冒烟清单（每次合主干前 Derek 重跑，随功能增加）
 - [x] （M2 后）开店→浏览→加购→下单 主干可走 ✓
 - [x] （M3 后）沙箱支付→订单已付→退款 可走（2026-07-05 通过：Stripe 全真跑；PayPal 付款/退款真跑，**webhook 真实验签除外**见下）✓
-- [ ] **（M4 后）PayPal webhook 真实端到端（公网 HTTPS + 真实 verify-webhook-signature）可走** —— M3.3b-2 因模拟器过不了真实验签而推迟至此，**不得因 M3 收官打 tag 而默认为已验**
+- [x] **（M4.1 后）PayPal webhook 真实端到端（公网 HTTPS + 真实 verify-webhook-signature）可走** —— ✅ 2026-07-06 真机验收通过（生产真证 + 真实退款 webhook `WH-9ML49990950259907-…` 验签通过并同步状态）；M3.3b-2 推迟项闭环
 - [ ] （M5 后）Shopify CSV 导入→图本地化→301 生成 可走
+
+---
+
+## 待办登记（Derek 真机实测发现，按优先级；未拍板前不实现）
+> 登记于 2026-07-06（M4.1 验收）。除高优先级缺口外，其余待 Derek 定 M4 后续范围时统筹排期。
+
+- [ ] **【缺口·高优先级，顶"开源版必须完整能开店赚钱"底线】商品编辑不完整，尤其"创建后不能改价格"。** M1.5 编辑做了基本信息/库存/传图，改价疑未实现。**动手前先核实现状根因（未实现/bug/入口缺失）再补含改价的编辑；建议排在 M4.2/M4.3 之前优先处理。**
+- [ ] **【待决策】添加商品时价格是否允许为 0。** 当前校验挡 0 价；免费/赠品场景是否放开待 Derek 拍。
+- [ ] **【可观测性】PayPal webhook 验签成功缺显式 INFO 日志。** 当前只有"已同步订单状态"隐含；建议补一条显式"验签通过"日志，与支付路径其他分支观测性对齐。
+- [ ] **【体验·不急】添加商品时 slug 从商品名自动生成（URL-safe）。** 当前需手填。
+- [ ] **【体验·不急】上传图片时显示"上传中"进度反馈 + "上传成功"。** 当前无状态反馈；1C1G 上 WebP 编码耗时较长时尤其必要。
 
 ---
 
