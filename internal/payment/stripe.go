@@ -20,6 +20,15 @@ import (
 // stripeAPIBase Stripe REST 基址（测试/正式由密钥 sk_test_/sk_live_ 区分，URL 相同）。
 const stripeAPIBase = "https://api.stripe.com"
 
+// stripeAPIVersion 显式钉死的 Stripe API 版本（债2，2026-07-06 了结）。
+// 为何无 SDK 仍要钉：不带 Stripe-Version 头时 Stripe 按"账号当前默认 API 版本"塑形响应，
+// 而该默认会被 Stripe 平台侧在我们不知情时推进，可能令我方手解的稳定字段
+// (id/type/client_reference_id/payment_status/amount_total/currency) 某天悄然变形——
+// 无编译错、无异常的静默错位。显式钉一个串 = 把响应结构从 Stripe 平台时间线拿回我方 git 时间线。
+// 值为 2026-06-24.dahlia（sandbox 验收路即真实带头验证，见 DECISIONS/PROGRESS）；
+// 全部出站 Stripe 请求带 Stripe-Version:<此常量>，单一常量=单一事实源。升级须走 CONVENTIONS 流程改此处。
+const stripeAPIVersion = "2026-06-24.dahlia"
+
 // StripeProvider 实现 PaymentProvider；密钥实时从 KeyCache 取（支持改密钥即时生效）。
 type StripeProvider struct {
 	keys       *KeyCache
@@ -75,6 +84,7 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, ord OrderForPayment)
 	}
 	req.Header.Set("Authorization", "Bearer "+secret)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Stripe-Version", stripeAPIVersion)
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
@@ -166,6 +176,7 @@ func (p *StripeProvider) Refund(ctx context.Context, paymentIntent string, amoun
 	}
 	req.Header.Set("Authorization", "Bearer "+secret)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Stripe-Version", stripeAPIVersion)
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {

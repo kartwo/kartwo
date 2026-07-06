@@ -82,6 +82,16 @@
 | 2026-07-05 | **观测性对齐**：退款成功路（手动+webhook 同步）与 Stripe webhook 落 paid 路补 INFO 结构化日志（provider/order_ref/refund_id 或 payment_ref/amount_cents，不记密钥）。此前 Stripe 成功路/退款成功路无 INFO，排障只能查 DB | 支付关键状态变更需可观测；Stripe/PayPal 两路对称 | 支付/观测性（M3 收官） |
 | 2026-07-05 | **v0.3.0 前发现并修复 GO-2026-5061**：`golang.org/x/image` WebP 解码 panic DoS，govulncheck 判定被本仓调用（media 上传解码路径，管理员鉴权面、真实危害低）。**升 v0.42.0→v0.43.0**（纯补丁 bump），门禁复绿。**低危+零成本=直接修，不拖 M4、不开例外**——破例会侵蚀「无高危方可合主干」门禁纪律的先例价值 | 安全门禁是硬约束；机械补丁无理由拖延 | 安全/依赖（M3 收官） |
 | 2026-07-05 | **验收数据教训**：M3 人工验收库曾放 `/tmp/kartwo_m3final_data`，被系统清理导致整库丢失（管理员+市场+凭证+订单+退款）不可恢复。此后**验收数据一律用持久路径 `~/kartwo-data`，严禁 /tmp、/private/tmp、/var/folders**；二进制也构建到项目内 `.bin/` 而非 /tmp。细则见 `docs/test/acceptance-data-dir.md`。验收沙箱库内订单（含弃单 `019f32bd`，TLS 抖动中断的 pending 残留）均为**测试夹具、非正式账目** | 易失目录放验收数据已致一次真实数据丢失 | 运维/验收流程 |
+| 2026-07-06 | **M4.1 域名来源=env 覆盖 DB**：读"当前生效域名"先看 `KARTWO_DOMAIN`（非空即用、来源标 env、不读 DB），env 空才读 settings 的 `domain` 键（向导写入，M4.2）。不双写、不回退，与支付密钥 env 覆盖纪律完全同形 | 单一来源杜绝跨源歧义；12-factor 运维路 + 向导路并存 | HTTPS/配置（M4.1） |
+| 2026-07-06 | **M4.1 autocert HostPolicy=单域名白名单**：只放行"当前生效域名"，其余 host 一律拒绝 | 防他人把域名解析到本机骗取证书、烧 Let's Encrypt 速率配额 | HTTPS/安全（M4.1） |
+| 2026-07-06 | **M4.1 HTTP-only 评估态=一等受支持状态**：env 与 DB 都无域名时不启 TLS、于 `:80`（dev 仍 `:8080`）纯 HTTP 服应用，非 dev 专用回退。此态**严禁发 HSTS** | 全新安装未配域名时也要能开向导/店面；发了 HSTS 会把无证书店面锁死跳 HTTPS | HTTPS（M4.1） |
+| 2026-07-06 | **M4.1 HSTS 门控改为按 TLS 实际启用**：原按 `Env==prod` 发，现改为仅"HTTPS 证书就位、真启用"时发（`securityHeaders(hstsEnabled)`）；prod 评估态/dev 均不发 | prod 评估态也是 HTTP，按 env 发 HSTS 会锁死；门控点从"环境"改为"是否真有 TLS" | HTTPS/安全（M4.1） |
+| 2026-07-06 | **M4.1 证书缓存=KEK 加密宪法条文的显式例外**：TLS 证书用 autocert `DirCache` 落 `./data/certs`（目录 0700/文件 0600），**明文存放、绝不进 KEK 信封、启动无需主口令即可读**。理由：TLS 必须在任何人登录解锁 KEK 之前先起服，否则登录页本身打不开。此为"凭证一律 KEK 加密"铁律的唯一显式例外，特此记录避免将来被当漏洞误报。**M5 全量导出须排除 `certs/`**（证书可自动重签、不属可移植配置） | TLS 起服早于 KEK 解锁的时序硬约束 | HTTPS/安全（M4.1；导出 M5） |
+| 2026-07-06 | **M4.1 ACME 目录 URL 可配**：`KARTWO_ACME_DIRECTORY` 默认空=Let's Encrypt 生产；可指 LE Staging 预跑验证（暴露 DNS/端口/防火墙真问题）而不烧生产配额。硬要求非可选 | 同一份二进制可先 staging 干跑再切生产，防配额浪费与误发 | HTTPS/运维（M4.1） |
+| 2026-07-06 | **M4.1 端口**：prod 直绑 `:80`(ACME challenge + 301 跳 HTTPS) + `:443`(TLS)，可经 `KARTWO_HTTP_ADDR/KARTWO_HTTPS_ADDR` 覆盖；dev 保持 `:8080` 纯 HTTP。特权端口(<1024)绑定被拒时给人话提示(setcap/systemd/root/换高位端口)，不静默崩 | 单二进制自签发贴 $5 VPS；绑定失败要可诊断 | HTTPS/部署（M4.1） |
+| 2026-07-06 | **改域名热切换不做顺滑化**：v1 容忍"改域名后重启一次进程"（生效域名在启动时解析一次定住）。低频运维动作，不为它镀金 | 控范围；autocert 动态 HostPolicy 的复杂度不值当 | HTTPS（M4.1，明确不做） |
+| 2026-07-06 | **债1 PayPal webhook 真实端到端验签闭环了结（M4.1 真机验收）**：M3.3b-2 因模拟器过不了真实验签推迟至此，现于生产真证公网 HTTPS 上真机验收——真实 sandbox 付款→paid、退款→refunded，退款 webhook 带真实 `event_id`(WH-…) 进来经 `VerifyWebhookPayPal` 在线验签通过并同步订单状态，金额整数分实证。冒烟清单第 3 条已勾，不再"默认已验" | 长期挂账的真实验签命门需公网 HTTPS 才能验，M4.1 提供后即闭环 | 支付/PayPal（M4.1 债1 了结） |
+| 2026-07-06 | **债2 Stripe-Version 钉死了结（选项 A：我方常量，不引 SDK）**：`stripe.go` 定义 `const stripeAPIVersion = "2026-06-24.dahlia"`，全部出站 Stripe 请求（Checkout 建单 + 退款）带 `Stripe-Version:<该常量>`；单一常量=单一事实源。**为何无 SDK 仍要钉**：不带头时 Stripe 按"账号当前默认 API 版本"塑形响应，该默认会被 Stripe 平台侧在我们不知情时推进，可能令我方手解的稳定字段(id/type/client_reference_id/payment_status/amount_total/currency)某天无编译错/无异常地静默错位；显式钉串=把响应结构从 Stripe 平台时间线拿回我方 git 时间线（此理由不依赖 SDK）。**版本选定依据**：Stripe 官方 upgrade skill 报当前稳定版=`2026-06-24.dahlia`；逐一核对 acacia→basil→clover→dahlia 四发布列车 changelog，我方六字段**无一受 breaking change 影响**（唯二相关项 dahlia 改 `ui_mode` 枚举、clover 移除 `currency_conversion` 均非我方所读字段）。**实跑验证**：本环境无 Stripe 测试密钥，无法自发真实请求；文档级核对已过，真实带头实跑并入 M4.1 段二 Stripe sandbox 验收（Derek 那笔真沙箱 Checkout+webhook 即真实带头验证——字段若变形订单不会转 paid，即时暴露）。**升级须走 CONVENTIONS 流程改此单点** | 可复现/抗版本漂移，不引 SDK 守单静态二进制宪法 | 支付/硬化（M4.1 债2 了结） |
 
 ---
 
@@ -89,3 +99,5 @@
 
 | 决策 | 最迟需在 | 备注 |
 |---|---|---|
+| ~~债2 Stripe-Version 钉死的取值方式~~ | ~~M4.1 收尾~~ | ✅ **已了结（2026-07-06，选项 A）**：我方常量钉死 `2026-06-24.dahlia`、不引 SDK，见上表决策行 |
+| （暂无其它待定项） | — | — |

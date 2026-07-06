@@ -8,16 +8,19 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -200,24 +203,79 @@ func runServe(logger *slog.Logger) error {
 	adminHTTP := admin.NewHTTP(adminSvc, catalog.New(st.DB), mediaSvc, settingsSvc, orderSvc, paySvc, cfg.Env == "prod")
 	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, cfg.ShopName, cfg.BaseURL, cfg.Env == "prod")
 	payHTTP := payment.NewHTTP(paySvc)
-	srv := server.New(cfg, st, Version, adminHTTP, storeHTTP, payHTTP)
-	httpServer := &http.Server{
-		Addr:              cfg.Addr,
-		Handler:           srv,
-		ReadHeaderTimeout: 10 * time.Second,
+	// 解析"当前生效域名"（env 覆盖 DB），决定是否启用 HTTPS（仅 prod）。
+	baseCtx := context.Background()
+	domain, domainSource := "", "none"
+	tlsEnabled := false
+	if cfg.Env == "prod" {
+		domain, domainSource = server.EffectiveDomain(baseCtx, cfg.Domain, settingsSvc)
+		tlsEnabled = domain != ""
 	}
+	// HSTS 门控：仅 HTTPS 真正启用时注入（HTTP-only 评估态/dev 不发）。
+	srv := server.New(cfg, st, Version, adminHTTP, storeHTTP, payHTTP, tlsEnabled)
 
 	// 优雅关停：监听 SIGINT/SIGTERM。
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(baseCtx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	var servers []*http.Server
 	errCh := make(chan error, 1)
-	go func() {
-		logger.Info("HTTP 服务启动", "addr", cfg.Addr)
-		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
+	// serveOn 在给定地址起一个 http.Server（明文），绑定失败给人话提示。
+	serveOn := func(addr string, h http.Handler, role string) error {
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			return listenHint(addr, err)
 		}
-	}()
+		s := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
+		servers = append(servers, s)
+		go func() {
+			logger.Info("HTTP 服务启动", "addr", addr, "role", role)
+			if err := s.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errCh <- err
+			}
+		}()
+		return nil
+	}
+
+	switch {
+	case cfg.Env != "prod":
+		// dev：纯 HTTP，现状不变。
+		if err := serveOn(cfg.Addr, srv, "dev-http"); err != nil {
+			return err
+		}
+	case !tlsEnabled:
+		// prod HTTP-only 评估态（正式受支持状态）：未配域名，服应用于 :80，绝不发 HSTS。
+		logger.Warn("HTTP-only 评估态：未配置域名，未启用 HTTPS",
+			"http_addr", cfg.HTTPAddr, "fix", "在向导/后台配置域名并重启后自动签发 HTTPS")
+		if err := serveOn(cfg.HTTPAddr, srv, "prod-http-eval"); err != nil {
+			return err
+		}
+	default:
+		// prod + 域名：内嵌 autocert 自动签发/续期 HTTPS。
+		mgr, err := server.NewCertManager(domain, filepath.Join(cfg.DataDir, "certs"), cfg.ACMEDirectory)
+		if err != nil {
+			return err
+		}
+		logger.Info("自动 HTTPS 已启用", "domain", domain, "domain_source", domainSource,
+			"https_addr", cfg.HTTPSAddr, "http_addr", cfg.HTTPAddr, "acme", acmeLabel(cfg.ACMEDirectory))
+		// :80 服 ACME HTTP-01 challenge，其余 301 跳 HTTPS。
+		if err := serveOn(cfg.HTTPAddr, server.ChallengeHandler(mgr, domain), "prod-http-challenge"); err != nil {
+			return err
+		}
+		// :443 服真应用（TLS，证书由 autocert 按需签发）。
+		tlsLn, err := net.Listen("tcp", cfg.HTTPSAddr)
+		if err != nil {
+			return listenHint(cfg.HTTPSAddr, err)
+		}
+		s := &http.Server{Handler: srv, ReadHeaderTimeout: 10 * time.Second}
+		servers = append(servers, s)
+		go func() {
+			logger.Info("HTTPS 服务启动", "addr", cfg.HTTPSAddr, "role", "prod-https")
+			if err := s.Serve(tls.NewListener(tlsLn, server.TLSConfig(mgr))); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errCh <- err
+			}
+		}()
+	}
 
 	select {
 	case err := <-errCh:
@@ -226,6 +284,31 @@ func runServe(logger *slog.Logger) error {
 		logger.Info("收到关停信号，开始优雅关停")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		return httpServer.Shutdown(shutdownCtx)
+		var firstErr error
+		for _, s := range servers {
+			if err := s.Shutdown(shutdownCtx); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+		return firstErr
 	}
+}
+
+// listenHint 把端口绑定失败转成人话提示：特权端口(<1024)权限不足时给出 setcap/systemd/root 三条解法。
+func listenHint(addr string, err error) error {
+	if errors.Is(err, os.ErrPermission) || strings.Contains(err.Error(), "permission denied") {
+		return fmt.Errorf("绑定 %s 被拒（特权端口 <1024 需权限）："+
+			"用 `sudo setcap 'cap_net_bind_service=+ep' <二进制>` 授权，"+
+			"或用 systemd 加 AmbientCapabilities=CAP_NET_BIND_SERVICE，或以 root 运行；"+
+			"亦可设 KARTWO_HTTP_ADDR/KARTWO_HTTPS_ADDR 换高位端口经反代转发。原始错误：%w", addr, err)
+	}
+	return fmt.Errorf("绑定 %s 失败：%w", addr, err)
+}
+
+// acmeLabel 为日志给出 ACME 目录的可读标签（空=LE 生产）。
+func acmeLabel(dir string) string {
+	if dir == "" {
+		return "letsencrypt-production"
+	}
+	return dir
 }

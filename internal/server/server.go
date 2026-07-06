@@ -18,22 +18,23 @@ import (
 	"github.com/kartwo/kartwo/internal/admin"
 	"github.com/kartwo/kartwo/internal/config"
 	"github.com/kartwo/kartwo/internal/payment"
-	"github.com/kartwo/kartwo/internal/storefront"
 	"github.com/kartwo/kartwo/internal/store"
+	"github.com/kartwo/kartwo/internal/storefront"
 )
 
 // New 构建带中间件的 HTTP Handler。
 // 路由布局：店面占 "/"（SEO 主位）；Admin SPA 在 "/admin/"；API 在 "/admin/api/"；媒体在 "/media/"。
-func New(cfg *config.Config, st *store.Store, version string, adminHTTP *admin.HTTP, storeHTTP *storefront.HTTP, payHTTP *payment.HTTP) http.Handler {
+// hstsEnabled：仅当 HTTPS 真正启用（证书就位）时传 true，注入 HSTS；HTTP-only 评估态/dev 传 false。
+func New(cfg *config.Config, st *store.Store, version string, adminHTTP *admin.HTTP, storeHTTP *storefront.HTTP, payHTTP *payment.HTTP, hstsEnabled bool) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(st, version))
-	adminHTTP.Register(mux)   // /admin/api/*（含商品/媒体 API）
-	storeHTTP.Register(mux)   // /、/p/{slug}、/sitemap.xml、/robots.txt
-	payHTTP.Register(mux)     // /webhooks/stripe（公开，HMAC 签名鉴权，无 CSRF）
+	adminHTTP.Register(mux) // /admin/api/*（含商品/媒体 API）
+	storeHTTP.Register(mux) // /、/p/{slug}、/sitemap.xml、/robots.txt
+	payHTTP.Register(mux)   // /webhooks/stripe（公开，HMAC 签名鉴权，无 CSRF）
 	mux.Handle("GET /media/", mediaHandler(filepath.Join(cfg.DataDir, "media")))
 	mux.Handle("/admin/", adminHandler()) // Admin SPA（/admin 自动跳 /admin/）
 
-	return securityHeaders(cfg)(mux)
+	return securityHeaders(hstsEnabled)(mux)
 }
 
 // mediaHandler 公开只读托管 ./data/media（供 Admin/店面展图）；禁目录列举。
@@ -83,8 +84,9 @@ func adminHandler() http.Handler {
 }
 
 // securityHeaders 注入强制安全响应头（HSTS/CSP/X-Frame-Options/X-Content-Type-Options 等）。
-// HSTS 仅在 prod 注入，避免 dev 本地 HTTP 调试被浏览器强升 HTTPS。
-func securityHeaders(cfg *config.Config) func(http.Handler) http.Handler {
+// HSTS 门控：仅在 HTTPS 真正启用（TLS 证书就位）时注入。
+// HTTP-only 评估态严禁发 HSTS，否则浏览器会强制跳 HTTPS 而锁死尚无证书的评估态店面。
+func securityHeaders(hstsEnabled bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h := w.Header()
@@ -94,7 +96,7 @@ func securityHeaders(cfg *config.Config) func(http.Handler) http.Handler {
 			// script 严格 'self'（Vue 生产构建无需 eval/inline）；style 放开内联（Vue 内联 style 属性）；图片含本地 /media。
 			h.Set("Content-Security-Policy",
 				"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'")
-			if cfg.Env == "prod" {
+			if hstsEnabled {
 				h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 			}
 			next.ServeHTTP(w, r)

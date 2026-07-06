@@ -16,7 +16,10 @@ import (
 	"github.com/kartwo/kartwo/internal/store/sqlcgen"
 )
 
-const keyMarketCode = "market.code"
+const (
+	keyMarketCode = "market.code"
+	keyDomain     = "domain" // 站点域名（向导写入，M4.1 自动 HTTPS 读取；env KARTWO_DOMAIN 优先，此为回退来源）
+)
 
 var (
 	// ErrNotFound 设置项不存在。
@@ -103,3 +106,20 @@ func (s *Service) Market(ctx context.Context) market.Market {
 
 // Currency 返回当前市场货币（如 USD）。
 func (s *Service) Currency(ctx context.Context) string { return s.Market(ctx).Currency }
+
+// Domain 返回 DB 中配置的站点域名；未设返回空串（非错误，视为未配）。
+// 注意：这是"env 覆盖 DB"域名来源的 DB 回退支路——env KARTWO_DOMAIN 非空时优先于此，见 config/server。
+func (s *Service) Domain(ctx context.Context) (string, error) {
+	v, err := s.Get(ctx, keyDomain)
+	if errors.Is(err, ErrNotFound) {
+		return "", nil
+	} else if err != nil {
+		return "", err
+	}
+	return v, nil
+}
+
+// SetDomain 写入站点域名（向导「配置域名」步骤使用，M4.2）。
+func (s *Service) SetDomain(ctx context.Context, domain string) error {
+	return s.SetPlain(ctx, keyDomain, domain)
+}
