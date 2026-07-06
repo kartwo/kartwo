@@ -26,8 +26,16 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .6rem 0 
   padding: .8rem 1.2rem; border-bottom: 1px solid var(--line); background: var(--panel);
 }
 .app-header .brand { font-weight: 700; font-size: 1.1rem; }
-/* 顶部导航链接不逐字换行：.row>* 的 flex:1 会把 CJK 词挤成竖排，nowrap 强制横排 */
-.app-header a { white-space: nowrap; }
+/* —— CJK 竖排根治（系统性，一次修全）——
+   全局 .row>*{flex:1}(basis:0) 会把窄 flex 子项压到 min-content，而中文可逐字断行→短控件竖排。
+   按钮/导航链接/表头/徽章/chip/表单标签本就该单行，统一 nowrap 强制横排；
+   输入框/文本域/商品描述/正文段落等不加，保持正常换行。上轮只管 <a> 漏了 <button>，此处补全。 */
+button,
+.app-header .row > *,
+th,
+label,
+.badge,
+.chip { white-space: nowrap; }
 .container { max-width: 880px; margin: 1.4rem auto; padding: 0 1.2rem; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.2rem; }
 .row { display: flex; gap: .8rem; align-items: center; }
