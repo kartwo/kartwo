@@ -35,6 +35,15 @@ function parseAxes() {
     .filter(a => a.name && a.values.length)
 }
 
+// 元(字符串)→整数分。价格必填：空/缺失/非法/负数一律返回 null（绝不静默当 0），
+// 显式 0 返回 0（允许免费/赠品）。调用方 null 即拦下报错，不提交。
+function yuanToCents(y) {
+  if (y === '' || y === null || y === undefined) return null
+  const n = Number(y)
+  if (!Number.isFinite(n) || n < 0) return null
+  return Math.round(n * 100)
+}
+
 function generateMatrix() {
   const parsed = parseAxes()
   if (!parsed.length) { err.value = '请先填写至少一个变体轴'; return }
@@ -44,19 +53,27 @@ function generateMatrix() {
     for (const c of combos) for (const v of ax.values) next.push([...c, { option: ax.name, value: v }])
     combos = next
   }
-  newVariants.value = combos.map(sel => ({ selections: sel, sku: '', priceYuan: 0, quantity: 0 }))
+  // 价格默认空（不是 0）：强制商家显式填写，杜绝"忘填→默认 0"。
+  newVariants.value = combos.map(sel => ({ selections: sel, sku: '', priceYuan: '', quantity: 0 }))
   err.value = ''
 }
 
 async function saveNew() {
   if (!newVariants.value.length) { err.value = '请先「生成变体组合」'; return }
+  // 价格必填校验：任一变体价格为空/非法 → 拦下不提交（可为 0，不能为空或负数）。
+  const cents = []
+  for (let i = 0; i < newVariants.value.length; i++) {
+    const c = yuanToCents(newVariants.value[i].priceYuan)
+    if (c === null) { err.value = `第 ${i + 1} 个变体：请填写有效价格（可为 0，不能为空或负数）`; return }
+    cents.push(c)
+  }
   busy.value = true; err.value = ''
   try {
     const payload = {
       title: title.value, slug: slug.value, description: description.value, status: status.value,
       options: parseAxes(),
-      variants: newVariants.value.map(v => ({
-        sku: v.sku, price_cents: Math.round(Number(v.priceYuan) * 100), quantity: Number(v.quantity),
+      variants: newVariants.value.map((v, i) => ({
+        sku: v.sku, price_cents: cents[i], quantity: Number(v.quantity),
         selections: v.selections,
       })),
     }
@@ -73,7 +90,8 @@ async function load() {
   try {
     const d = await api.getProduct(props.id)
     title.value = d.title; slug.value = d.slug; description.value = d.description; status.value = d.status
-    variants.value = d.variants.map(v => ({ ...v, _qty: v.quantity }))
+    // _qty/_priceYuan 为编辑态输入绑定（价格以元回显，两位小数）。
+    variants.value = d.variants.map(v => ({ ...v, _qty: v.quantity, _priceYuan: (v.price_cents / 100).toFixed(2) }))
     await loadMedia()
   } catch (e) {
     if (e instanceof APIError && e.status === 401) return onUnauthorized()
@@ -94,12 +112,24 @@ async function saveFields() {
   } catch (e) { err.value = e.message } finally { busy.value = false }
 }
 
-async function saveQty(v) {
+// saveVariant 同存该行的价格 + 库存（决策1A：改哪行存哪行、价+量同存）。
+// 价格必填：空/非法拦下不发请求；库存拒负。
+async function saveVariant(v) {
+  err.value = ''; msg.value = ''
+  const cents = yuanToCents(v._priceYuan)
+  if (cents === null) { err.value = '价格必填：请填写有效价格（可为 0，不能为空或负数）'; return }
+  const qty = Number(v._qty)
+  if (!Number.isInteger(qty) || qty < 0) { err.value = '库存必须为非负整数'; return }
   try {
-    await api.setInventory(v.public_id, Number(v._qty))
-    v.quantity = Number(v._qty)
-    msg.value = '库存已更新'
-  } catch (e) { err.value = e.message }
+    await api.setPrice(v.public_id, cents)
+    await api.setInventory(v.public_id, qty)
+    v.price_cents = cents
+    v.quantity = qty
+    msg.value = '变体已保存（价格 + 库存）'
+  } catch (e) {
+    if (e instanceof APIError && e.status === 401) return onUnauthorized()
+    err.value = e.message
+  }
 }
 
 async function onUpload(ev) {
@@ -174,7 +204,7 @@ onMounted(() => { if (!isNew.value) load() })
           <tr v-for="(v, i) in newVariants" :key="i">
             <td>{{ v.selections.map(s => s.option + '=' + s.value).join(' × ') }}</td>
             <td><input v-model="v.sku" placeholder="可空" /></td>
-            <td><input v-model="v.priceYuan" type="number" min="0" step="0.01" /></td>
+            <td><input v-model="v.priceYuan" type="number" min="0" step="0.01" placeholder="元·必填" /></td>
             <td><input v-model="v.quantity" type="number" min="0" /></td>
           </tr>
         </tbody>
@@ -193,14 +223,14 @@ onMounted(() => { if (!isNew.value) load() })
     <div class="panel">
       <h3>变体与库存</h3>
       <table>
-        <thead><tr><th>组合</th><th>SKU</th><th>价格</th><th>库存</th><th></th></tr></thead>
+        <thead><tr><th>组合</th><th>SKU</th><th>价格(元)</th><th>库存</th><th></th></tr></thead>
         <tbody>
           <tr v-for="v in variants" :key="v.public_id">
             <td>{{ (v.options||[]).map(o => o.name + '=' + o.value).join(' × ') }}</td>
             <td class="muted">{{ v.sku || '—' }}</td>
-            <td>¥{{ (v.price_cents/100).toFixed(2) }}</td>
+            <td style="max-width:120px"><input v-model="v._priceYuan" type="number" min="0" step="0.01" placeholder="元·必填" /></td>
             <td style="max-width:120px"><input v-model="v._qty" type="number" min="0" /></td>
-            <td style="text-align:right"><button @click="saveQty(v)">存库存</button></td>
+            <td style="text-align:right"><button @click="saveVariant(v)">保存</button></td>
           </tr>
         </tbody>
       </table>
