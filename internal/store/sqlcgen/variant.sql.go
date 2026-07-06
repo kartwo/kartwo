@@ -173,3 +173,17 @@ func (q *Queries) SoftDeleteVariantsByProduct(ctx context.Context, productID int
 	_, err := q.db.ExecContext(ctx, softDeleteVariantsByProduct, productID)
 	return err
 }
+
+const updateVariantPrice = `-- name: UpdateVariantPrice :exec
+UPDATE variant SET price_cents = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id = ? AND deleted_at IS NULL
+`
+
+type UpdateVariantPriceParams struct {
+	PriceCents int64  `db:"price_cents" json:"price_cents"`
+	PublicID   string `db:"public_id" json:"public_id"`
+}
+
+func (q *Queries) UpdateVariantPrice(ctx context.Context, arg UpdateVariantPriceParams) error {
+	_, err := q.db.ExecContext(ctx, updateVariantPrice, arg.PriceCents, arg.PublicID)
+	return err
+}

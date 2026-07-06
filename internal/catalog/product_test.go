@@ -52,9 +52,9 @@ func TestCreateProductValidation(t *testing.T) {
 	ctx := context.Background()
 
 	cases := map[string]func(ProductInput) ProductInput{
-		"空标题":     func(p ProductInput) ProductInput { p.Title = ""; return p },
-		"无轴":      func(p ProductInput) ProductInput { p.Options = nil; return p },
-		"无变体":     func(p ProductInput) ProductInput { p.Variants = nil; return p },
+		"空标题": func(p ProductInput) ProductInput { p.Title = ""; return p },
+		"无轴":  func(p ProductInput) ProductInput { p.Options = nil; return p },
+		"无变体": func(p ProductInput) ProductInput { p.Variants = nil; return p },
 		"变体缺一个轴": func(p ProductInput) ProductInput {
 			p.Variants[0].Selections = []Selection{{"尺码", "S"}}
 			return p
@@ -161,6 +161,52 @@ func TestSetVariantInventory(t *testing.T) {
 	var ve *ValidationError
 	if err := svc.SetVariantInventory(ctx, target.PublicID, -1); !errors.As(err, &ve) {
 		t.Fatalf("负库存应校验错误，得到: %v", err)
+	}
+}
+
+func TestSetVariantPrice(t *testing.T) {
+	svc := New(newDB(t))
+	ctx := context.Background()
+	pid, _ := svc.CreateProduct(ctx, tee())
+	d, _ := svc.GetProduct(ctx, pid)
+	target := d.Variants[0]
+
+	priceOf := func(pubID string) int64 {
+		dd, _ := svc.GetProduct(ctx, pid)
+		for _, v := range dd.Variants {
+			if v.PublicID == pubID {
+				return v.PriceCents
+			}
+		}
+		t.Fatalf("未找到变体 %s", pubID)
+		return -1
+	}
+
+	// 幸福路径：改成正数。
+	if err := svc.SetVariantPrice(ctx, target.PublicID, 12345); err != nil {
+		t.Fatalf("改价失败: %v", err)
+	}
+	if got := priceOf(target.PublicID); got != 12345 {
+		t.Fatalf("价格 = %d，期望 12345", got)
+	}
+
+	// 允许 0（免费/赠品）。
+	if err := svc.SetVariantPrice(ctx, target.PublicID, 0); err != nil {
+		t.Fatalf("0 价应允许，得到: %v", err)
+	}
+	if got := priceOf(target.PublicID); got != 0 {
+		t.Fatalf("价格 = %d，期望 0", got)
+	}
+
+	// 负数拒绝（校验错误）。
+	var ve *ValidationError
+	if err := svc.SetVariantPrice(ctx, target.PublicID, -1); !errors.As(err, &ve) {
+		t.Fatalf("负价应校验错误，得到: %v", err)
+	}
+
+	// 变体不存在拒绝。
+	if err := svc.SetVariantPrice(ctx, "nope", 100); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("不存在变体应 ErrNotFound，得到: %v", err)
 	}
 }
 
