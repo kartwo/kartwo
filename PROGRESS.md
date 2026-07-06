@@ -9,8 +9,8 @@
 
 ## 当前状态
 - **阶段**：**M4.1（自动 HTTPS + 债2）代码完成，🟡 待 Derek 人工验收**（分支 `feat/m4-https`）。内嵌 autocert 自动签发/续期、env 覆盖 DB 域名来源、HostPolicy 白名单、HTTP-only 评估态、HSTS 门控、证书缓存 KEK 例外(0700 明文)、ACME 目录可配(LE Staging 预跑)、特权端口人话提示；单测覆盖域名来源优先级/HostPolicy/HSTS 门控/证书目录权限；本地三模式(dev/评估态/带域名)冒烟通过。
-- **债2 Stripe-Version 钉死**：⛔ **搁置回报**——指令要求取 stripe-go SDK 常量，但本仓无该 SDK 且引入违背"不引 SDK"宪法条文，已列 `DECISIONS.md` 待定表等拍板，未改 `stripe.go`。
-- **下一步**：Derek 人工验收 M4.1——段一(无需域名：dev/评估态/单测)先验；段二(需灰云子域：LE Staging 预跑→切生产签真证→**债1 PayPal webhook 真实端到端验签**闭环冒烟清单第3条)。验收通过→拍债2取值→合主干；再进 M4.3（邮件队列）。
+- **债2 Stripe-Version 钉死**：✅ **已了结（2026-07-06，选项 A：我方常量不引 SDK）**——`stripe.go` 钉 `stripeAPIVersion = "2026-06-24.dahlia"`，Checkout 建单+退款出站均带 `Stripe-Version` 头；单测断言两出站请求带头且值=常量。版本经官方 skill 定当前稳定版 + 四发布列车 changelog 核对六字段无 breaking；**真实带头实跑并入 M4.1 段二 Stripe sandbox 验收**（本环境无测试密钥）。
+- **下一步**：Derek 人工验收 M4.1——段一(无需域名：dev/评估态/单测)先验；段二(需灰云子域：LE Staging 预跑→切生产签真证→**债1 PayPal webhook 真实端到端验签**闭环冒烟清单第3条；此段的真实 Stripe sandbox Checkout 顺带**验证债2 Stripe-Version 钉死**真实带头无字段错位)。验收通过→合主干；再进 M4.3（邮件队列）。
 - **最新 git tag**：`v0.3.0`（M3）。
 
 ## 里程碑总览

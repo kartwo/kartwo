@@ -541,3 +541,50 @@ func TestKeyCacheLifecycle(t *testing.T) {
 		t.Fatal("Lock 后应销毁")
 	}
 }
+
+// TestStripeVersionHeaderPinned 断言所有出站 Stripe 请求都带 Stripe-Version 头，
+// 且值 == stripeAPIVersion 常量（债2：钉死 API 版本，防账号默认版本被平台侧推进致静默字段错位）。
+func TestStripeVersionHeaderPinned(t *testing.T) {
+	svc, _, _ := newTestSvc(t)
+	ctx := context.Background()
+
+	seen := map[string]string{} // path -> Stripe-Version 头
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen[r.URL.Path] = r.Header.Get("Stripe-Version")
+		switch r.URL.Path {
+		case "/v1/checkout/sessions":
+			_, _ = w.Write([]byte(`{"id":"cs_test_1","url":"https://checkout.stripe.test/x"}`))
+		case "/v1/refunds":
+			_, _ = w.Write([]byte(`{"id":"re_test_1"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	svc.stripe.apiBase = ts.URL
+
+	// 出站请求一：建 Checkout 会话。
+	if _, err := svc.stripe.CreatePayment(ctx, OrderForPayment{
+		PublicID: "ORD-V", Currency: "USD", AmountCents: 2500,
+		SuccessURL: "https://x/s", CancelURL: "https://x/c",
+	}); err != nil {
+		t.Fatalf("CreatePayment 应成功: %v", err)
+	}
+	// 出站请求二：退款（直接调 provider，绕过订单状态编排）。
+	if _, err := svc.stripe.Refund(ctx, "pi_test", 2500); err != nil {
+		t.Fatalf("Refund 应成功: %v", err)
+	}
+
+	if stripeAPIVersion == "" {
+		t.Fatal("stripeAPIVersion 常量不应为空")
+	}
+	for _, path := range []string{"/v1/checkout/sessions", "/v1/refunds"} {
+		got, ok := seen[path]
+		if !ok {
+			t.Fatalf("未捕获到 %s 的出站请求", path)
+		}
+		if got != stripeAPIVersion {
+			t.Fatalf("%s 的 Stripe-Version=%q，期望钉死常量 %q", path, got, stripeAPIVersion)
+		}
+	}
+}
