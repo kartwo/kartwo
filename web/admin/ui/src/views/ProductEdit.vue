@@ -204,7 +204,8 @@ onMounted(() => { if (!isNew.value) load() })
           <tr v-for="(v, i) in newVariants" :key="i">
             <td>{{ v.selections.map(s => s.option + '=' + s.value).join(' × ') }}</td>
             <td><input v-model="v.sku" placeholder="可空" /></td>
-            <td><input v-model="v.priceYuan" type="number" min="0" step="0.01" placeholder="元·必填" /></td>
+            <!-- 与 SKU 同款 type=text：空串必渲染为空占位（number input 曾显示 0 的坑）；inputmode=decimal 给移动端数字键盘。校验由 yuanToCents(空→拦下/0→0) 兜底 -->
+            <td><input v-model="v.priceYuan" type="text" inputmode="decimal" placeholder="元·必填" /></td>
             <td><input v-model="v.quantity" type="number" min="0" /></td>
           </tr>
         </tbody>
