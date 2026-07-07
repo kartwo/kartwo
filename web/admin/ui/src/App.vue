@@ -4,6 +4,7 @@ import { ref, onMounted, onUnmounted, provide } from 'vue'
 import { api, APIError } from './api.js'
 import MarketSelect from './views/MarketSelect.vue'
 import PaymentWizard from './views/PaymentWizard.vue'
+import ToastHost from './components/ToastHost.vue'
 
 const loading = ref(true)
 const initialized = ref(false)
@@ -82,6 +83,9 @@ onMounted(refresh)
 </script>
 
 <template>
+  <!-- 全局 toast 宿主：始终挂载、悬浮不随滚动，跨所有页面状态可用 -->
+  <ToastHost />
+
   <div v-if="loading" class="center-screen muted">加载中…</div>
 
   <!-- 未初始化：建管理员 + 设主口令 -->
