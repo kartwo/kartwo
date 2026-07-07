@@ -47,6 +47,11 @@ $env:KARTWO_ENV="prod"; $env:KARTWO_HTTP_ADDR=":8080"; $env:KARTWO_DATA_DIR="./d
 
 浏览器打开 `http://localhost:8080/`（店面）与 `http://localhost:8080/admin/`（后台）即可预览。
 
+> 部署到远程 Linux 服务器时，先把本地构建好的二进制拷上去（`<IP>` 换成你服务器的公网 IP）：
+> ```bash
+> scp ~/bin/kartwo-linux-amd64 root@<IP>:~/kartwo
+> ```
+
 - 这是**受支持的 HTTP-only 评估态**：未配域名时不启 TLS、也**不发 HSTS**（避免把无证书的本地站锁死跳 HTTPS）。
 - **仅供本地试用，无公网 HTTPS**；对外卖货请走第 2 层。
 
