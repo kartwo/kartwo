@@ -67,6 +67,8 @@ export const api = {
   wizardDomain: () => request('GET', '/wizard/domain'),
   wizardDomainSkip: () => request('POST', '/wizard/domain/skip'),
 
+  dashboard: () => request('GET', '/dashboard'),
+
   listOrders: () => request('GET', '/orders'),
   getOrder: (id) => request('GET', '/orders/' + id),
   refundOrder: (id) => request('POST', '/orders/' + id + '/refund'),
