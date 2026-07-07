@@ -1,9 +1,11 @@
 <!-- 应用外壳与鉴权 / App Shell & Auth. 作者：仗键天涯(daxing) 3442535897@qq.com -->
 <script setup>
-import { ref, onMounted, onUnmounted, provide } from 'vue'
+import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
 import { api, APIError } from './api.js'
 import MarketSelect from './views/MarketSelect.vue'
 import PaymentWizard from './views/PaymentWizard.vue'
+import DomainWizard from './views/DomainWizard.vue'
+import WizardProgress from './components/WizardProgress.vue'
 import ToastHost from './components/ToastHost.vue'
 
 const loading = ref(true)
@@ -11,7 +13,20 @@ const initialized = ref(false)
 const authed = ref(false)
 const marketConfigured = ref(false)
 const paymentStepNeeded = ref(false)
+const domainStepNeeded = ref(false)
 const username = ref('')
+
+// 向导「第 X / N 步」进度：固定三步流，跳过的步骤仍占位、步号不跳变（口径见 DECISIONS）。
+const wizardStep = computed(() => {
+  if (!marketConfigured.value) return 1
+  if (paymentStepNeeded.value) return 2
+  return 3 // 域名步（domainStepNeeded 为真时展示）
+})
+
+// checkDomainStep 查询是否仍需展示域名步骤（收款步完成后调用）。
+async function checkDomainStep() {
+  try { domainStepNeeded.value = !!(await api.wizardDomain()).needed } catch (_) { domainStepNeeded.value = false }
+}
 const form = ref({ user: '', pass: '' })
 const err = ref('')
 const busy = ref(false)
@@ -31,6 +46,7 @@ async function refresh() {
         marketConfigured.value = !!mk.configured
         if (marketConfigured.value) {
           try { paymentStepNeeded.value = !!(await api.wizardPayment()).needed } catch (_) { paymentStepNeeded.value = false }
+          if (!paymentStepNeeded.value) await checkDomainStep()
         }
       } catch (e) {
         authed.value = false
@@ -44,8 +60,17 @@ async function refresh() {
 async function onMarketConfigured() {
   marketConfigured.value = true
   try { paymentStepNeeded.value = !!(await api.wizardPayment()).needed } catch (_) { paymentStepNeeded.value = false }
+  if (!paymentStepNeeded.value) await checkDomainStep()
 }
-function onPaymentStepDone() { paymentStepNeeded.value = false }
+// 收款步完成 → 进入域名步（若仍需要）。
+async function onPaymentStepDone() {
+  paymentStepNeeded.value = false
+  await checkDomainStep()
+}
+// 域名步完成（保存或跳过）→ 进入后台。
+function onDomainStepDone() { domainStepNeeded.value = false }
+// 域名步「上一步」→ 回到收款步（不允许回退已配市场）；收款步完成后会再回到域名步。
+function onDomainBack() { paymentStepNeeded.value = true }
 onMounted(() => window.addEventListener('market-configured', onMarketConfigured))
 onUnmounted(() => window.removeEventListener('market-configured', onMarketConfigured))
 
@@ -123,6 +148,7 @@ onMounted(refresh)
       <div class="brand">Kartwo Admin · 开店向导</div>
       <button @click="doLogout">登出</button>
     </header>
+    <WizardProgress :step="wizardStep" />
     <MarketSelect />
   </template>
 
@@ -132,7 +158,18 @@ onMounted(refresh)
       <div class="brand">Kartwo Admin · 开店向导</div>
       <button @click="doLogout">登出</button>
     </header>
+    <WizardProgress :step="wizardStep" />
     <PaymentWizard @done="onPaymentStepDone" />
+  </template>
+
+  <!-- 收款已配/跳过、域名未配且未跳过：走「配置域名」向导步骤 -->
+  <template v-else-if="domainStepNeeded">
+    <header class="app-header">
+      <div class="brand">Kartwo Admin · 开店向导</div>
+      <button @click="doLogout">登出</button>
+    </header>
+    <WizardProgress :step="wizardStep" />
+    <DomainWizard @done="onDomainStepDone" @back="onDomainBack" />
   </template>
 
   <!-- 已登录：应用 -->
@@ -144,6 +181,7 @@ onMounted(refresh)
         <RouterLink to="/orders">订单</RouterLink>
         <RouterLink to="/market">市场</RouterLink>
         <RouterLink to="/payment">收款</RouterLink>
+        <RouterLink to="/domain">域名</RouterLink>
         <span class="muted">{{ username }}</span>
         <button @click="doLogout">登出</button>
       </div>

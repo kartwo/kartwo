@@ -21,27 +21,29 @@ import (
 )
 
 const (
-	sessionCookie = "kartwo_session"
-	csrfCookie    = "kartwo_csrf"
-	csrfHeader    = "X-CSRF-Token"
+	sessionCookie  = "kartwo_session"
+	csrfCookie     = "kartwo_csrf"
+	csrfHeader     = "X-CSRF-Token"
 	minPasswordLen = 8
 )
 
 // HTTP 承载 Admin API 处理器。
 type HTTP struct {
-	svc      *Service
-	cat      *catalog.Service
-	media    *media.Service
-	settings *settings.Service
-	orders   *order.Service   // 后台订单页（M3.3a 起）
-	pay      *payment.Service // 退款编排（M3.3a 起），可为 nil
-	secure   bool             // prod 下 cookie 加 Secure
-	limiter  *loginLimiter
+	svc       *Service
+	cat       *catalog.Service
+	media     *media.Service
+	settings  *settings.Service
+	orders    *order.Service   // 后台订单页（M3.3a 起）
+	pay       *payment.Service // 退款编排（M3.3a 起），可为 nil
+	envDomain string           // KARTWO_DOMAIN（env 覆盖 DB 的域名来源，M4.2.1 域名步骤展示/只读判定）
+	secure    bool             // prod 下 cookie 加 Secure；同时代表本实例可签发 HTTPS（dev 恒 false）
+	limiter   *loginLimiter
 }
 
-// NewHTTP 构建 Admin HTTP 层。secure=true 时 cookie 标记 Secure（prod）。
-func NewHTTP(svc *Service, cat *catalog.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc *payment.Service, secure bool) *HTTP {
-	return &HTTP{svc: svc, cat: cat, media: md, settings: settingsSvc, orders: orderSvc, pay: paySvc, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
+// NewHTTP 构建 Admin HTTP 层。secure=true 时 cookie 标记 Secure（prod，且代表可启用 HTTPS）。
+// envDomain=KARTWO_DOMAIN，非空时域名由 env 提供、后台只读（决策 C：env 覆盖 DB、不双写）。
+func NewHTTP(svc *Service, cat *catalog.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc *payment.Service, envDomain string, secure bool) *HTTP {
+	return &HTTP{svc: svc, cat: cat, media: md, settings: settingsSvc, orders: orderSvc, pay: paySvc, envDomain: envDomain, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
 }
 
 // Register 在给定 mux 上注册 /admin/api/* 路由。
@@ -81,6 +83,12 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	// 向导：收款步骤状态 / 跳过。
 	mux.Handle("GET /admin/api/wizard/payment", protect(h.wizardPaymentStatus))
 	mux.Handle("POST /admin/api/wizard/payment/skip", protect(h.wizardPaymentSkip))
+
+	// 域名设置（写 settings.domain；env 覆盖时只读）+ 向导域名步骤（M4.2.1）。
+	mux.Handle("GET /admin/api/settings/domain", protect(h.getDomain))
+	mux.Handle("PUT /admin/api/settings/domain", protect(h.setDomain))
+	mux.Handle("GET /admin/api/wizard/domain", protect(h.wizardDomainStatus))
+	mux.Handle("POST /admin/api/wizard/domain/skip", protect(h.wizardDomainSkip))
 
 	// 订单 + 退款（M3.3a）。
 	mux.Handle("GET /admin/api/orders", protect(h.listOrders))

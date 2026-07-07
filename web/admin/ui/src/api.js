@@ -62,6 +62,11 @@ export const api = {
   wizardPayment: () => request('GET', '/wizard/payment'),
   wizardPaymentSkip: () => request('POST', '/wizard/payment/skip'),
 
+  getDomain: () => request('GET', '/settings/domain'),
+  setDomain: (domain) => request('PUT', '/settings/domain', { domain }),
+  wizardDomain: () => request('GET', '/wizard/domain'),
+  wizardDomainSkip: () => request('POST', '/wizard/domain/skip'),
+
   listOrders: () => request('GET', '/orders'),
   getOrder: (id) => request('GET', '/orders/' + id),
   refundOrder: (id) => request('POST', '/orders/' + id + '/refund'),
