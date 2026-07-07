@@ -17,11 +17,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/kartwo/kartwo/internal/auth"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
+	"github.com/kartwo/kartwo/internal/order"
 	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/migrations"
 
@@ -214,7 +216,9 @@ func newHTTPEnvDomain(t *testing.T, envDomain string) (*HTTP, http.Handler) {
 	svc := newSvc(t)
 	root := t.TempDir() + "/media"
 	md := media.New(svc.db, media.NewLocalBackend(root), media.NewDefaultPolicy(root, 10<<20, 0), 20)
-	h := NewHTTP(svc, catalog.New(svc.db), md, settings.New(svc.db), nil, nil, envDomain, false)
+	set := settings.New(svc.db)
+	ord := order.New(svc.db, set)
+	h := NewHTTP(svc, catalog.New(svc.db), md, set, ord, nil, envDomain, false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
@@ -705,6 +709,116 @@ func TestWizardDomainSkip(t *testing.T) {
 	}
 	if r := doJSON(t, mux, "POST", "/admin/api/wizard/domain/skip", "", auth, ""); r.StatusCode != http.StatusForbidden {
 		t.Fatalf("skip 缺 CSRF 应 403，得 %d", r.StatusCode)
+	}
+}
+
+// TestDashboard 播种订单/商品/库存后断言概览聚合：今日/近7日数与销售额、refunded 扣减、待处理、库存告警、开店进度。
+func TestDashboard(t *testing.T) {
+	h, mux := newHTTP(t)
+	sess, _ := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+	db := h.svc.db
+
+	const layout = "2006-01-02T15:04:05.000Z"
+	now := time.Now().UTC()
+	tsNow := now.Format(layout)                         // 今日
+	ts3d := now.Add(-72 * time.Hour).Format(layout)     // 近7日内、非今日
+	ts8d := now.Add(-8 * 24 * time.Hour).Format(layout) // 近7日外
+
+	exec := func(q string, args ...any) {
+		if _, err := db.Exec(q, args...); err != nil {
+			t.Fatalf("播种失败 [%s]: %v", q, err)
+		}
+	}
+	// 客户。
+	exec(`INSERT INTO customer (id, public_id, email) VALUES (1, 'cust-1', 'a@b.co')`)
+	// 订单：状态/金额/创建时间不同，验证今日/近7日窗口与 D6 销售额口径。
+	ord := func(pub, status string, total int64, ts string) {
+		exec(`INSERT INTO "order" (public_id, customer_id, status, email, ship_name, ship_address, currency, subtotal_cents, total_cents, created_at)
+			VALUES (?, 1, ?, 'a@b.co', 'N', 'A', 'USD', ?, ?, ?)`, pub, status, total, total, ts)
+	}
+	ord("o1", "paid", 10000, tsNow)     // 今日已付
+	ord("o2", "fulfilled", 5000, tsNow) // 今日已履约（计入销售额）
+	ord("o3", "pending", 3000, tsNow)   // 今日未付（不计销售额）
+	ord("o4", "refunded", 9999, tsNow)  // 今日已退款（D6：整单 refunded，全额不计）
+	ord("o5", "paid", 2000, ts3d)       // 3天前已付（近7日、非今日）
+	ord("o6", "paid", 7000, ts8d)       // 8天前已付（近7日外）
+
+	// 商品：2 活 + 1 软删。
+	exec(`INSERT INTO product (id, public_id, title, slug, status) VALUES (1,'p1','P1','p1','active')`)
+	exec(`INSERT INTO product (id, public_id, title, slug, status) VALUES (2,'p2','P2','p2','active')`)
+	exec(`INSERT INTO product (id, public_id, title, slug, status, deleted_at) VALUES (3,'p3','P3','p3','active', ?)`, tsNow)
+	// 变体 + 库存：可售=quantity-reserved。
+	vrt := func(id int64, pid int64, key string, qty, reserved int64) {
+		exec(`INSERT INTO variant (id, public_id, product_id, option_key, price_cents) VALUES (?, ?, ?, ?, 100)`, id, "v"+key, pid, key)
+		exec(`INSERT INTO inventory (variant_id, quantity, reserved) VALUES (?, ?, ?)`, id, qty, reserved)
+	}
+	vrt(1, 1, "a", 10, 10) // 可售 0 → 零库存
+	vrt(2, 1, "b", 5, 2)   // 可售 3 → 低库存
+	vrt(3, 2, "c", 20, 0)  // 可售 20 → 健康
+	vrt(4, 3, "d", 0, 0)   // 可售 0 但商品软删 → 不计
+
+	// 请求概览。
+	r := doJSON(t, mux, "GET", "/admin/api/dashboard", "", auth, "")
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("dashboard 应 200，得 %d %s", r.StatusCode, r.Body)
+	}
+	type window struct {
+		Count      int64 `json:"count"`
+		SalesCents int64 `json:"sales_cents"`
+	}
+	var dash struct {
+		Currency string `json:"currency"`
+		Orders   struct {
+			Today              window `json:"today"`
+			Week               window `json:"week"`
+			PendingFulfillment int64  `json:"pending_fulfillment"`
+		} `json:"orders"`
+		Products struct {
+			Count     int64 `json:"count"`
+			ZeroStock int64 `json:"zero_stock"`
+			LowStock  int64 `json:"low_stock"`
+		} `json:"products"`
+		Setup struct {
+			HasProducts       bool `json:"has_products"`
+			PaymentConfigured bool `json:"payment_configured"`
+			DomainConfigured  bool `json:"domain_configured"`
+			Ready             bool `json:"ready"`
+		} `json:"setup"`
+	}
+	if err := json.Unmarshal(r.Body, &dash); err != nil {
+		t.Fatalf("解析概览失败: %v (%s)", err, r.Body)
+	}
+	// 今日：4 单（o1-o4），销售额=15000（仅 paid+fulfilled，pending/refunded 不计）。
+	if dash.Orders.Today.Count != 4 || dash.Orders.Today.SalesCents != 15000 {
+		t.Fatalf("今日应 count=4 sales=15000，得 count=%d sales=%d", dash.Orders.Today.Count, dash.Orders.Today.SalesCents)
+	}
+	// 近7日：5 单（含 o5），销售额=17000（15000+2000）；8天前 o6 不计。
+	if dash.Orders.Week.Count != 5 || dash.Orders.Week.SalesCents != 17000 {
+		t.Fatalf("近7日应 count=5 sales=17000，得 count=%d sales=%d", dash.Orders.Week.Count, dash.Orders.Week.SalesCents)
+	}
+	// 待处理=status='paid' 全时=3（o1/o5/o6）。
+	if dash.Orders.PendingFulfillment != 3 {
+		t.Fatalf("待处理应=3，得 %d", dash.Orders.PendingFulfillment)
+	}
+	// 商品数=2（软删排除）；库存告警 零=1 低=1（软删商品变体不计）。
+	if dash.Products.Count != 2 || dash.Products.ZeroStock != 1 || dash.Products.LowStock != 1 {
+		t.Fatalf("商品应 count=2 zero=1 low=1，得 count=%d zero=%d low=%d", dash.Products.Count, dash.Products.ZeroStock, dash.Products.LowStock)
+	}
+	// 开店进度：有商品但未配收款/域名 → ready=false。
+	if !dash.Setup.HasProducts || dash.Setup.PaymentConfigured || dash.Setup.DomainConfigured || dash.Setup.Ready {
+		t.Fatalf("setup 应 has_products=true 其余 false，得 %+v", dash.Setup)
+	}
+	if dash.Currency != "USD" {
+		t.Fatalf("货币应=USD（默认市场），得 %q", dash.Currency)
+	}
+}
+
+// TestDashboardAuth 未登录访问概览应 401。
+func TestDashboardAuth(t *testing.T) {
+	_, mux := newHTTP(t)
+	if r := doJSON(t, mux, "GET", "/admin/api/dashboard", "", nil, ""); r.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("未登录应 401，得 %d", r.StatusCode)
 	}
 }
 
