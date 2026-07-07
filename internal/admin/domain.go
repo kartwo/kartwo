@@ -83,7 +83,10 @@ func validateDomain(raw string) (string, error) {
 		return "", errors.New("域名不能包含空格")
 	}
 	for _, c := range d {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '-') {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '.', c == '-':
+			// 合法字符
+		default:
 			return "", errors.New("域名含非法字符（只允许字母、数字、点、连字符）")
 		}
 	}
