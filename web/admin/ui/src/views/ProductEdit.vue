@@ -3,11 +3,13 @@
 import { ref, computed, onMounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, APIError } from '../api.js'
+import { useToast } from '../toast.js'
 
 const props = defineProps({ id: { type: String, default: '' } })
 const route = useRoute()
 const router = useRouter()
 const onUnauthorized = inject('onUnauthorized')
+const toast = useToast()
 
 const isNew = computed(() => !props.id)
 const err = ref('')
@@ -59,15 +61,15 @@ function generateMatrix() {
 }
 
 async function saveNew() {
-  if (!newVariants.value.length) { err.value = '请先「生成变体组合」'; return }
+  if (!newVariants.value.length) { toast.error('请先「生成变体组合」'); return }
   // 价格必填校验：任一变体价格为空/非法 → 拦下不提交（可为 0，不能为空或负数）。
   const cents = []
   for (let i = 0; i < newVariants.value.length; i++) {
     const c = yuanToCents(newVariants.value[i].priceYuan)
-    if (c === null) { err.value = `第 ${i + 1} 个变体：请填写有效价格（可为 0，不能为空或负数）`; return }
+    if (c === null) { toast.error(`第 ${i + 1} 个变体：请填写有效价格（可为 0，不能为空或负数）`); return }
     cents.push(c)
   }
-  busy.value = true; err.value = ''
+  busy.value = true
   try {
     const payload = {
       title: title.value, slug: slug.value, description: description.value, status: status.value,
@@ -81,7 +83,7 @@ async function saveNew() {
     router.push('/products/' + r.public_id)
   } catch (e) {
     if (e instanceof APIError && e.status === 401) return onUnauthorized()
-    err.value = e.message
+    toast.error(e.message)
   } finally { busy.value = false }
 }
 
@@ -115,20 +117,19 @@ async function saveFields() {
 // saveVariant 同存该行的价格 + 库存（决策1A：改哪行存哪行、价+量同存）。
 // 价格必填：空/非法拦下不发请求；库存拒负。
 async function saveVariant(v) {
-  err.value = ''; msg.value = ''
   const cents = yuanToCents(v._priceYuan)
-  if (cents === null) { err.value = '价格必填：请填写有效价格（可为 0，不能为空或负数）'; return }
+  if (cents === null) { toast.error('价格必填：请填写有效价格（可为 0，不能为空或负数）'); return }
   const qty = Number(v._qty)
-  if (!Number.isInteger(qty) || qty < 0) { err.value = '库存必须为非负整数'; return }
+  if (!Number.isInteger(qty) || qty < 0) { toast.error('库存必须为非负整数'); return }
   try {
     await api.setPrice(v.public_id, cents)
     await api.setInventory(v.public_id, qty)
     v.price_cents = cents
     v.quantity = qty
-    msg.value = '变体已保存（价格 + 库存）'
+    toast.success('变体已保存（价格 + 库存）')
   } catch (e) {
     if (e instanceof APIError && e.status === 401) return onUnauthorized()
-    err.value = e.message
+    toast.error(e.message)
   }
 }
 
