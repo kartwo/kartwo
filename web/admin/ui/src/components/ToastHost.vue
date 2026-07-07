@@ -15,9 +15,11 @@ const { items, remove } = useToast()
 </template>
 
 <style scoped>
-/* 固定视口顶部居中：无论页面滚到哪都可见；host 本身不拦点击，仅每条 toast 可交互 */
+/* 固定视口正中：无论页面滚到哪都稳定居中显示（Derek 要求，最醒目、最难忽略）；
+   不加遮罩、host 本身不拦点击（pointer-events:none），仅每条 toast 可交互，故不阻断页面操作。
+   多条在正中垂直有序堆叠、居中对齐，整块随条数增长仍以视口中心为中点。 */
 .toast-host {
-  position: fixed; top: 1rem; left: 50%; transform: translateX(-50%);
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
   z-index: 1000; display: flex; flex-direction: column; gap: .5rem;
   width: 420px; max-width: 92vw; pointer-events: none;
 }
