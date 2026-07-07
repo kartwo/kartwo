@@ -18,5 +18,8 @@ SELECT v.id AS variant_id, po.name AS option_name, pov.value AS option_value, po
 -- name: GetVariantByPublicID :one
 SELECT id, public_id, product_id, sku, price_cents FROM variant WHERE public_id = ? AND deleted_at IS NULL;
 
+-- name: UpdateVariantPrice :exec
+UPDATE variant SET price_cents = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id = ? AND deleted_at IS NULL;
+
 -- name: SoftDeleteVariantsByProduct :exec
 UPDATE variant SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE product_id = ? AND deleted_at IS NULL;

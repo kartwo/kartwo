@@ -274,6 +274,20 @@ func (s *Service) SetVariantInventory(ctx context.Context, variantPublicID strin
 	return s.q.SetInventory(ctx, sqlcgen.SetInventoryParams{VariantID: v.ID, Quantity: quantity})
 }
 
+// SetVariantPrice 按变体 public_id 设价格（整数分）。价格必填由 HTTP 层用指针区分"缺失/空"并拒绝；
+// 此处只做业务校验：拒负数（允许 0=免费/赠品）。不存在返回 ErrNotFound。
+func (s *Service) SetVariantPrice(ctx context.Context, variantPublicID string, priceCents int64) error {
+	if priceCents < 0 {
+		return vErr("价格不能为负")
+	}
+	if _, err := s.q.GetVariantByPublicID(ctx, variantPublicID); errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return fmt.Errorf("catalog: 取变体失败: %w", err)
+	}
+	return s.q.UpdateVariantPrice(ctx, sqlcgen.UpdateVariantPriceParams{PriceCents: priceCents, PublicID: variantPublicID})
+}
+
 // CreateCategory 建分类，返回 public_id。
 func (s *Service) CreateCategory(ctx context.Context, name, slug string) (string, error) {
 	if strings.TrimSpace(name) == "" || strings.TrimSpace(slug) == "" {

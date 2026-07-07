@@ -241,6 +241,75 @@ func doJSON(t *testing.T, mux http.Handler, method, path, body string, cookies [
 	return apiResp{StatusCode: res.StatusCode, Cookies: res.Cookies(), Body: b}
 }
 
+// TestHTTPVariantPriceRequiredAndUpdate 守"价格必填、缺失/空 → 拒绝、绝不默认 0"防损失底线（创建 + 改价两路），
+// 并验证改价端点：缺价 400 / 负数 400 / 0 与正数 200 / 生效 / 缺 CSRF 403。
+func TestHTTPVariantPriceRequiredAndUpdate(t *testing.T) {
+	_, mux := newHTTP(t)
+	doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"supersecret"}`, nil, "")
+	lr := doJSON(t, mux, "POST", "/admin/api/login", `{"username":"admin","password":"supersecret"}`, nil, "")
+	var csrf string
+	for _, c := range lr.Cookies {
+		if c.Name == csrfCookie {
+			csrf = c.Value
+		}
+	}
+
+	// 创建：变体缺 price_cents（未提供）→ 400（防绕过前端不带价→默认 0 损失）。
+	missing := `{"title":"P","slug":"pm","status":"active","options":[{"name":"尺码","values":["S"]}],"variants":[{"sku":"","quantity":0,"selections":[{"option":"尺码","value":"S"}]}]}`
+	if r := doJSON(t, mux, "POST", "/admin/api/products", missing, lr.Cookies, csrf); r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("创建缺价格应 400，得 %d %s", r.StatusCode, r.Body)
+	}
+	// 创建：显式 0 价 → 201（允许免费/赠品）。
+	zero := `{"title":"P","slug":"pz","status":"active","options":[{"name":"尺码","values":["S"]}],"variants":[{"sku":"","price_cents":0,"quantity":0,"selections":[{"option":"尺码","value":"S"}]}]}`
+	cr := doJSON(t, mux, "POST", "/admin/api/products", zero, lr.Cookies, csrf)
+	if cr.StatusCode != http.StatusCreated {
+		t.Fatalf("创建 0 价应 201，得 %d %s", cr.StatusCode, cr.Body)
+	}
+	var created struct {
+		PublicID string `json:"public_id"`
+	}
+	_ = json.Unmarshal(cr.Body, &created)
+
+	// 取变体 public_id。
+	gp := doJSON(t, mux, "GET", "/admin/api/products/"+created.PublicID, "", lr.Cookies, "")
+	var prod struct {
+		Variants []struct {
+			PublicID string `json:"public_id"`
+		} `json:"variants"`
+	}
+	_ = json.Unmarshal(gp.Body, &prod)
+	if len(prod.Variants) == 0 {
+		t.Fatalf("应有变体: %s", gp.Body)
+	}
+	vid := prod.Variants[0].PublicID
+	pricePath := "/admin/api/variants/" + vid + "/price"
+
+	// 改价：缺 price_cents（空 body）→ 400。
+	if r := doJSON(t, mux, "PATCH", pricePath, `{}`, lr.Cookies, csrf); r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("改价缺价格应 400，得 %d %s", r.StatusCode, r.Body)
+	}
+	// 改价：负数 → 400。
+	if r := doJSON(t, mux, "PATCH", pricePath, `{"price_cents":-1}`, lr.Cookies, csrf); r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("改价负数应 400，得 %d %s", r.StatusCode, r.Body)
+	}
+	// 改价：0 → 200。
+	if r := doJSON(t, mux, "PATCH", pricePath, `{"price_cents":0}`, lr.Cookies, csrf); r.StatusCode != http.StatusOK {
+		t.Fatalf("改价 0 应 200，得 %d %s", r.StatusCode, r.Body)
+	}
+	// 改价：正数 → 200 并生效。
+	if r := doJSON(t, mux, "PATCH", pricePath, `{"price_cents":8800}`, lr.Cookies, csrf); r.StatusCode != http.StatusOK {
+		t.Fatalf("改价正数应 200，得 %d %s", r.StatusCode, r.Body)
+	}
+	gp2 := doJSON(t, mux, "GET", "/admin/api/products/"+created.PublicID, "", lr.Cookies, "")
+	if !bytes.Contains(gp2.Body, []byte(`"price_cents":8800`)) {
+		t.Fatalf("改价应生效为 8800: %s", gp2.Body)
+	}
+	// 改价缺 CSRF → 403（写操作防护）。
+	if r := doJSON(t, mux, "PATCH", pricePath, `{"price_cents":100}`, lr.Cookies, ""); r.StatusCode != http.StatusForbidden {
+		t.Fatalf("改价缺 CSRF 应 403，得 %d", r.StatusCode)
+	}
+}
+
 func TestWizardPayment(t *testing.T) {
 	_, mux := newHTTP(t)
 	doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"supersecret"}`, nil, "")

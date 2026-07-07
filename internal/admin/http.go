@@ -60,6 +60,7 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("PATCH /admin/api/products/{id}", protect(h.updateProduct))
 	mux.Handle("DELETE /admin/api/products/{id}", protect(h.deleteProduct))
 	mux.Handle("PATCH /admin/api/variants/{id}/inventory", protect(h.setVariantInventory))
+	mux.Handle("PATCH /admin/api/variants/{id}/price", protect(h.setVariantPrice))
 	mux.Handle("GET /admin/api/categories", protect(h.listCategories))
 	mux.Handle("POST /admin/api/categories", protect(h.createCategory))
 

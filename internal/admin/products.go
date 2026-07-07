@@ -8,6 +8,7 @@ package admin
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/kartwo/kartwo/internal/catalog"
 )
@@ -25,8 +26,10 @@ type selectionDTO struct {
 }
 
 type variantDTO struct {
-	SKU        string         `json:"sku"`
-	PriceCents int64          `json:"price_cents"`
+	SKU string `json:"sku"`
+	// PriceCents 用指针以区分"未提供/空"(nil)与"显式 0"：价格必填，缺失一律拒绝、绝不默认 0
+	// （防绕过前端直接调 API 不带价→0 价损失）。
+	PriceCents *int64         `json:"price_cents"`
 	Quantity   int64          `json:"quantity"`
 	Selections []selectionDTO `json:"selections"`
 }
@@ -53,8 +56,13 @@ func (h *HTTP) createProduct(w http.ResponseWriter, r *http.Request) {
 	for _, o := range req.Options {
 		in.Options = append(in.Options, catalog.OptionInput{Name: o.Name, Values: o.Values})
 	}
-	for _, v := range req.Variants {
-		vi := catalog.VariantInput{SKU: v.SKU, PriceCents: v.PriceCents, Quantity: v.Quantity}
+	for i, v := range req.Variants {
+		// 价格必填：缺失/空(nil) 一律拒绝，绝不默认 0（后端独立守，防绕过前端造成 0 价损失）。
+		if v.PriceCents == nil {
+			writeErr(w, http.StatusBadRequest, "第 "+strconv.Itoa(i+1)+" 个变体价格必填（不能为空）")
+			return
+		}
+		vi := catalog.VariantInput{SKU: v.SKU, PriceCents: *v.PriceCents, Quantity: v.Quantity}
 		for _, s := range v.Selections {
 			vi.Selections = append(vi.Selections, catalog.Selection{Option: s.Option, Value: s.Value})
 		}
@@ -138,6 +146,26 @@ func (h *HTTP) setVariantInventory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.cat.SetVariantInventory(r.Context(), r.PathValue("id"), req.Quantity); err != nil {
+		h.writeCatalogErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// setVariantPrice 设变体价格（整数分）。价格必填：字段缺失/空(nil) → 400 拒绝，绝不默认 0；
+// 负数由 service 拒（400）；0 与正数放行。鉴权 + CSRF 由路由中间件保证，对象级权限经变体 public_id。
+func (h *HTTP) setVariantPrice(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		PriceCents *int64 `json:"price_cents"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if req.PriceCents == nil {
+		writeErr(w, http.StatusBadRequest, "价格必填（不能为空）")
+		return
+	}
+	if err := h.cat.SetVariantPrice(r.Context(), r.PathValue("id"), *req.PriceCents); err != nil {
 		h.writeCatalogErr(w, err)
 		return
 	}

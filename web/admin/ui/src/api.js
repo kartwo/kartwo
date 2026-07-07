@@ -51,6 +51,7 @@ export const api = {
   updateProduct: (id, payload) => request('PATCH', '/products/' + id, payload),
   deleteProduct: (id) => request('DELETE', '/products/' + id),
   setInventory: (variantId, quantity) => request('PATCH', '/variants/' + variantId + '/inventory', { quantity }),
+  setPrice: (variantId, priceCents) => request('PATCH', '/variants/' + variantId + '/price', { price_cents: priceCents }),
 
   markets: () => request('GET', '/markets'),
   getMarket: () => request('GET', '/settings/market'),
