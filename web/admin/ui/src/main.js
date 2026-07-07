@@ -8,6 +8,7 @@ import ProductList from './views/ProductList.vue'
 import ProductEdit from './views/ProductEdit.vue'
 import MarketSelect from './views/MarketSelect.vue'
 import PaymentSettings from './views/PaymentSettings.vue'
+import DomainSettings from './views/DomainSettings.vue'
 import OrderList from './views/OrderList.vue'
 import OrderDetail from './views/OrderDetail.vue'
 import './style.css'
@@ -21,6 +22,7 @@ const router = createRouter({
     { path: '/products/:id', component: ProductEdit, props: true },
     { path: '/market', component: MarketSelect },
     { path: '/payment', component: PaymentSettings },
+    { path: '/domain', component: DomainSettings },
     { path: '/orders', component: OrderList },
     { path: '/orders/:id', component: OrderDetail, props: true },
   ],
