@@ -207,11 +207,14 @@ func TestConfigSurvivesRestartAndRelogin(t *testing.T) {
 
 // ---- HTTP 层 ----
 
-func newHTTP(t *testing.T) (*HTTP, http.Handler) {
+func newHTTP(t *testing.T) (*HTTP, http.Handler) { return newHTTPEnvDomain(t, "") }
+
+// newHTTPEnvDomain 构建 Admin HTTP，可注入 envDomain（模拟 KARTWO_DOMAIN 覆盖，测域名步骤只读态）。
+func newHTTPEnvDomain(t *testing.T, envDomain string) (*HTTP, http.Handler) {
 	svc := newSvc(t)
 	root := t.TempDir() + "/media"
 	md := media.New(svc.db, media.NewLocalBackend(root), media.NewDefaultPolicy(root, 10<<20, 0), 20)
-	h := NewHTTP(svc, catalog.New(svc.db), md, settings.New(svc.db), nil, nil, false)
+	h := NewHTTP(svc, catalog.New(svc.db), md, settings.New(svc.db), nil, nil, envDomain, false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
@@ -630,5 +633,96 @@ func TestHTTPLoginRateLimited(t *testing.T) {
 	}
 	if last != http.StatusTooManyRequests {
 		t.Fatalf("第 6 次登录状态 = %d，期望 429", last)
+	}
+}
+
+// ---- 域名步骤（M4.2.1）----
+
+// TestValidateDomain 独立校验域名（后端自守：拒空/协议前缀/路径/空格/非法字符/无点，接受合法 FQDN）。
+func TestValidateDomain(t *testing.T) {
+	bad := []string{"", "   ", "http://shop.example.com", "https://shop.example.com",
+		"shop.example.com/store", "shop example.com", "shop_example.com", "shop.example.com:8443", "localhost"}
+	for _, in := range bad {
+		if _, err := validateDomain(in); err == nil {
+			t.Fatalf("非法域名 %q 应被拒", in)
+		}
+	}
+	good := map[string]string{"shop.example.com": "shop.example.com", "  Shop.Example.com  ": "Shop.Example.com", "a-b.co": "a-b.co"}
+	for in, want := range good {
+		got, err := validateDomain(in)
+		if err != nil || got != want {
+			t.Fatalf("合法域名 %q 应通过并归一为 %q，得 (%q,%v)", in, want, got, err)
+		}
+	}
+}
+
+// TestWizardDomain 覆盖 DB 路径：needed→存域名(校验)→源 db→needed=false→跳过→CSRF。
+func TestWizardDomain(t *testing.T) {
+	_, mux := newHTTP(t)
+	sess, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+
+	// 未配、未跳过 → needed=true；来源 none、可签发（此实例 secure=false=dev，https_capable=false）。
+	if r := doJSON(t, mux, "GET", "/admin/api/wizard/domain", "", auth, ""); r.StatusCode != http.StatusOK || !bytes.Contains(r.Body, []byte(`"needed":true`)) {
+		t.Fatalf("初始应 needed=true: %d %s", r.StatusCode, r.Body)
+	}
+	if r := doJSON(t, mux, "GET", "/admin/api/settings/domain", "", auth, ""); !bytes.Contains(r.Body, []byte(`"source":"none"`)) || !bytes.Contains(r.Body, []byte(`"https_capable":false`)) {
+		t.Fatalf("初始 GET domain 应 source=none & https_capable=false(dev): %s", r.Body)
+	}
+
+	// 非法输入前后端双拦（后端独立）：空/协议前缀/路径/无点 → 400。
+	for _, body := range []string{`{"domain":""}`, `{"domain":"http://shop.example.com"}`, `{"domain":"shop.example.com/x"}`, `{"domain":"localhost"}`} {
+		if r := doJSON(t, mux, "PUT", "/admin/api/settings/domain", body, auth, csrf); r.StatusCode != http.StatusBadRequest {
+			t.Fatalf("非法域名 %s 应 400，得 %d %s", body, r.StatusCode, r.Body)
+		}
+	}
+
+	// 存合法域名 → 200、来源 db。
+	if r := doJSON(t, mux, "PUT", "/admin/api/settings/domain", `{"domain":"shop.example.com"}`, auth, csrf); r.StatusCode != http.StatusOK || !bytes.Contains(r.Body, []byte(`"source":"db"`)) || !bytes.Contains(r.Body, []byte(`"shop.example.com"`)) {
+		t.Fatalf("存合法域名应 200 且 source=db: %d %s", r.StatusCode, r.Body)
+	}
+	// 已配 → needed=false。
+	if r := doJSON(t, mux, "GET", "/admin/api/wizard/domain", "", auth, ""); !bytes.Contains(r.Body, []byte(`"needed":false`)) {
+		t.Fatalf("配好后应 needed=false: %s", r.Body)
+	}
+	// 存域名缺 CSRF → 403。
+	if r := doJSON(t, mux, "PUT", "/admin/api/settings/domain", `{"domain":"a.example.com"}`, auth, ""); r.StatusCode != http.StatusForbidden {
+		t.Fatalf("缺 CSRF 应 403，得 %d", r.StatusCode)
+	}
+}
+
+// TestWizardDomainSkip 覆盖留空跳过：skip→needed=false→skip 缺 CSRF→403。
+func TestWizardDomainSkip(t *testing.T) {
+	_, mux := newHTTP(t)
+	sess, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+
+	if r := doJSON(t, mux, "POST", "/admin/api/wizard/domain/skip", "", auth, csrf); r.StatusCode != http.StatusOK {
+		t.Fatalf("skip 应 200: %d %s", r.StatusCode, r.Body)
+	}
+	if r := doJSON(t, mux, "GET", "/admin/api/wizard/domain", "", auth, ""); !bytes.Contains(r.Body, []byte(`"needed":false`)) {
+		t.Fatalf("跳过后应 needed=false: %s", r.Body)
+	}
+	if r := doJSON(t, mux, "POST", "/admin/api/wizard/domain/skip", "", auth, ""); r.StatusCode != http.StatusForbidden {
+		t.Fatalf("skip 缺 CSRF 应 403，得 %d", r.StatusCode)
+	}
+}
+
+// TestWizardDomainEnvReadonly 覆盖 env 覆盖态：源 env、只读、PUT→409、向导 needed=false（决策 C）。
+func TestWizardDomainEnvReadonly(t *testing.T) {
+	_, mux := newHTTPEnvDomain(t, "env.example.com")
+	sess, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+
+	if r := doJSON(t, mux, "GET", "/admin/api/settings/domain", "", auth, ""); !bytes.Contains(r.Body, []byte(`"source":"env"`)) || !bytes.Contains(r.Body, []byte(`"readonly":true`)) || !bytes.Contains(r.Body, []byte(`"env.example.com"`)) {
+		t.Fatalf("env 覆盖应 source=env & readonly=true: %s", r.Body)
+	}
+	// env 覆盖时写入被拒（只读，不双写 DB）→ 409。
+	if r := doJSON(t, mux, "PUT", "/admin/api/settings/domain", `{"domain":"other.example.com"}`, auth, csrf); r.StatusCode != http.StatusConflict {
+		t.Fatalf("env 只读应 409，得 %d %s", r.StatusCode, r.Body)
+	}
+	// env 已提供域名 → 向导不再需要域名步骤。
+	if r := doJSON(t, mux, "GET", "/admin/api/wizard/domain", "", auth, ""); !bytes.Contains(r.Body, []byte(`"needed":false`)) {
+		t.Fatalf("env 已配应 needed=false: %s", r.Body)
 	}
 }
