@@ -281,17 +281,27 @@ type DashboardStats struct {
 	Currency           string
 }
 
-// DashboardStats 计算并返回概览订单聚合。
-func (s *Service) DashboardStats(ctx context.Context) (DashboardStats, error) {
+// dashboardWindowBounds 把"服务器本地自然日"的今日/近7日下界，换算为对 UTC 存储的 created_at 可做词法比较的 UTC 串。
+//
+//	正确性关键（跨时区+跨 UTC 日界）：先在本地时区取零点 time.Date(...,now.Location())，再 .UTC() 落到真实 UTC
+//	瞬间、按库内同格式（毫秒+Z）输出。故东八区下"本地今日但 UTC 仍是昨日"的订单（如本地 02:00 = UTC 前一日 18:00），
+//	其 created_at 仍 >= todayBound（本地零点对应的 UTC 前一日 16:00），被正确计入今日——而非按 UTC 自然日误判为昨日。
+//	纯函数、注入 now 便于确定性单测（固定时区+固定 now，不依赖运行环境时区）。
+func dashboardWindowBounds(now time.Time) (todayBound, weekBound string) {
 	const layout = "2006-01-02T15:04:05.000Z" // 匹配库内 strftime('%Y-%m-%dT%H:%M:%fZ') 的 UTC 形态
-	now := time.Now()
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	weekStart := todayStart.AddDate(0, 0, -6) // 含今日的近 7 个自然日
-	today, err := s.q.DashboardOrderWindow(ctx, todayStart.UTC().Format(layout))
+	return todayStart.UTC().Format(layout), weekStart.UTC().Format(layout)
+}
+
+// DashboardStats 计算并返回概览订单聚合。
+func (s *Service) DashboardStats(ctx context.Context) (DashboardStats, error) {
+	todayBound, weekBound := dashboardWindowBounds(time.Now())
+	today, err := s.q.DashboardOrderWindow(ctx, todayBound)
 	if err != nil {
 		return DashboardStats{}, fmt.Errorf("order: 概览今日聚合失败: %w", err)
 	}
-	week, err := s.q.DashboardOrderWindow(ctx, weekStart.UTC().Format(layout))
+	week, err := s.q.DashboardOrderWindow(ctx, weekBound)
 	if err != nil {
 		return DashboardStats{}, fmt.Errorf("order: 概览近7日聚合失败: %w", err)
 	}
