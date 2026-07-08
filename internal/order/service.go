@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -263,6 +264,57 @@ func (s *Service) AdminGet(ctx context.Context, publicID string) (*Order, error)
 		})
 	}
 	return out, nil
+}
+
+// DashboardStats 概览订单聚合：今日 / 近 7 日订单数与销售额、待处理数、展示货币。
+//   - 时间口径（D1）：按服务器本地自然日——今日=[本地今日零点, 现在]；近 7 日=[本地(今日-6天)零点, 现在]。
+//     本地零点换算为 UTC ISO8601 与库内 created_at（UTC）按字符串字典序比较（下界 .000，词法比较安全）。
+//   - 销售额口径（D6）：仅计 paid/fulfilled 合计；refunded 单转 refunded 状态、天然不计入（=全额扣除），
+//     且不依赖 refund 记录（webhook 同步的退款可能无记录）。部分退款是 v1 之后，届时改按 refund.amount_cents 扣减。
+//   - 只读、无事务：单连接上顺序跑 3 个聚合查询（不开事务再发独立查询，见 DECISIONS 单连接纪律）。
+type DashboardStats struct {
+	TodayCount         int64
+	TodaySalesCents    int64
+	WeekCount          int64
+	WeekSalesCents     int64
+	PendingFulfillment int64
+	Currency           string
+}
+
+// dashboardWindowBounds 把"服务器本地自然日"的今日/近7日下界，换算为对 UTC 存储的 created_at 可做词法比较的 UTC 串。
+//
+//	正确性关键（跨时区+跨 UTC 日界）：先在本地时区取零点 time.Date(...,now.Location())，再 .UTC() 落到真实 UTC
+//	瞬间、按库内同格式（毫秒+Z）输出。故东八区下"本地今日但 UTC 仍是昨日"的订单（如本地 02:00 = UTC 前一日 18:00），
+//	其 created_at 仍 >= todayBound（本地零点对应的 UTC 前一日 16:00），被正确计入今日——而非按 UTC 自然日误判为昨日。
+//	纯函数、注入 now 便于确定性单测（固定时区+固定 now，不依赖运行环境时区）。
+func dashboardWindowBounds(now time.Time) (todayBound, weekBound string) {
+	const layout = "2006-01-02T15:04:05.000Z" // 匹配库内 strftime('%Y-%m-%dT%H:%M:%fZ') 的 UTC 形态
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	weekStart := todayStart.AddDate(0, 0, -6) // 含今日的近 7 个自然日
+	return todayStart.UTC().Format(layout), weekStart.UTC().Format(layout)
+}
+
+// DashboardStats 计算并返回概览订单聚合。
+func (s *Service) DashboardStats(ctx context.Context) (DashboardStats, error) {
+	todayBound, weekBound := dashboardWindowBounds(time.Now())
+	today, err := s.q.DashboardOrderWindow(ctx, todayBound)
+	if err != nil {
+		return DashboardStats{}, fmt.Errorf("order: 概览今日聚合失败: %w", err)
+	}
+	week, err := s.q.DashboardOrderWindow(ctx, weekBound)
+	if err != nil {
+		return DashboardStats{}, fmt.Errorf("order: 概览近7日聚合失败: %w", err)
+	}
+	pending, err := s.q.DashboardPendingFulfillment(ctx)
+	if err != nil {
+		return DashboardStats{}, fmt.Errorf("order: 概览待处理聚合失败: %w", err)
+	}
+	return DashboardStats{
+		TodayCount: today.OrderCount, TodaySalesCents: today.SalesCents,
+		WeekCount: week.OrderCount, WeekSalesCents: week.SalesCents,
+		PendingFulfillment: pending,
+		Currency:           s.settings.Currency(ctx),
+	}, nil
 }
 
 // variantLabel 把变体选项拼为快照文字（如 尺码:S · 颜色:黑）。

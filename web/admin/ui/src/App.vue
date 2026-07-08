@@ -177,6 +177,7 @@ onMounted(refresh)
     <header class="app-header">
       <div class="brand">Kartwo Admin</div>
       <div class="row" style="gap:1rem; flex: 0;">
+        <RouterLink to="/dashboard">概览</RouterLink>
         <RouterLink to="/products">商品</RouterLink>
         <RouterLink to="/orders">订单</RouterLink>
         <RouterLink to="/market">市场</RouterLink>

@@ -203,6 +203,30 @@ func (s *Service) ListProducts(ctx context.Context) ([]ProductSummary, error) {
 	return out, nil
 }
 
+// CountActiveProducts 返回未软删商品数（概览用）。
+func (s *Service) CountActiveProducts(ctx context.Context) (int64, error) {
+	n, err := s.q.CountActiveProducts(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("catalog: 统计商品数失败: %w", err)
+	}
+	return n, nil
+}
+
+// StockAlerts 库存告警计数：可售=quantity-reserved，零库存(=0)与低库存(1..5)条目数（概览用，D3 N=5）。
+type StockAlerts struct {
+	ZeroStock int64
+	LowStock  int64
+}
+
+// StockAlerts 返回库存告警计数（仅未软删变体/商品）。
+func (s *Service) StockAlerts(ctx context.Context) (StockAlerts, error) {
+	r, err := s.q.DashboardStockAlerts(ctx)
+	if err != nil {
+		return StockAlerts{}, fmt.Errorf("catalog: 统计库存告警失败: %w", err)
+	}
+	return StockAlerts{ZeroStock: r.ZeroStock, LowStock: r.LowStock}, nil
+}
+
 // GetProduct 返回商品详情（含变体矩阵）。不存在返回 ErrNotFound。
 func (s *Service) GetProduct(ctx context.Context, publicID string) (*ProductDetail, error) {
 	p, err := s.q.GetProductByPublicID(ctx, publicID)
