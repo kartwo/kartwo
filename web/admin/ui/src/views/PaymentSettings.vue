@@ -95,7 +95,7 @@ onMounted(load)
 
 <style scoped>
 .chip{font-size:.72rem;border:1px solid var(--line);border-radius:999px;padding:.05rem .5rem;color:var(--muted);margin-left:.5rem}
-.chip.on{color:#03263a;background:var(--accent);border-color:var(--accent)}
+.chip.on{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}
 .panel.card label{display:block;margin-top:.8rem}
 .panel.card input,.panel.card select{width:100%}
 .env-banner{margin:.6rem 0;padding:.5rem .7rem;border:1px solid var(--line);border-radius:8px;background:var(--panel);font-size:.85rem}

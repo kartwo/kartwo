@@ -57,7 +57,7 @@ onMounted(load)
 .clickable{cursor:pointer}
 .clickable:hover{background:var(--panel)}
 .badge{font-size:.74rem;border-radius:999px;padding:.1rem .5rem;border:1px solid var(--line)}
-.badge.paid{color:#03263a;background:var(--accent);border-color:var(--accent)}
+.badge.paid{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}
 .badge.refunded{color:#7a2e2e;background:#f6dede;border-color:#e6b8b8}
 .badge.pending{color:var(--muted)}
 </style>
