@@ -1,6 +1,6 @@
 module github.com/kartwo/kartwo
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/gen2brain/webp v0.5.5

@@ -10,7 +10,7 @@ on:
 
 # 钉死版本，不用浮动 latest（与 go.mod 一致）。
 env:
-  GO_VERSION: "1.26.4"
+  GO_VERSION: "1.26.5"
   NODE_VERSION: "24"
   SQLC_VERSION: "1.30.0"
   GOLANGCI_LINT_VERSION: "v2.5.0"
