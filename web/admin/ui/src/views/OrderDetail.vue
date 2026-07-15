@@ -3,13 +3,14 @@
 import { ref, onMounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, APIError } from '../api.js'
+import { useToast } from '../toast.js'
 
 const route = useRoute()
 const router = useRouter()
 const onUnauthorized = inject('onUnauthorized')
+const toast = useToast()
 const o = ref(null)
-const err = ref('')
-const msg = ref('')
+const err = ref('') // 仅页级：订单加载失败 / 404「订单不存在」的常驻错误（D2 保留 inline）
 const busy = ref(false)
 
 function money(cents, cur) { return (cents / 100).toFixed(2) + ' ' + (cur || '') }
@@ -31,15 +32,15 @@ async function load() {
 async function refund() {
   if (busy.value) return
   if (!window.confirm('确认对该订单整单全额退款？此操作不可撤销。')) return
-  busy.value = true; err.value = ''; msg.value = ''
+  busy.value = true
   try {
     const r = await api.refundOrder(route.params.id)
-    msg.value = '退款成功，订单已转为「已退款」。'
     o.value.status = r.status || 'refunded'
     await load()
+    toast.success('退款成功，订单已转为「已退款」。')
   } catch (e) {
     if (e instanceof APIError && e.status === 401) return onUnauthorized()
-    err.value = e.message
+    toast.error(e.message)
   } finally { busy.value = false }
 }
 onMounted(load)
@@ -49,7 +50,6 @@ onMounted(load)
   <div class="container" style="max-width:760px">
     <p><a href="javascript:void(0)" @click="router.push('/orders')">← 返回订单列表</a></p>
     <p v-if="err" class="err">{{ err }}</p>
-    <p v-if="msg" class="ok">{{ msg }}</p>
 
     <template v-if="o">
       <div class="row" style="justify-content:space-between;align-items:center">
