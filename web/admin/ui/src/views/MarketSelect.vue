@@ -3,13 +3,14 @@
 import { ref, onMounted, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, APIError } from '../api.js'
+import { useToast } from '../toast.js'
 
 const router = useRouter()
 const onUnauthorized = inject('onUnauthorized')
+const toast = useToast()
 const markets = ref([])
 const currentCode = ref('')
-const err = ref('')
-const msg = ref('')
+const err = ref('') // 仅页级：市场列表加载失败的常驻错误（D2 保留 inline）
 const busy = ref(false)
 
 async function load() {
@@ -26,15 +27,15 @@ async function load() {
 
 async function choose(m) {
   if (!m.available || busy.value) return
-  busy.value = true; err.value = ''; msg.value = ''
+  busy.value = true
   try {
     await api.setMarket(m.code)
     currentCode.value = m.code
-    msg.value = '已设为「' + m.name + '」，店面已按该市场配置。'
+    toast.success('已设为「' + m.name + '」，店面已按该市场配置。')
     // 通知外层：市场已配置
     window.dispatchEvent(new CustomEvent('market-configured'))
   } catch (e) {
-    err.value = e.message
+    toast.error(e.message)
   } finally { busy.value = false }
 }
 onMounted(load)
@@ -48,7 +49,6 @@ onMounted(load)
       不用担心选错——<strong>以后随时可以来这里调整或补充</strong>。
     </p>
     <p v-if="err" class="err">{{ err }}</p>
-    <p v-if="msg" class="ok">{{ msg }}</p>
 
     <div class="market-grid">
       <div v-for="m in markets" :key="m.code"

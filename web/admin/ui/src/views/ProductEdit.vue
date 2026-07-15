@@ -12,8 +12,7 @@ const onUnauthorized = inject('onUnauthorized')
 const toast = useToast()
 
 const isNew = computed(() => !props.id)
-const err = ref('')
-const msg = ref('')
+const err = ref('') // 仅页级：编辑页商品加载失败的常驻错误（D2 保留 inline）
 const busy = ref(false)
 
 // 公共字段
@@ -48,7 +47,7 @@ function yuanToCents(y) {
 
 function generateMatrix() {
   const parsed = parseAxes()
-  if (!parsed.length) { err.value = '请先填写至少一个变体轴'; return }
+  if (!parsed.length) { toast.error('请先填写至少一个变体轴'); return }
   let combos = [[]]
   for (const ax of parsed) {
     const next = []
@@ -57,7 +56,6 @@ function generateMatrix() {
   }
   // 价格默认空（不是 0）：强制商家显式填写，杜绝"忘填→默认 0"。
   newVariants.value = combos.map(sel => ({ selections: sel, sku: '', priceYuan: '', quantity: 0 }))
-  err.value = ''
 }
 
 async function saveNew() {
@@ -107,11 +105,11 @@ async function loadMedia() {
 }
 
 async function saveFields() {
-  busy.value = true; err.value = ''; msg.value = ''
+  busy.value = true
   try {
     await api.updateProduct(props.id, { title: title.value, description: description.value, status: status.value })
-    msg.value = '已保存'
-  } catch (e) { err.value = e.message } finally { busy.value = false }
+    toast.success('已保存')
+  } catch (e) { toast.error(e.message) } finally { busy.value = false }
 }
 
 // saveVariant 同存该行的价格 + 库存（决策1A：改哪行存哪行、价+量同存）。
@@ -136,19 +134,19 @@ async function saveVariant(v) {
 async function onUpload(ev) {
   const file = ev.target.files && ev.target.files[0]
   if (!file) return
-  busy.value = true; err.value = ''
+  busy.value = true
   try {
     await api.uploadMedia(props.id, file)
     await loadMedia()
-    msg.value = '图片已上传'
-  } catch (e) { err.value = e.message } finally {
+    toast.success('图片已上传')
+  } catch (e) { toast.error(e.message) } finally {
     busy.value = false
     if (fileInput.value) fileInput.value.value = ''
   }
 }
 
 async function removeMedia(m) {
-  try { await api.deleteMedia(m.public_id); await loadMedia() } catch (e) { err.value = e.message }
+  try { await api.deleteMedia(m.public_id); await loadMedia() } catch (e) { toast.error(e.message) }
 }
 
 function thumb(m) {
@@ -165,7 +163,6 @@ onMounted(() => { if (!isNew.value) load() })
     <button style="flex:0" @click="router.push('/products')">← 返回</button>
   </div>
   <p v-if="err" class="err">{{ err }}</p>
-  <p v-if="msg" class="ok">{{ msg }}</p>
 
   <div class="panel">
     <div class="row">

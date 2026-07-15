@@ -2,22 +2,23 @@
 <script setup>
 import { ref, inject } from 'vue'
 import { api, APIError } from '../api.js'
+import { useToast } from '../toast.js'
 import PaymentSettings from './PaymentSettings.vue'
 
 const emit = defineEmits(['done'])
 const onUnauthorized = inject('onUnauthorized')
+const toast = useToast()
 const busy = ref(false)
-const err = ref('')
 
 async function skip() {
   if (busy.value) return
-  busy.value = true; err.value = ''
+  busy.value = true
   try {
     await api.wizardPaymentSkip()
     emit('done')
   } catch (e) {
     if (e instanceof APIError && e.status === 401) return onUnauthorized()
-    err.value = e.message
+    toast.error(e.message)
   } finally { busy.value = false }
 }
 function enter() { emit('done') }
@@ -30,7 +31,6 @@ function enter() { emit('done') }
       想让顾客<strong>真正付钱</strong>，得先接上收款。下面填好任意一种（Stripe 收信用卡、或 PayPal）即可，
       <strong>默认沙箱/测试</strong>，可放心用测试卡先跑通。<strong>不急也能稍后再配</strong>——但没配好之前，顾客只能下单、付不了款。
     </p>
-    <p v-if="err" class="err">{{ err }}</p>
 
     <PaymentSettings />
 

@@ -2,10 +2,11 @@
 <script setup>
 import { ref, onMounted, inject } from 'vue'
 import { api, APIError } from '../api.js'
+import { useToast } from '../toast.js'
 
 const onUnauthorized = inject('onUnauthorized')
-const err = ref('')
-const msg = ref('')
+const toast = useToast()
+const err = ref('') // 仅页级：加载收款配置失败的常驻错误（D2 保留 inline）
 const busy = ref(false)
 
 // Stripe
@@ -33,15 +34,15 @@ async function savePaypal() {
 }
 async function save(payload) {
   if (busy.value) return
-  busy.value = true; err.value = ''; msg.value = ''
+  busy.value = true
   try {
     const r = await api.setPayment(payload)
     Object.assign(s.value, r.stripe, { secret: '', webhook_secret: '' })
     Object.assign(p.value, r.paypal, { secret: '' })
-    msg.value = '已保存，收款密钥已即时生效。'
+    toast.success('已保存，收款密钥已即时生效。')
   } catch (e) {
     if (e instanceof APIError && e.status === 401) return onUnauthorized()
-    err.value = e.message
+    toast.error(e.message)
   } finally { busy.value = false }
 }
 onMounted(load)
@@ -52,7 +53,6 @@ onMounted(load)
     <h2>收款设置</h2>
     <p class="muted" style="max-width:64ch">密钥<strong>加密保存</strong>，绝不进日志或导出明文。<strong>默认沙箱/测试</strong>，可用测试卡 <code>4242 4242 4242 4242</code> 走通后再切正式。</p>
     <p v-if="err" class="err">{{ err }}</p>
-    <p v-if="msg" class="ok">{{ msg }}</p>
 
     <!-- Stripe -->
     <div class="panel card" style="margin-top:1rem">

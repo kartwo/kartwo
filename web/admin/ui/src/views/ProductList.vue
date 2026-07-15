@@ -3,11 +3,13 @@
 import { ref, onMounted, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, APIError } from '../api.js'
+import { useToast } from '../toast.js'
 
 const router = useRouter()
 const onUnauthorized = inject('onUnauthorized')
+const toast = useToast()
 const products = ref([])
-const err = ref('')
+const err = ref('') // 仅页级：列表加载失败的常驻错误（D2 保留 inline）
 const loading = ref(true)
 
 async function load() {
@@ -26,7 +28,8 @@ async function remove(p) {
   try {
     await api.deleteProduct(p.public_id)
     await load()
-  } catch (e) { err.value = e.message }
+    toast.success('商品已删除')
+  } catch (e) { toast.error(e.message) }
 }
 
 onMounted(load)
