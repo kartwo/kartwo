@@ -104,15 +104,17 @@ onMounted(load)
 .ready-banner { border: 1px solid var(--ok); border-radius: 12px; padding: .9rem 1.1rem; line-height: 1.5; }
 .guide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .8rem; }
 .guide-card { display: flex; flex-direction: column; gap: .3rem; text-decoration: none; color: inherit;
-  border: 1px solid var(--accent); border-radius: 12px; padding: .9rem 1rem; background: var(--panel); }
-.guide-card:hover { border-color: var(--text); }
+  border: 1px solid var(--accent); border-radius: var(--radius-lg); padding: .9rem 1rem; background: var(--surface);
+  box-shadow: var(--shadow-sm); transition: box-shadow .12s ease, border-color .12s ease; }
+.guide-card:hover { border-color: var(--accent-hover); box-shadow: var(--shadow-md); }
 .g-title { font-weight: 600; white-space: nowrap; }
 .g-desc { font-size: .85rem; line-height: 1.4; white-space: normal; }
 
-.stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: .8rem; }
-.stat { border: 1px solid var(--line); border-radius: 12px; padding: .9rem 1rem; background: var(--panel);
-  text-decoration: none; color: inherit; display: block; }
-.stat.linkable:hover { border-color: var(--accent); }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1.1rem; }
+.stat { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem 1.1rem; background: var(--surface);
+  box-shadow: var(--shadow-sm); text-decoration: none; color: inherit; display: block;
+  transition: box-shadow .12s ease, border-color .12s ease; }
+.stat.linkable:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
 .s-label { font-size: .85rem; color: var(--muted); white-space: nowrap; }
 .s-value { font-size: 1.8rem; font-weight: 700; margin: .2rem 0; }
 .s-value.warn { color: var(--danger); }

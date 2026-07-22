@@ -101,7 +101,7 @@ onMounted(load)
 .lines th,.lines td{text-align:left;padding:.4rem .6rem;border-bottom:1px solid var(--line)}
 .lines th{font-size:.8rem;color:var(--muted)}
 .badge{font-size:.78rem;border-radius:999px;padding:.15rem .6rem;border:1px solid var(--line)}
-.badge.paid{color:#03263a;background:var(--accent);border-color:var(--accent)}
+.badge.paid{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}
 .badge.refunded{color:#7a2e2e;background:#f6dede;border-color:#e6b8b8}
 .danger{background:#c0392b;color:#fff;border-color:#c0392b}
 .danger:disabled{opacity:.6}

@@ -84,6 +84,6 @@ onMounted(load)
 .mc-head{display:flex;align-items:center;gap:.5rem;justify-content:space-between}
 .mc-enables{font-size:.9rem;margin:.5rem 0}
 .chip{font-size:.72rem;border:1px solid var(--line);border-radius:999px;padding:.05rem .5rem;color:var(--muted)}
-.chip.on{color:#03263a;background:var(--accent);border-color:var(--accent)}
+.chip.on{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}
 .market-card button{margin-top:.6rem;width:100%}
 </style>
