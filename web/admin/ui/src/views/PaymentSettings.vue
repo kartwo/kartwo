@@ -3,6 +3,7 @@
 import { ref, onMounted, inject } from 'vue'
 import { api, APIError } from '../api.js'
 import { useToast } from '../toast.js'
+import ErrorState from '../components/ErrorState.vue'
 
 const onUnauthorized = inject('onUnauthorized')
 const toast = useToast()
@@ -52,7 +53,7 @@ onMounted(load)
   <div class="container" style="max-width:720px">
     <h2>收款设置</h2>
     <p class="muted" style="max-width:64ch">密钥<strong>加密保存</strong>，绝不进日志或导出明文。<strong>默认沙箱/测试</strong>，可用测试卡 <code>4242 4242 4242 4242</code> 走通后再切正式。</p>
-    <p v-if="err" class="err">{{ err }}</p>
+    <ErrorState v-if="err" :message="err" :retry="load" />
 
     <!-- Stripe -->
     <div class="panel card" style="margin-top:1rem">
@@ -94,9 +95,9 @@ onMounted(load)
 </template>
 
 <style scoped>
-.chip{font-size:.72rem;border:1px solid var(--line);border-radius:999px;padding:.05rem .5rem;color:var(--muted);margin-left:.5rem}
+.chip{font-size:var(--fs-xs);border:1px solid var(--border);border-radius:var(--radius-pill);padding:.05rem .5rem;color:var(--text-muted);margin-left:.5rem}
 .chip.on{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}
 .panel.card label{display:block;margin-top:.8rem}
 .panel.card input,.panel.card select{width:100%}
-.env-banner{margin:.6rem 0;padding:.5rem .7rem;border:1px solid var(--line);border-radius:8px;background:var(--panel);font-size:.85rem}
+.env-banner{margin:.6rem 0;padding:.5rem .7rem;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-2);font-size:var(--fs-sm)}
 </style>

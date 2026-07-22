@@ -4,6 +4,7 @@ import { ref, computed, onMounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, APIError } from '../api.js'
 import { useToast } from '../toast.js'
+import ErrorState from '../components/ErrorState.vue'
 
 const props = defineProps({ id: { type: String, default: '' } })
 const route = useRoute()
@@ -162,7 +163,7 @@ onMounted(() => { if (!isNew.value) load() })
     <h2>{{ isNew ? '新建商品' : '编辑商品' }}</h2>
     <button style="flex:0" @click="router.push('/products')">← 返回</button>
   </div>
-  <p v-if="err" class="err">{{ err }}</p>
+  <ErrorState v-if="err" :message="err" :retry="load" />
 
   <div class="panel">
     <div class="row">

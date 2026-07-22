@@ -3,16 +3,20 @@
 <script setup>
 import { ref, computed, onMounted, inject } from 'vue'
 import { api, APIError } from '../api.js'
+import ErrorState from '../components/ErrorState.vue'
 
 const onUnauthorized = inject('onUnauthorized', null)
 const data = ref(null)
 const loaded = ref(false)
+const err = ref('') // 仅页级：概览加载失败的常驻错误
 
 async function load() {
+  err.value = ''
   try {
     data.value = await api.dashboard()
   } catch (e) {
     if (e instanceof APIError && e.status === 401 && onUnauthorized) return onUnauthorized()
+    err.value = e.message
   } finally { loaded.value = true }
 }
 
@@ -94,6 +98,7 @@ onMounted(load)
       <p v-if="noOrdersYet" class="muted empty-hint">还没有订单——把店面链接分享出去，第一单很快就来。</p>
     </template>
 
+    <ErrorState v-else-if="loaded && err" :message="err" :retry="load" />
     <p v-else-if="loaded" class="muted">概览暂时加载不出来，请刷新重试。</p>
     <p v-else class="muted">加载中…</p>
   </div>
@@ -101,7 +106,8 @@ onMounted(load)
 
 <style scoped>
 .guide { margin: .4rem 0 1.4rem; }
-.ready-banner { border: 1px solid var(--ok); border-radius: 12px; padding: .9rem 1.1rem; line-height: 1.5; }
+.ready-banner { border: 1px solid var(--success); background: var(--success-bg); color: var(--success);
+  border-radius: var(--radius-lg); padding: .9rem 1.1rem; line-height: 1.5; }
 .guide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .8rem; }
 .guide-card { display: flex; flex-direction: column; gap: .3rem; text-decoration: none; color: inherit;
   border: 1px solid var(--accent); border-radius: var(--radius-lg); padding: .9rem 1rem; background: var(--surface);
@@ -115,10 +121,10 @@ onMounted(load)
   box-shadow: var(--shadow-sm); text-decoration: none; color: inherit; display: block;
   transition: box-shadow .12s ease, border-color .12s ease; }
 .stat.linkable:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
-.s-label { font-size: .85rem; color: var(--muted); white-space: nowrap; }
+.s-label { font-size: .85rem; color: var(--text-muted); white-space: nowrap; }
 .s-value { font-size: 1.8rem; font-weight: 700; margin: .2rem 0; }
 .s-value.warn { color: var(--danger); }
-.s-value-sm { font-size: 1.1rem; font-weight: 600; color: var(--muted); }
+.s-value-sm { font-size: 1.1rem; font-weight: 600; color: var(--text-muted); }
 .s-sub { font-size: .8rem; white-space: nowrap; }
 .empty-hint { margin-top: 1rem; }
 </style>

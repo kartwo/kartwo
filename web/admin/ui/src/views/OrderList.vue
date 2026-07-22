@@ -3,6 +3,7 @@
 import { ref, onMounted, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, APIError } from '../api.js'
+import ErrorState from '../components/ErrorState.vue'
 
 const router = useRouter()
 const onUnauthorized = inject('onUnauthorized')
@@ -30,8 +31,8 @@ onMounted(load)
 <template>
   <div class="container">
     <h2>订单</h2>
-    <p v-if="err" class="err">{{ err }}</p>
-    <p v-if="!orders.length" class="muted">暂无订单。</p>
+    <ErrorState v-if="err" :message="err" :retry="load" />
+    <p v-else-if="!orders.length" class="muted">暂无订单。</p>
     <table v-else class="orders">
       <thead>
         <tr><th>订单号</th><th>状态</th><th>邮箱</th><th>金额</th><th>时间</th></tr>
@@ -51,13 +52,13 @@ onMounted(load)
 
 <style scoped>
 .orders{width:100%;border-collapse:collapse;margin-top:1rem}
-.orders th,.orders td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--line)}
-.orders th{font-size:.8rem;color:var(--muted)}
+.orders th,.orders td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--border)}
+.orders th{font-size:var(--fs-sm);color:var(--text-muted)}
 /* 可点击行：改名避开全局 .row 的 flex 工具类（display:flex 会破坏表格列宽算法致表头竖排） */
 .clickable{cursor:pointer}
-.clickable:hover{background:var(--panel)}
-.badge{font-size:.74rem;border-radius:999px;padding:.1rem .5rem;border:1px solid var(--line)}
+.clickable:hover{background:var(--surface)}
+.badge{font-size:var(--fs-xs);border-radius:var(--radius-pill);padding:.1rem .5rem;border:1px solid var(--border)}
 .badge.paid{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}
-.badge.refunded{color:#7a2e2e;background:#f6dede;border-color:#e6b8b8}
-.badge.pending{color:var(--muted)}
+.badge.refunded{color:var(--danger);background:var(--danger-bg);border-color:var(--danger-bg)}
+.badge.pending{color:var(--text-muted)}
 </style>

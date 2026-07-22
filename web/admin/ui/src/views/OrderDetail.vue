@@ -4,6 +4,8 @@ import { ref, onMounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, APIError } from '../api.js'
 import { useToast } from '../toast.js'
+import { confirm } from '../confirm.js'
+import ErrorState from '../components/ErrorState.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -31,7 +33,12 @@ async function load() {
 
 async function refund() {
   if (busy.value) return
-  if (!window.confirm('确认对该订单整单全额退款？此操作不可撤销。')) return
+  const ok = await confirm({
+    title: '确认退款',
+    message: '确认对该订单整单全额退款？此操作不可撤销。',
+    confirmText: '退款', danger: true,
+  })
+  if (!ok) return
   busy.value = true
   try {
     const r = await api.refundOrder(route.params.id)
@@ -49,7 +56,7 @@ onMounted(load)
 <template>
   <div class="container" style="max-width:760px">
     <p><a href="javascript:void(0)" @click="router.push('/orders')">← 返回订单列表</a></p>
-    <p v-if="err" class="err">{{ err }}</p>
+    <ErrorState v-if="err" :message="err" :retry="load" />
 
     <template v-if="o">
       <div class="row" style="justify-content:space-between;align-items:center">
@@ -98,11 +105,9 @@ onMounted(load)
 
 <style scoped>
 .lines{width:100%;border-collapse:collapse;margin:.5rem 0 1rem}
-.lines th,.lines td{text-align:left;padding:.4rem .6rem;border-bottom:1px solid var(--line)}
-.lines th{font-size:.8rem;color:var(--muted)}
-.badge{font-size:.78rem;border-radius:999px;padding:.15rem .6rem;border:1px solid var(--line)}
+.lines th,.lines td{text-align:left;padding:.4rem .6rem;border-bottom:1px solid var(--border)}
+.lines th{font-size:var(--fs-sm);color:var(--text-muted)}
+.badge{font-size:var(--fs-sm);border-radius:var(--radius-pill);padding:.15rem .6rem;border:1px solid var(--border)}
 .badge.paid{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}
-.badge.refunded{color:#7a2e2e;background:#f6dede;border-color:#e6b8b8}
-.danger{background:#c0392b;color:#fff;border-color:#c0392b}
-.danger:disabled{opacity:.6}
+.badge.refunded{color:var(--danger);background:var(--danger-bg);border-color:var(--danger-bg)}
 </style>
