@@ -28,6 +28,7 @@ import (
 	"github.com/kartwo/kartwo/internal/cart"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/config"
+	"github.com/kartwo/kartwo/internal/mail"
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
 	"github.com/kartwo/kartwo/internal/order"
@@ -199,8 +200,14 @@ func runServe(logger *slog.Logger) error {
 		logger.Warn("⚠️ PayPal 处于 LIVE 正式模式", "detail", "env 路径无沙箱兜底，将产生真实收款；请确认")
 	}
 
+	// SMTP 凭证内存缓存（绑定 KEK 金库：登录解锁/登出销毁）+ env 覆盖旁路（D1）。
+	mailCache := mail.NewCache(settingsSvc)
+	adminSvc.SetMailKeys(mailCache)
+	mailStatus := mailCache.Status(context.Background())
+	logger.Info("SMTP 配置来源", "source", mailStatus.Source, "configured", mailStatus.Configured, "encryption", mailStatus.Encryption)
+
 	orderSvc := order.New(st.DB, settingsSvc)
-	adminHTTP := admin.NewHTTP(adminSvc, catalog.New(st.DB), mediaSvc, settingsSvc, orderSvc, paySvc, cfg.Domain, cfg.Env == "prod")
+	adminHTTP := admin.NewHTTP(adminSvc, catalog.New(st.DB), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, cfg.Domain, cfg.Env == "prod")
 	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, cfg.ShopName, cfg.BaseURL, cfg.Env == "prod")
 	payHTTP := payment.NewHTTP(paySvc)
 	// 解析"当前生效域名"（env 覆盖 DB），决定是否启用 HTTPS（仅 prod）。
@@ -217,6 +224,9 @@ func runServe(logger *slog.Logger) error {
 	// 优雅关停：监听 SIGINT/SIGTERM。
 	ctx, stop := signal.NotifyContext(baseCtx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// 邮件发送 worker：后台轮询 outbox 异步发信（不阻塞下单），随 ctx 取消停止。
+	go mail.NewWorker(st.DB, mailCache, logger, 0).Run(ctx)
 
 	var servers []*http.Server
 	errCh := make(chan error, 1)

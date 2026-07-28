@@ -21,6 +21,7 @@ import (
 
 	"github.com/kartwo/kartwo/internal/auth"
 	"github.com/kartwo/kartwo/internal/catalog"
+	"github.com/kartwo/kartwo/internal/mail"
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
 	"github.com/kartwo/kartwo/internal/order"
@@ -218,7 +219,9 @@ func newHTTPEnvDomain(t *testing.T, envDomain string) (*HTTP, http.Handler) {
 	md := media.New(svc.db, media.NewLocalBackend(root), media.NewDefaultPolicy(root, 10<<20, 0), 20)
 	set := settings.New(svc.db)
 	ord := order.New(svc.db, set)
-	h := NewHTTP(svc, catalog.New(svc.db), md, set, ord, nil, envDomain, false)
+	mc := mail.NewCache(set)
+	svc.SetMailKeys(mc)
+	h := NewHTTP(svc, catalog.New(svc.db), md, set, ord, nil, mc, envDomain, false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
@@ -838,5 +841,76 @@ func TestWizardDomainEnvReadonly(t *testing.T) {
 	// env 已提供域名 → 向导不再需要域名步骤。
 	if r := doJSON(t, mux, "GET", "/admin/api/wizard/domain", "", auth, ""); !bytes.Contains(r.Body, []byte(`"needed":false`)) {
 		t.Fatalf("env 已配应 needed=false: %s", r.Body)
+	}
+}
+
+// ---- SMTP 设置 + 向导邮件步骤（M4.3）----
+
+// TestSMTPSettingsAndWizard 覆盖：校验拒非法、valid 存 + password 密文、configured/needed 联动、skip、CSRF。
+func TestSMTPSettingsAndWizard(t *testing.T) {
+	h, mux := newHTTP(t)
+	sess, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+
+	// 初始未配置未跳过 → needed=true。
+	if r := doJSON(t, mux, "GET", "/admin/api/wizard/smtp", "", auth, ""); !bytes.Contains(r.Body, []byte(`"needed":true`)) {
+		t.Fatalf("初始应 needed=true: %s", r.Body)
+	}
+
+	// 非法输入 → 400：缺 host、端口非数字、加密非法、发件地址非邮箱。
+	for _, body := range []string{
+		`{"host":"","port":"587","from_address":"a@b.co","encryption":"starttls"}`,
+		`{"host":"smtp.x.com","port":"abc","from_address":"a@b.co","encryption":"starttls"}`,
+		`{"host":"smtp.x.com","port":"587","from_address":"a@b.co","encryption":"weird"}`,
+		`{"host":"smtp.x.com","port":"587","from_address":"notmail","encryption":"starttls"}`,
+	} {
+		if r := doJSON(t, mux, "PUT", "/admin/api/settings/smtp", body, auth, csrf); r.StatusCode != http.StatusBadRequest {
+			t.Fatalf("非法 SMTP %s 应 400，得 %d %s", body, r.StatusCode, r.Body)
+		}
+	}
+
+	// 缺 CSRF → 403。
+	if r := doJSON(t, mux, "PUT", "/admin/api/settings/smtp", `{"host":"smtp.x.com","port":"587","from_address":"a@b.co","encryption":"starttls"}`, auth, ""); r.StatusCode != http.StatusForbidden {
+		t.Fatalf("缺 CSRF 应 403，得 %d", r.StatusCode)
+	}
+
+	// 合法保存（含密码）→ 200、configured=true、has_password=true。
+	const pw = "smtp-secret-xyz"
+	ok := doJSON(t, mux, "PUT", "/admin/api/settings/smtp",
+		`{"host":"smtp.example.com","port":"587","username":"u@example.com","password":"`+pw+`","from_address":"shop@example.com","from_name":"Shop","encryption":"starttls"}`, auth, csrf)
+	if ok.StatusCode != http.StatusOK || !bytes.Contains(ok.Body, []byte(`"configured":true`)) || !bytes.Contains(ok.Body, []byte(`"has_password":true`)) {
+		t.Fatalf("合法保存应 200 configured/has_password: %d %s", ok.StatusCode, ok.Body)
+	}
+
+	// 密码落库应为密文（encrypted=1 且不含明文）。
+	var val string
+	var enc int
+	if err := h.svc.db.QueryRow(`SELECT value, encrypted FROM setting WHERE key='smtp.password'`).Scan(&val, &enc); err != nil {
+		t.Fatalf("读 smtp.password 失败: %v", err)
+	}
+	if enc != 1 || bytes.Contains([]byte(val), []byte(pw)) {
+		t.Fatalf("密码应加密存储：encrypted=%d 含明文=%v", enc, bytes.Contains([]byte(val), []byte(pw)))
+	}
+
+	// 配置后 → 向导 needed=false。
+	if r := doJSON(t, mux, "GET", "/admin/api/wizard/smtp", "", auth, ""); !bytes.Contains(r.Body, []byte(`"needed":false`)) {
+		t.Fatalf("配好后应 needed=false: %s", r.Body)
+	}
+}
+
+// TestWizardSMTPSkip 覆盖跳过：skip→needed=false→skip 缺 CSRF→403。
+func TestWizardSMTPSkip(t *testing.T) {
+	_, mux := newHTTP(t)
+	sess, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+
+	if r := doJSON(t, mux, "POST", "/admin/api/wizard/smtp/skip", "", auth, csrf); r.StatusCode != http.StatusOK {
+		t.Fatalf("skip 应 200: %d %s", r.StatusCode, r.Body)
+	}
+	if r := doJSON(t, mux, "GET", "/admin/api/wizard/smtp", "", auth, ""); !bytes.Contains(r.Body, []byte(`"needed":false`)) {
+		t.Fatalf("跳过后应 needed=false: %s", r.Body)
+	}
+	if r := doJSON(t, mux, "POST", "/admin/api/wizard/smtp/skip", "", auth, ""); r.StatusCode != http.StatusForbidden {
+		t.Fatalf("skip 缺 CSRF 应 403，得 %d", r.StatusCode)
 	}
 }

@@ -46,12 +46,19 @@ type PaymentKeys interface {
 	Status() payment.CacheStatus
 }
 
+// MailKeys 是 SMTP 凭证内存缓存的生命周期钩子（由 internal/mail 实现）。随登录解锁/登出销毁。
+type MailKeys interface {
+	Unlock(ctx context.Context, kek []byte) error
+	Lock()
+}
+
 // Service 承载 Admin 鉴权逻辑。
 type Service struct {
-	db    *sql.DB
-	q     *sqlcgen.Queries
-	vault *kekVault    // 内存中持有已解锁会话的 KEK，绝不落盘
-	keys  PaymentKeys // 可选：收款密钥缓存，随登录/登出解锁/销毁
+	db       *sql.DB
+	q        *sqlcgen.Queries
+	vault    *kekVault   // 内存中持有已解锁会话的 KEK，绝不落盘
+	keys     PaymentKeys // 可选：收款密钥缓存，随登录/登出解锁/销毁
+	mailKeys MailKeys    // 可选：SMTP 凭证缓存，随登录/登出解锁/销毁
 }
 
 // New 构建 Admin 服务。
@@ -61,6 +68,17 @@ func New(db *sql.DB) *Service {
 
 // SetPaymentKeys 注入收款密钥缓存钩子（main 装配时调用）。
 func (s *Service) SetPaymentKeys(k PaymentKeys) { s.keys = k }
+
+// SetMailKeys 注入 SMTP 凭证缓存钩子（main 装配时调用）。
+func (s *Service) SetMailKeys(k MailKeys) { s.mailKeys = k }
+
+// ReloadMailKeys 用给定 KEK 立即重载 SMTP 凭证缓存（SMTP 设置页改配置后调用，使其即时生效）。
+func (s *Service) ReloadMailKeys(ctx context.Context, kek []byte) error {
+	if s.mailKeys == nil {
+		return nil
+	}
+	return s.mailKeys.Unlock(ctx, kek)
+}
 
 // ReloadKeys 用给定 KEK 立即重载收款密钥缓存（收款页改密钥后调用，使其即时生效）。
 func (s *Service) ReloadKeys(ctx context.Context, kek []byte) error {
@@ -87,11 +105,11 @@ type Session struct {
 
 // AuthContext 为已鉴权请求的身份。
 type AuthContext struct {
-	AdminID         int64
-	Username        string
-	AdminPublicID   string
-	SessionToken    string
-	CSRFToken       string
+	AdminID       int64
+	Username      string
+	AdminPublicID string
+	SessionToken  string
+	CSRFToken     string
 }
 
 // IsInitialized 报告是否已建管理员。
@@ -183,9 +201,12 @@ func (s *Service) Login(ctx context.Context, username, password string) (*Sessio
 		return nil, fmt.Errorf("admin: 建会话失败: %w", err)
 	}
 	s.vault.put(token, kek)
-	// 解锁收款密钥缓存（绑定 KEK 金库生命周期）。失败不阻断登录——收款页/诊断会提示。
+	// 解锁收款密钥 + SMTP 凭证缓存（绑定 KEK 金库生命周期）。失败不阻断登录——各设置页/诊断会提示。
 	if s.keys != nil {
 		_ = s.keys.Unlock(ctx, kek)
+	}
+	if s.mailKeys != nil {
+		_ = s.mailKeys.Unlock(ctx, kek)
 	}
 	return &Session{Token: token, CSRFToken: csrf, ExpiresAt: expires}, nil
 }
@@ -214,6 +235,9 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 	s.vault.delete(token)
 	if s.keys != nil {
 		s.keys.Lock()
+	}
+	if s.mailKeys != nil {
+		s.mailKeys.Lock()
 	}
 	if err := s.q.DeleteSession(ctx, token); err != nil {
 		return fmt.Errorf("admin: 删会话失败: %w", err)
