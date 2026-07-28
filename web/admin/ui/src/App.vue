@@ -7,6 +7,7 @@ import PaymentWizard from './views/PaymentWizard.vue'
 import DomainWizard from './views/DomainWizard.vue'
 import WizardProgress from './components/WizardProgress.vue'
 import ToastHost from './components/ToastHost.vue'
+import ConfirmDialog from './components/ConfirmDialog.vue'
 
 const loading = ref(true)
 const initialized = ref(false)
@@ -108,8 +109,9 @@ onMounted(refresh)
 </script>
 
 <template>
-  <!-- 全局 toast 宿主：始终挂载、悬浮不随滚动，跨所有页面状态可用 -->
+  <!-- 全局 toast 宿主 + 统一确认弹窗：始终挂载，跨所有页面状态可用 -->
   <ToastHost />
+  <ConfirmDialog />
 
   <div v-if="loading" class="center-screen muted">加载中…</div>
 

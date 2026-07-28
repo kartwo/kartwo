@@ -63,6 +63,13 @@ package product
 - 字体仅 **OFL / Apache-2.0**（Inter、Noto）；图标仅 **MIT/Apache/ISC/CC0**（Lucide、Tabler、Heroicons）。
 - 禁商用/付费/许可不清/来源不明；每引入一个登记到 `LICENSES.md`。
 
+## 8.5 前端样式纪律（Admin SPA）
+- **设计 token 是唯一事实源**：颜色/间距/圆角/阴影/字阶一律用 `style.css` `:root` 的 token（`--surface/--border/--text/--accent/--danger/--sp-*/--radius-*/--shadow-*/--fs-*`），**禁止散落硬编码色值**。
+- **新写的页面/组件不新增内联样式**（`style="…"`）——优先用 token 化的可复用类；确需局部布局时也走 scoped class + token。
+- **存量布局型内联 hint**（`flex`/`max-width`/`margin` 等无颜色/主题问题者）**保留不动**，仅在恰好改到该处时顺手转 token；不为清零而返工（过度抽象=镀金）。
+- 旧 token 别名 `--panel/--line/--muted/--ok` **永久保留为无害兼容垫片**，勿删（删则全站塌样式）。
+- 不引外部字体/图标库（保留 system-ui + unicode/emoji），如需引入按 §8 许可硬约束并登记 `LICENSES.md`。
+
 ## 9. 双模式纪律（架构级）
 - 配额/计费/密钥来源/实例身份等分叉点，**只做接口 + 默认实现（自部署语义）**。
 - 内核不写 SaaS 专属逻辑、不写控制面。控制面是 v2+ 的独立外壳。

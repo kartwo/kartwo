@@ -4,6 +4,8 @@ import { ref, onMounted, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, APIError } from '../api.js'
 import { useToast } from '../toast.js'
+import { confirm } from '../confirm.js'
+import ErrorState from '../components/ErrorState.vue'
 
 const router = useRouter()
 const onUnauthorized = inject('onUnauthorized')
@@ -24,7 +26,12 @@ async function load() {
 }
 
 async function remove(p) {
-  if (!confirm('确定删除商品「' + p.title + '」？')) return
+  const ok = await confirm({
+    title: '删除商品',
+    message: `确定删除商品「${p.title}」？此操作不可撤销。`,
+    confirmText: '删除', danger: true,
+  })
+  if (!ok) return
   try {
     await api.deleteProduct(p.public_id)
     await load()
@@ -40,8 +47,8 @@ onMounted(load)
     <h2>商品</h2>
     <button class="primary" style="flex:0" @click="router.push('/products/new')">+ 新建商品</button>
   </div>
-  <p v-if="err" class="err">{{ err }}</p>
-  <div class="panel">
+  <ErrorState v-if="err" :message="err" :retry="load" />
+  <div v-else class="panel">
     <p v-if="loading" class="muted">加载中…</p>
     <p v-else-if="!products.length" class="muted">还没有商品，点右上角「新建商品」。</p>
     <table v-else>

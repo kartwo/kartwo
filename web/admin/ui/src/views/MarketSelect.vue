@@ -4,6 +4,7 @@ import { ref, onMounted, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, APIError } from '../api.js'
 import { useToast } from '../toast.js'
+import ErrorState from '../components/ErrorState.vue'
 
 const router = useRouter()
 const onUnauthorized = inject('onUnauthorized')
@@ -48,7 +49,7 @@ onMounted(load)
       选定后，系统会自动配好该市场顾客最习惯的<strong>付款方式、货币和语言</strong>，让你的店面更贴合当地、更容易成交。
       不用担心选错——<strong>以后随时可以来这里调整或补充</strong>。
     </p>
-    <p v-if="err" class="err">{{ err }}</p>
+    <ErrorState v-if="err" :message="err" :retry="load" />
 
     <div class="market-grid">
       <div v-for="m in markets" :key="m.code"
@@ -78,12 +79,12 @@ onMounted(load)
 
 <style scoped>
 .market-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem;margin-top:1rem}
-.market-card{border:1px solid var(--line);border-radius:12px;padding:1rem;background:var(--panel)}
+.market-card{border:1px solid var(--border);border-radius:var(--radius-lg);padding:1rem;background:var(--surface);box-shadow:var(--shadow-sm)}
 .market-card.active{border-color:var(--accent)}
 .market-card.soon{opacity:.7}
 .mc-head{display:flex;align-items:center;gap:.5rem;justify-content:space-between}
 .mc-enables{font-size:.9rem;margin:.5rem 0}
-.chip{font-size:.72rem;border:1px solid var(--line);border-radius:999px;padding:.05rem .5rem;color:var(--muted)}
+.chip{font-size:var(--fs-xs);border:1px solid var(--border);border-radius:var(--radius-pill);padding:.05rem .5rem;color:var(--text-muted)}
 .chip.on{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}
 .market-card button{margin-top:.6rem;width:100%}
 </style>
