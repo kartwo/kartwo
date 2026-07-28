@@ -67,6 +67,12 @@ export const api = {
   wizardDomain: () => request('GET', '/wizard/domain'),
   wizardDomainSkip: () => request('POST', '/wizard/domain/skip'),
 
+  getSmtp: () => request('GET', '/settings/smtp'),
+  setSmtp: (payload) => request('PUT', '/settings/smtp', payload),
+  smtpTest: (to) => request('POST', '/smtp/test', { to }),
+  wizardSmtp: () => request('GET', '/wizard/smtp'),
+  wizardSmtpSkip: () => request('POST', '/wizard/smtp/skip'),
+
   dashboard: () => request('GET', '/dashboard'),
 
   listOrders: () => request('GET', '/orders'),
