@@ -17,6 +17,8 @@
   --success-bg: #e3f6ec;   /* 成功底 */
   --danger: #df1b41;       /* 危险/错误文字 */
   --danger-bg: #fce8ec;    /* 危险底 */
+  --warn: #a35b02;         /* 提醒文字（非错误，如草稿态） */
+  --warn-bg: #fdf3e3;      /* 提醒底 */
   /* —— 间距（4px 基） —— */
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px;
   /* —— 圆角 —— */
@@ -118,6 +120,8 @@ th { color: var(--text-muted); font-weight: 500; }
   border: 1px solid var(--border); border-radius: var(--radius-pill);
   font-size: var(--fs-xs); color: var(--text-muted); background: var(--surface-2);
 }
+/* 草稿态 chip：草稿不会出现在店面，视觉上必须与「上架」一眼可分（见 DECISIONS R1）。 */
+.chip.draft { color: var(--warn); background: var(--warn-bg); border-color: var(--warn); }
 /* 全局徽章基座；各页状态色变体（paid/refunded）仍在页内 scoped，完整 token 化留 3b-② */
 .badge {
   display: inline-block; padding: .15rem .6rem; border-radius: var(--radius-pill);

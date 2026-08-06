@@ -39,6 +39,13 @@ async function remove(p) {
   } catch (e) { toast.error(e.message) }
 }
 
+// statusLabel 把状态值译成非技术商家看得懂的人话（草稿明确点出"店面看不到"）。
+function statusLabel(s) {
+  if (s === 'active') return '上架'
+  if (s === 'archived') return '归档'
+  return '草稿 · 店面看不到'
+}
+
 onMounted(load)
 </script>
 
@@ -57,7 +64,7 @@ onMounted(load)
         <tr v-for="p in products" :key="p.public_id">
           <td><RouterLink :to="'/products/' + p.public_id">{{ p.title }}</RouterLink></td>
           <td class="muted">{{ p.slug }}</td>
-          <td><span class="chip">{{ p.status }}</span></td>
+          <td><span class="chip" :class="{ draft: p.status === 'draft' }">{{ statusLabel(p.status) }}</span></td>
           <td style="text-align:right"><button class="danger" @click="remove(p)">删除</button></td>
         </tr>
       </tbody>
