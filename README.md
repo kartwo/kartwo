@@ -31,8 +31,21 @@
 
 在自己电脑上把系统跑起来、录商品、熟悉后台与店面，**纯本地、无公网 HTTPS**。
 
-获取二进制：当前阶段从源码构建（需 Go 工具链）——`go build -o kartwo ./cmd/kartwo`。
-> 预编译的三平台二进制将随首个正式 release 提供（M4 收官后）。
+获取二进制：从 [Releases 页](https://github.com/kartwo/kartwo/releases) 下载对应平台的预编译产物（无需 Go 工具链），或从源码构建 `go build -o kartwo ./cmd/kartwo`。
+
+**逐平台验证状态**（编译通过 ≠ 开过机，据实标注）：
+
+| 平台 | 文件 | 验证状态 |
+|---|---|---|
+| Linux x86_64（绝大多数 VPS） | `kartwo-linux-amd64` | ✅ **已验证**（干净 Ubuntu 24.04 实跑：启动→迁移→后台→店面） |
+| Linux ARM64 | `kartwo-linux-arm64` | ⚠️ 未验证（仅编译通过） |
+| macOS Apple Silicon | `kartwo-darwin-arm64` | ⚠️ 未验证（仅编译通过） |
+| Windows x86_64 | `kartwo-windows-amd64.exe` | ⚠️ 未验证（仅编译通过） |
+
+下载后核对完整性：`sha256sum -c SHA256SUMS.txt --ignore-missing`；确认版本：`./kartwo-linux-amd64 version`。
+
+> **运行环境**：Linux 产物依赖 **glibc**（Ubuntu/Debian/CentOS 等主流发行版自带），**musl 系（Alpine）暂不支持**——原因见 `DECISIONS.md`「静态链接」条。
+> 目前仅发过预发布版 `v0.4.0-rc1`；正式 `v0.4.0` 待北极星计时验收通过后发布。
 
 HTTP-only 评估态运行（不配域名，统一用高位端口 `:8080` 回避不同系统绑低端口的权限差异）：
 

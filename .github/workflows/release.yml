@@ -91,3 +91,36 @@ jobs:
           generate_release_notes: true
           # 预发布 tag（含 -rc/-beta/-alpha）自动标记为 prerelease，不与正式版混淆。
           prerelease: ${{ contains(github.ref_name, '-') }}
+          # 逐平台标注验证状态：编译通过 ≠ 开过机。开源项目发一个没人开过机的产物，
+          # 收到的 issue 比省下的时间贵。跑过冒烟的平台才改「已验证」。
+          body: |
+            ## 下载哪个？
+
+            | 平台 | 文件 | 验证状态 |
+            |---|---|---|
+            | Linux x86_64（绝大多数 VPS） | `kartwo-linux-amd64` | ✅ **已验证**（干净 Ubuntu 24.04 实跑：启动→迁移→后台→店面） |
+            | Linux ARM64 | `kartwo-linux-arm64` | ⚠️ **未验证**（仅编译通过，未开机冒烟） |
+            | macOS Apple Silicon | `kartwo-darwin-arm64` | ⚠️ **未验证**（仅编译通过，未开机冒烟） |
+            | Windows x86_64 | `kartwo-windows-amd64.exe` | ⚠️ **未验证**（仅编译通过，未开机冒烟） |
+
+            > **「未验证」= 编译产出正常，但尚未有人在该平台上真正启动过。**
+            > 遇到问题请提 issue，我们会据实修正标注。
+            > 桌面系统（macOS/Windows）仅供本地评估试用，**生产卖货请用 Linux 服务器**。
+
+            ## 运行环境要求
+
+            - Linux 产物依赖 **glibc**（Ubuntu/Debian/CentOS 等主流发行版自带）。
+              **musl 系（Alpine）暂不支持**。
+            - 最低配置 1C1G；需在云厂商安全组放行 80 / 443 入站。
+
+            ## 校验下载完整性
+
+            ```bash
+            sha256sum -c SHA256SUMS.txt --ignore-missing
+            ```
+
+            ## 确认版本
+
+            ```bash
+            ./kartwo-linux-amd64 version
+            ```
