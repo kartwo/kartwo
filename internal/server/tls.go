@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -81,16 +82,37 @@ func TLSConfig(m *autocert.Manager) *tls.Config {
 	return cfg
 }
 
-// httpsRedirect 把明文请求 301 跳到同域 HTTPS（保留路径与查询串）。
-// autocert 的 HTTPHandler 会先截获 /.well-known/acme-challenge/*，其余交此 fallback。
-func httpsRedirect(domain string) http.Handler {
+// normalizeHost 把请求 Host 规范化后用于与配置域名比较：去端口、去尾点、去大小写差异。
+// IPv6 字面量（如 [::1]:80）经 net.SplitHostPort 正确剥离端口。
+func normalizeHost(host string) string {
+	h := strings.TrimSpace(host)
+	if hostOnly, _, err := net.SplitHostPort(h); err == nil {
+		h = hostOnly
+	}
+	return strings.ToLower(strings.TrimSuffix(h, "."))
+}
+
+// httpsRedirect 处理 prod :80 上的非 ACME 请求：
+//   - 请求 Host **等于**已配置域名 → 301 跳同域 HTTPS（保留路径与查询串）；
+//   - 其它 Host（裸 IP 直连、旧域名、任意 Host 头）→ **直接服务应用**，不跳转。
+//
+// 后者是刻意留的明文逃生路：域名已写库但 DNS 尚未生效 / 证书尚未签出时，
+// 若无条件 301 到该域名，商家会同时失去店面与后台、且产品内无自救路径（见 DECISIONS R2）。
+// 逃生路只走 HTTP(:80) 明文，不影响 autocert 的 HostPolicy 单域名白名单（IP 永不签证书）。
+func httpsRedirect(domain string, fallback http.Handler) http.Handler {
+	allowed := normalizeHost(domain)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		target := "https://" + domain + r.URL.RequestURI()
-		http.Redirect(w, r, target, http.StatusMovedPermanently)
+		if allowed != "" && normalizeHost(r.Host) == allowed {
+			http.Redirect(w, r, "https://"+domain+r.URL.RequestURI(), http.StatusMovedPermanently)
+			return
+		}
+		fallback.ServeHTTP(w, r)
 	})
 }
 
-// ChallengeHandler 返回 prod HTTP(:80) 端的处理器：ACME challenge + 其余 302→HTTPS。
-func ChallengeHandler(m *autocert.Manager, domain string) http.Handler {
-	return m.HTTPHandler(httpsRedirect(domain))
+// ChallengeHandler 返回 prod HTTP(:80) 端的处理器：ACME challenge 优先，
+// 其余按 Host 决定 301 跳 HTTPS（匹配域名）或直接服务应用（逃生路）。
+// app 为真应用处理器（与 :443 上服的是同一个）。
+func ChallengeHandler(m *autocert.Manager, domain string, app http.Handler) http.Handler {
+	return m.HTTPHandler(httpsRedirect(domain, app))
 }

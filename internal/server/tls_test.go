@@ -100,6 +100,85 @@ func TestSecurityHeaders_HSTSGating(t *testing.T) {
 	}
 }
 
+// TestHTTPSRedirect_HostGating 锁死 R2 修复：只有 Host 匹配已配置域名才 301，
+// 其它 Host（裸 IP 直连等）必须直接服务应用，作为 DNS/证书未就绪时的明文逃生路。
+func TestHTTPSRedirect_HostGating(t *testing.T) {
+	const domain = "m4final.kartwo.com"
+	app := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("APP"))
+	})
+	h := httpsRedirect(domain, app)
+
+	cases := []struct {
+		name       string
+		host       string
+		target     string // 请求路径（含查询串）
+		wantStatus int
+		wantLoc    string // 期望 Location；空表示不应跳转
+	}{
+		{"匹配域名 → 301 且保留路径与查询串", domain, "/admin/?a=1&b=2",
+			http.StatusMovedPermanently, "https://" + domain + "/admin/?a=1&b=2"},
+		{"匹配域名带端口 → 去端口后仍匹配", domain + ":80", "/", http.StatusMovedPermanently, "https://" + domain + "/"},
+		{"匹配域名大小写不同 → 仍匹配", "M4Final.Kartwo.COM", "/", http.StatusMovedPermanently, "https://" + domain + "/"},
+		{"匹配域名带尾点(FQDN 绝对写法) → 仍匹配", domain + ".", "/", http.StatusMovedPermanently, "https://" + domain + "/"},
+		{"裸 IP 直连 → 不跳转，直接服应用（逃生路）", "203.0.113.10", "/admin/", http.StatusOK, ""},
+		{"裸 IP 带端口 → 不跳转（逃生路）", "203.0.113.10:80", "/admin/", http.StatusOK, ""},
+		{"IPv6 字面量带端口 → 不跳转（逃生路）", "[2001:db8::1]:80", "/", http.StatusOK, ""},
+		{"其它域名解析到本机 → 不跳转（不做他人域名的跳板）", "evil.example.com", "/", http.StatusOK, ""},
+		{"空 Host → 不跳转", "", "/", http.StatusOK, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tc.target, nil)
+			req.Host = tc.host
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("状态码=%d 期望=%d", rec.Code, tc.wantStatus)
+			}
+			if got := rec.Header().Get("Location"); got != tc.wantLoc {
+				t.Fatalf("Location=%q 期望=%q", got, tc.wantLoc)
+			}
+			if tc.wantLoc == "" && rec.Body.String() != "APP" {
+				t.Fatalf("逃生路应直接服应用，得 body=%q", rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestHTTPSRedirect_EmptyDomain 空域名（理论上不会走到此分支）绝不跳到 "https:///"。
+func TestHTTPSRedirect_EmptyDomain(t *testing.T) {
+	app := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("APP")) })
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Host = ""
+	httpsRedirect("", app).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "APP" {
+		t.Fatalf("空域名应一律直接服应用，得 code=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+// TestChallengeHandler_ACMEPriority ACME challenge 路径优先于 Host 判断被 autocert 截获。
+func TestChallengeHandler_ACMEPriority(t *testing.T) {
+	m, err := NewCertManager("m4final.kartwo.com", filepath.Join(t.TempDir(), "certs"), "")
+	if err != nil {
+		t.Fatalf("NewCertManager 失败: %v", err)
+	}
+	app := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("APP")) })
+	h := ChallengeHandler(m, "m4final.kartwo.com", app)
+
+	// challenge 路径：由 autocert 处理（无对应 token 时 404），绝不落到应用或跳转。
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/.well-known/acme-challenge/tok", nil)
+	req.Host = "m4final.kartwo.com"
+	h.ServeHTTP(rec, req)
+	if rec.Body.String() == "APP" || rec.Code == http.StatusMovedPermanently {
+		t.Fatalf("ACME challenge 必须由 autocert 截获，得 code=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
 func TestNewCertManager(t *testing.T) {
 	certDir := filepath.Join(t.TempDir(), "certs")
 

@@ -268,8 +268,9 @@ func runServe(logger *slog.Logger) error {
 		}
 		logger.Info("自动 HTTPS 已启用", "domain", domain, "domain_source", domainSource,
 			"https_addr", cfg.HTTPSAddr, "http_addr", cfg.HTTPAddr, "acme", acmeLabel(cfg.ACMEDirectory))
-		// :80 服 ACME HTTP-01 challenge，其余 301 跳 HTTPS。
-		if err := serveOn(cfg.HTTPAddr, server.ChallengeHandler(mgr, domain), "prod-http-challenge"); err != nil {
+		// :80 服 ACME HTTP-01 challenge；其余按 Host 决定：匹配域名 301 跳 HTTPS，
+		// 非该域名（裸 IP 直连等）直接服应用，作 DNS/证书未就绪时的明文逃生路。
+		if err := serveOn(cfg.HTTPAddr, server.ChallengeHandler(mgr, domain, srv), "prod-http-challenge"); err != nil {
 			return err
 		}
 		// :443 服真应用（TLS，证书由 autocert 按需签发）。
