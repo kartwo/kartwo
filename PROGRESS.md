@@ -84,7 +84,9 @@
   - **D2-B 草稿提示**（纯前端，**不改默认值/后端/店面查询**）：ProductEdit 状态下拉下方随状态变化的**常驻 inline 说明**（草稿=⚠️「不会出现在店面…请选『上架』」；上架=✅；归档=说明）——持续状态故 inline 不 toast；ProductList chip 人话化（`草稿 · 店面看不到`/`上架`/`归档`）+ 草稿态 `--warn/--warn-bg` 着色（新增 token 对，守 §8.5 无内联样式）
   - **D7-B 修 R2**：`normalizeHost`（`net.SplitHostPort` 去端口 + 去尾点 + 小写）；`httpsRedirect(domain, fallback)` —— Host **等于**配置域名才 301，其余（裸 IP / 其它域名 / 空 Host / IPv6 字面量）直接服应用作**明文逃生路**；`ChallengeHandler(m, domain, app)` 加 app 参数，ACME challenge 仍由 autocert 优先截获；**不动 HostPolicy**。单测 11 例（匹配/带端口/大小写/尾点/裸IP/IPv6/他域/空 Host/空域名/ACME 优先）
   - **任务 E 遗留诊断结论**：**「创建后不能改价」缺口确认已闭环**，PROGRESS 勾选状态与代码实况一致，无需处理（详见回报）
-  - **未做（按纪律停下待拍板）**：D8 明文态会话 cookie `Secure` 问题 —— 阻塞北极星 T2，见「当前状态」与 DECISIONS 待定表
+  - **任务 C 证伪结论（第二轮补充）**：「`CGO_ENABLED=0` 却动态链接」**经 Linux 原生 `file`/`readelf -d`/`readelf -l`/`ldd` 四方交叉验证——先前读数属实，不是误读**。根因链已锁定：`internal/media` → `gen2brain/webp` → `ebitengine/purego` 的 `//go:cgo_import_dynamic "libdl.so.2"`（逐依赖二分实证：hello world/sqlite/autocert 皆静态，webp/purego 皆动态）。影响：glibc 系正常、**musl(Alpine)/scratch 镜像跑不起来**。**已验证修复路 `-tags nodynamic`**（→ `statically linked`，全仓 13 包测试全绿，WebP 处理 380→423ms）。**本轮只诊断不修**，待排期
+  - **任务 D（第二轮补充）**：release notes + README 下载段**逐平台标注验证状态**（linux/amd64 已验证；其余三平台未验证=仅编译通过），并标注 glibc 依赖与 musl 不支持
+  - **未做（材料未到，按纪律停手）**：**任务 A（D8 实施）** —— Derek 已拍选项 A 但**以非回环地址实测坐实为前提，实测结果未随指令送达**，按明令的证伪分支未动一行；**任务 B（CI 修复）** —— 要求「据实定位、不拿假设当结论」，而**两个红 job 的报错原文未随指令送达**，未动
 
 ## 历史里程碑明细（M3 · 切 3 片，✅ v0.3.0）
 - [x] **M3.1 市场框架 + 向导市场选择 + 加密设置地基**（✅ 已验收，含店面默认英文补丁）：可扩展 Market 注册表(US 点亮/其余即将上线)、AES-GCM(KEK)加密设置、向导市场步骤(大白话文案)、店面货币随市场；单测+实测
