@@ -41,6 +41,12 @@
 
 > 注：上述 sqlc/golangci-lint/govulncheck/gitleaks 均为开发/CI 期外部工具，不被编译链接进发布二进制，故其许可不影响产物分发。modernc.org/sqlite 的间接依赖（go-humanize/uuid 等）均为 BSD/MIT 系宽松许可，随 `go.mod` 管理。
 
+## 逐片核对记录
+
+| 日期 | 片子 | 核对结论 |
+|---|---|---|
+| 2026-08-06 | M4.3 SMTP + 邮件队列 + 订单确认信 | **无变更**。邮件发送全部走 Go 标准库 `net/smtp` + `crypto/tls`，**未引入任何第三方库**（`go.mod`/`go.sum` 零改动）；邮件正文为纯文本英文模板，**无字体、无图标、无媒体资源**；前端 SMTP 设置页/向导步沿用既有 unicode 字符与设计 token，`package.json` 零改动。
+
 ## 其他媒体（示例图/demo 数据图等）
 
 | 名称 | 用途 | 许可证 | 来源 | 状态 |
