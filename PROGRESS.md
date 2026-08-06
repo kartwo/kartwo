@@ -3,12 +3,16 @@
 > 项目进度的**单一事实来源**。Claude Code 每轮收尾必须更新此文件。
 > 进度以本文件 + git tag 为准，不依赖对话记忆。
 > 作者：仗键天涯(daxing) ｜ 3442535897@qq.com
-> 最后更新：2026-07-28（M4.2.3b-② 细节+confirm 弹窗+页级错误块，人工验收通过，**M4.2 整体收官**，已合主干，不打 tag）
+> 最后更新：2026-08-06（**M4.3 SMTP + 邮件队列 + 订单确认信**，人工验收四段全绿，已合主干，不打 tag；M4 仅剩北极星 30 分钟计时验收）
 
 ---
 
 ## 当前状态
-- **阶段**：**M4.2（向导完整化 + Admin UI 完善）✅ 整体收官**（M4.2.1 向导补完 + M4.2.2 概览 + M4.2.3a toast 迁移 + M4.2.3b 美化两片 全部验收合主干）。已拍板 **M4.2 先于 M4.3**、M4.2 切片。**下一步进 M4.3**。
+- **阶段**：**M4.3（向导 SMTP 步骤 + 邮件队列 + 订单确认信）✅ 人工验收通过，已合主干**（分支 `feat/m4-mail` → `main`，**不打 tag**）。至此 **M4 功能项全部落地**，仅剩**北极星「30 分钟开店」计时验收**即可收官打 `v0.4.0`。
+  - **验收四段全绿（2026-08-06 Derek 真机）**：**A 测试发信（D5）** Mailtrap 沙箱收到测试信，SMTP 全链路通；**B 订单确认信（核心）** Stripe 沙箱付款 → webhook 经 `stripe listen` 回本地 → 验签通过 → 订单 `019fd562` 转 **paid** → worker 20s 内发确认信到 Mailtrap，正文 `Your order 019fd562 is confirmed`、订单号/金额 `USD 99.00`/商品行（经典T恤 尺码M x1）全对、纯文本英文单模板（D9），**outbox→worker→SMTP 整条链路真机验实**；**C 未配置/未付不阻塞** 未配 SMTP 下单成功、`status=pending`、不卡，pending 未付不发确认信；**D 向导第 4 步** 进度条 N=4、「配置邮件」步、可跳过、字段集与文案诚实。
+  - **实现要点**：`0011_email_outbox.sql`（`UNIQUE(order_id,kind)` 幂等锚点 + `ix_email_outbox_due` 检索索引）；`internal/mail` 包（config 设置键+env 旁路+KEK 绑定内存缓存 / smtp 发送 / outbox 入队与组信 / worker 轮询重试）；`internal/payment` 两处入队（`CapturePayPal` 同步 capture 路 + `markPaid` webhook 路），**n>0 才入队、与 pending→paid 同事务、入队失败仅记日志不阻断已付**；`internal/admin/smtp.go`（SMTP 设置读写/测试发信/向导状态与跳过，env 覆盖只读 409）；`main.go` 装配 worker 随优雅关停退出；前端 `SmtpSettings.vue` + `SmtpWizard.vue` + 向导进度 N=3→4。
+  - **零新增依赖**：全部走 stdlib `net/smtp` + `crypto/tls`，`go.mod`/`go.sum`/前端 `package.json` 均未动（守「默认无外部依赖」底线）。
+- **阶段（前序）**：**M4.2（向导完整化 + Admin UI 完善）✅ 整体收官**（M4.2.1 向导补完 + M4.2.2 概览 + M4.2.3a toast 迁移 + M4.2.3b 美化两片 全部验收合主干）。已拍板 **M4.2 先于 M4.3**、M4.2 切片。
   - **M4.2.1 向导补完（域名步骤 + 一气呵成外壳）✅ 人工验收通过，已合主干**（分支 `feat/m4-domain-wizard` → `main`，**不打 tag**）。验收覆盖：主线三步连贯（第 X/3 步进度条）、域名录入 + dev 文案诚实（本地开发模式明确「不会真的签发 HTTPS」）、非法输入后端拦截（`http://`/路径/`localhost`/空格 → 拒）、域名步「上一步」回收款步且**退不回已配市场**、留空跳过持久化、店面 HTTP 评估态可访问；env 只读态以 curl 自测为准（`source=env`/`readonly=true`/PUT→409）。
   - **M4.2.2 dashboard 概览 ✅ 人工验收通过，已合主干**（分支 `feat/m4-dashboard` → `main`，**不打 tag**）。验收覆盖：空态诚实（0/友好占位）+ 开店进度三卡（无商品/未配收款/未配域名，可点击跳转）+ 随配置消长 + 全齐「开店就绪」；库存告警零/低分类正确（可售=quantity−reserved，低库存 3≤5 归低库存，N=5）；种子订单 o1–o4 实测：今日 3 / US$100.00（**refunded o3 的 $30 已扣除**，D6 命门验实）、近7日 4 / US$120.00、待处理 3（D2，refunded 不计）；概览登录默认落点。**D1 时区**曾疑似 bug，真机复现证明边界正确（"全 0"实为连到遗留旧实例、非 m422），并补 `TestDashboardWindowBounds` 跨 UTC 日界确定性回归测试锁死。
   - **M4.2.3a 全站提示迁移到 toast ✅ 人工验收通过，已合主干**（分支 `feat/m4-toast-migration` → `main`，**不打 tag**）。判据=瞬时事件（操作成功/失败/动作级校验）→ toast；持续状态（页级加载失败/404/空态/静态说明）→ 保留 inline。迁 8 处动作反馈（ProductList 删除成功「商品已删除」+失败、PaymentSettings 保存、PaymentWizard 跳过失败、MarketSelect 选定、ProductEdit 生成校验/基本信息/传图/删图、OrderDetail 退款）；清理死掉的 `msg`/`err` 残留；**保留** 6 处页级 load 失败 inline（验实「订单不存在」为常驻红字非一闪 toast）、confirm 两处未动、toast 机制未改、后端零改动。
@@ -21,8 +25,8 @@
 - **债1 PayPal webhook 真实验签**：✅ **已了结（2026-07-06 真机验收）**——M3.3b-2 推迟项闭环，冒烟清单第 3 条已勾。
 - **债2 Stripe-Version 钉死**：✅ **已了结（2026-07-06，选项 A：我方常量 `2026-06-24.dahlia` 不引 SDK）**。
 - **M4.1 后一批小修/补全（均已 Derek 验收合主干、不打 tag）**：① CJK 竖排 bug（`214cd58`+`e45d43f`）；② 商品改价缺口补全 + 0 价必填口径（`c9c9453`+`b503c2d`+`6578a96`）；③ 轻量 toast 通知机制 + 视口居中，先接改价/新建提示（`b2f0d82`+`01efe0d`）。
-- **下一步**：**M4.3**（向导 SMTP 步骤 + 邮件队列〔不阻塞下单〕+ 订单确认信 + 重试）。之后 M4 收官（北极星 30 分钟开店计时打 `v0.4.0`）。散落待办（PayPal webhook INFO 日志、TLS 噪声日志治理、slug 自动、上传进度）按批统筹。
-- **最新 git tag**：`v0.3.0`（M3）。M4.1、M4.2.1 及其间小修均已合主干，按切片纪律不单独打 tag。
+- **下一步**：**M4 收官 = 北极星「30 分钟开店」计时验收**（全新库从零：下载运行 → 走完向导〔市场/收款/域名/邮件 四步〕→ 发布首个商品 → 店面带 HTTPS 可访问，全程计时 ≤ 30 分钟）。**过则打 `v0.4.0`**。散落待办（PayPal webhook INFO 日志、TLS 噪声日志治理、slug 自动、上传进度）按批统筹。
+- **最新 git tag**：`v0.3.0`（M3）。M4.1、M4.2 各片、M4.3 及其间小修均已合主干，按切片纪律不单独打 tag；`v0.4.0` 待北极星计时验收通过后打。
 
 ## 里程碑总览
 
@@ -32,7 +36,7 @@
 | M1 | 核心数据模型 + Admin 基础 + 媒体上传 + StoragePolicy（切 5 片） | ✅ 已验收通过（v0.1.0） |
 | M2 | 店面 + 购物车 + 下单（防超卖）+ SEO 基建（切 3 片） | ✅ 已验收通过（v0.2.0） |
 | M3 | 支付路由 + Stripe/PayPal + 沙箱 + 退款 + 市场框架（切 3 片） | ✅ 已验收通过（v0.3.0） |
-| M4 | 自动 HTTPS + 向导完整 + 30 分钟开店（北极星）**+ 承接：PayPal webhook 真实端到端验收（M3.3b-2 推迟项）** | 🟡 进行中（M4.1 ✅、**M4.2 整体 ✅**〔向导补完/概览/toast 迁移/美化两片〕已合主干；M4.3 SMTP/邮件未开始；tag 待整体收官） |
+| M4 | 自动 HTTPS + 向导完整 + 30 分钟开店（北极星）**+ 承接：PayPal webhook 真实端到端验收（M3.3b-2 推迟项）** | 🟡 进行中（M4.1 ✅、**M4.2 整体 ✅**、**M4.3 ✅** 均已合主干；**功能项全部完成，仅剩北极星 30 分钟计时验收**，过后打 `v0.4.0`） |
 | M5 | 数据导入(含301) + 诊断页 + 备份/导出/升级 | ⬜ 未开始 |
 | M6 | v1.1 硬化（审计/签名/i18n/法律模板/Woo导入/S3）+ 验收 | ⬜ 未开始 |
 
@@ -60,7 +64,16 @@
   - [x] **M4.2.3b-① 浅色 Stripe 风基调（设计 token 层 + 全局元素改造）**（✅ 2026-07-22 人工验收通过，已合主干，不打 tag）：色板/间距/圆角/阴影/字阶 token；靛蓝 `#635bff` 主色、白卡细边弱阴影、保留 system-ui；旧 token 名别名映射全站自动生效；破形微调 4 处 on-accent + 代表页 tile 阴影
   - [x] **M4.2.3b-② 逐页细节打磨 + confirm 统一确认弹窗 + 页级错误状态块**（✅ 2026-07-28 人工验收通过，已合主干，不打 tag）：confirm 统一模态（promise 化，Esc/遮罩=取消、破坏性红实心，替换原生 confirm 语义不变）；`ErrorState.vue` 页级错误常驻块（7 页，非 toast）；细节 token 化（徽章/去重 .danger/scoped var/就绪态绿底）；别名永久保留；布局内联样式保留（不镀金）
 - **M4.2 整体收官** ✅（4 切片全部验收合主干；tag 待 M4 整体收官统一打 `v0.4.0`）
-- [ ] **M4.3 向导 SMTP 步骤 + 邮件队列**（SMTP 录入加密存 + 不阻塞下单 + 订单确认信 + 重试）——未开始
+- [x] **M4.3 向导 SMTP 步骤 + 邮件队列 + 订单确认信**（✅ 2026-08-06 人工验收通过，已合主干，不打 tag）：
+  - **outbox 表**：`migrations/0011_email_outbox.sql` 纯 SQL 幂等；`UNIQUE(order_id,kind)` 作幂等锚点（`INSERT OR IGNORE` 依赖它，PayPal「同步 capture + webhook 备份」双触发只出一封）；`ix_email_outbox_due(status,next_attempt_at)` 供 worker 认领；状态机 `pending|sending|sent|failed|skipped`
+  - **确认信触发（D10）**：落点=支付确认后的**两处** `MarkOrderPaidByPublicID`——`CapturePayPal`（同步 capture 路，本片为此新开事务）与 `markPaid`（Stripe/PayPal webhook 共用路）；**仅 n>0（真发生 pending→paid）才入队**、与状态变更**同事务原子**、入队失败仅 `slog.Error` **不阻断已付**
+  - **不阻塞下单**：`order.Checkout` **零改动**——确认信只挂在「已付」之后，未付订单不入队、下单路径不碰 SMTP
+  - **worker（D6/D8）**：20s ticker 轮询 + 启动即跑一轮；认领 `pending→sending` 是快速独立事务，**SMTP 网络 I/O 在事务/连接之外**（守 SQLite 单连接纪律）；失败指数退避 1m/5m/30m/2h/6h、**满 5 次标 failed 死信**；启动先 `ResetStaleSending` 恢复陈留 sending
+  - **配置（D1/D2/D7-A）**：SMTP 密码 KEK 加密存、其余明文；`SMTP_*` env 覆盖旁路（env>加密库、覆盖非双写、worker 不依赖登录即可冷启动发信）；env 模式设置页只读、PUT 拒写 **409**；库来源缓存绑定 KEK 金库（登录解锁/登出销毁）；**真未配置→标 `skipped` 不重试**，**已配但金库锁定→全留 `pending`** 待登录后补发
+  - **邮件内容（D9）**：纯文本、英文单模板、无营销；含订单号/总额（整数分→展示串）/逐行商品（含变体标签与行金额）
+  - **UI**：向导第 4 步「配置邮件」（进度条 N=3→4、可跳过并持久化 `wizard.smtp_skipped`）+ 后台 SMTP 设置页 + **测试发信**按钮（D5）
+  - **零新增依赖**：stdlib `net/smtp`+`crypto/tls`（none/STARTTLS 587/隐式 TLS 465），`go.mod` 未动
+  - 单测：`internal/mail` 275 行（配置解析/env 覆盖/缓存生命周期/组信/worker 重试与死信/skipped 路径）+ `internal/admin` SMTP 端点测试（鉴权/CSRF/env 只读 409）
 
 ## 历史里程碑明细（M3 · 切 3 片，✅ v0.3.0）
 - [x] **M3.1 市场框架 + 向导市场选择 + 加密设置地基**（✅ 已验收，含店面默认英文补丁）：可扩展 Market 注册表(US 点亮/其余即将上线)、AES-GCM(KEK)加密设置、向导市场步骤(大白话文案)、店面货币随市场；单测+实测
@@ -116,6 +129,7 @@
 - [x] （M3 后）沙箱支付→订单已付→退款 可走（2026-07-05 通过：Stripe 全真跑；PayPal 付款/退款真跑，**webhook 真实验签除外**见下）✓
 - [x] **（M4.1 后）PayPal webhook 真实端到端（公网 HTTPS + 真实 verify-webhook-signature）可走** —— ✅ 2026-07-06 真机验收通过（生产真证 + 真实退款 webhook `WH-9ML49990950259907-…` 验签通过并同步状态）；M3.3b-2 推迟项闭环
 - [x] **（改价后）新建填价→创建；编辑页改价+改库存同存→生效；空价被拦(前端不提交、后端直调也 400)；0 价可存 可走**（2026-07-07 Derek 本机验收通过）
+- [x] **（M4.3 后）沙箱支付→订单已付→顾客收到订单确认信 可走** —— ✅ 2026-08-06 Derek 真机验收通过（Stripe 沙箱付款→webhook 验签→订单 `019fd562` 转 paid→worker 20s 内发信到 Mailtrap，正文订单号/金额/商品行全对）；同时验实**未配 SMTP 不阻塞下单**、**未付不发信**
 - [ ] （M5 后）Shopify CSV 导入→图本地化→301 生成 可走
 
 ---

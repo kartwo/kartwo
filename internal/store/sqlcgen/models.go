@@ -55,6 +55,21 @@ type Customer struct {
 	UpdatedAt string `db:"updated_at" json:"updated_at"`
 }
 
+type EmailOutbox struct {
+	ID            int64          `db:"id" json:"id"`
+	OrderID       int64          `db:"order_id" json:"order_id"`
+	Kind          string         `db:"kind" json:"kind"`
+	ToAddr        string         `db:"to_addr" json:"to_addr"`
+	Subject       string         `db:"subject" json:"subject"`
+	Body          string         `db:"body" json:"body"`
+	Status        string         `db:"status" json:"status"`
+	Attempts      int64          `db:"attempts" json:"attempts"`
+	NextAttemptAt string         `db:"next_attempt_at" json:"next_attempt_at"`
+	LastError     string         `db:"last_error" json:"last_error"`
+	CreatedAt     string         `db:"created_at" json:"created_at"`
+	SentAt        sql.NullString `db:"sent_at" json:"sent_at"`
+}
+
 type Inventory struct {
 	VariantID int64  `db:"variant_id" json:"variant_id"`
 	Quantity  int64  `db:"quantity" json:"quantity"`

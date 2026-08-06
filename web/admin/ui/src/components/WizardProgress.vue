@@ -4,8 +4,8 @@
 defineProps({
   step: { type: Number, required: true }, // 当前步号（1-based）
 })
-// 固定三步流：步号即位置，跳过的步骤仍占位（口径见 DECISIONS：N 固定、跳过占位、步号不跳变）。
-const steps = ['选择市场', '配置收款', '配置域名']
+// 固定四步流：步号即位置，跳过的步骤仍占位（口径见 DECISIONS：N 固定、跳过占位、步号不跳变）。
+const steps = ['选择市场', '配置收款', '配置域名', '配置邮件']
 </script>
 
 <template>

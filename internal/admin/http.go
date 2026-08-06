@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/kartwo/kartwo/internal/catalog"
+	"github.com/kartwo/kartwo/internal/mail"
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/order"
 	"github.com/kartwo/kartwo/internal/payment"
@@ -35,6 +36,7 @@ type HTTP struct {
 	settings  *settings.Service
 	orders    *order.Service   // 后台订单页（M3.3a 起）
 	pay       *payment.Service // 退款编排（M3.3a 起），可为 nil
+	mailCache *mail.Cache      // SMTP 凭证缓存（M4.3 设置页/测试发信/向导），可为 nil
 	envDomain string           // KARTWO_DOMAIN（env 覆盖 DB 的域名来源，M4.2.1 域名步骤展示/只读判定）
 	secure    bool             // prod 下 cookie 加 Secure；同时代表本实例可签发 HTTPS（dev 恒 false）
 	limiter   *loginLimiter
@@ -42,8 +44,8 @@ type HTTP struct {
 
 // NewHTTP 构建 Admin HTTP 层。secure=true 时 cookie 标记 Secure（prod，且代表可启用 HTTPS）。
 // envDomain=KARTWO_DOMAIN，非空时域名由 env 提供、后台只读（决策 C：env 覆盖 DB、不双写）。
-func NewHTTP(svc *Service, cat *catalog.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc *payment.Service, envDomain string, secure bool) *HTTP {
-	return &HTTP{svc: svc, cat: cat, media: md, settings: settingsSvc, orders: orderSvc, pay: paySvc, envDomain: envDomain, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
+func NewHTTP(svc *Service, cat *catalog.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc *payment.Service, mailCache *mail.Cache, envDomain string, secure bool) *HTTP {
+	return &HTTP{svc: svc, cat: cat, media: md, settings: settingsSvc, orders: orderSvc, pay: paySvc, mailCache: mailCache, envDomain: envDomain, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
 }
 
 // Register 在给定 mux 上注册 /admin/api/* 路由。
@@ -89,6 +91,13 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("PUT /admin/api/settings/domain", protect(h.setDomain))
 	mux.Handle("GET /admin/api/wizard/domain", protect(h.wizardDomainStatus))
 	mux.Handle("POST /admin/api/wizard/domain/skip", protect(h.wizardDomainSkip))
+
+	// SMTP 设置（password 加密存；env 覆盖时只读）+ 测试发信 + 向导邮件步骤（M4.3）。
+	mux.Handle("GET /admin/api/settings/smtp", protect(h.getSMTP))
+	mux.Handle("PUT /admin/api/settings/smtp", protect(h.setSMTP))
+	mux.Handle("POST /admin/api/smtp/test", protect(h.smtpTest))
+	mux.Handle("GET /admin/api/wizard/smtp", protect(h.wizardSMTPStatus))
+	mux.Handle("POST /admin/api/wizard/smtp/skip", protect(h.wizardSMTPSkip))
 
 	// 概览首页（登录后默认落点，M4.2.2）。
 	mux.Handle("GET /admin/api/dashboard", protect(h.dashboard))

@@ -5,6 +5,7 @@ import { api, APIError } from './api.js'
 import MarketSelect from './views/MarketSelect.vue'
 import PaymentWizard from './views/PaymentWizard.vue'
 import DomainWizard from './views/DomainWizard.vue'
+import SmtpWizard from './views/SmtpWizard.vue'
 import WizardProgress from './components/WizardProgress.vue'
 import ToastHost from './components/ToastHost.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
@@ -15,18 +16,25 @@ const authed = ref(false)
 const marketConfigured = ref(false)
 const paymentStepNeeded = ref(false)
 const domainStepNeeded = ref(false)
+const smtpStepNeeded = ref(false)
 const username = ref('')
 
-// 向导「第 X / N 步」进度：固定三步流，跳过的步骤仍占位、步号不跳变（口径见 DECISIONS）。
+// 向导「第 X / N 步」进度：固定四步流，跳过的步骤仍占位、步号不跳变（口径见 DECISIONS）。
 const wizardStep = computed(() => {
   if (!marketConfigured.value) return 1
   if (paymentStepNeeded.value) return 2
-  return 3 // 域名步（domainStepNeeded 为真时展示）
+  if (domainStepNeeded.value) return 3
+  return 4 // 邮件步（smtpStepNeeded 为真时展示）
 })
 
-// checkDomainStep 查询是否仍需展示域名步骤（收款步完成后调用）。
+// checkDomainStep 查询是否仍需展示域名步骤（收款步完成后调用）；不需要则继续查邮件步。
 async function checkDomainStep() {
   try { domainStepNeeded.value = !!(await api.wizardDomain()).needed } catch (_) { domainStepNeeded.value = false }
+  if (!domainStepNeeded.value) await checkSmtpStep()
+}
+// checkSmtpStep 查询是否仍需展示邮件步骤（域名步完成后调用）。
+async function checkSmtpStep() {
+  try { smtpStepNeeded.value = !!(await api.wizardSmtp()).needed } catch (_) { smtpStepNeeded.value = false }
 }
 const form = ref({ user: '', pass: '' })
 const err = ref('')
@@ -68,10 +76,17 @@ async function onPaymentStepDone() {
   paymentStepNeeded.value = false
   await checkDomainStep()
 }
-// 域名步完成（保存或跳过）→ 进入后台。
-function onDomainStepDone() { domainStepNeeded.value = false }
+// 域名步完成（保存或跳过）→ 进入邮件步（若仍需要）。
+async function onDomainStepDone() {
+  domainStepNeeded.value = false
+  await checkSmtpStep()
+}
 // 域名步「上一步」→ 回到收款步（不允许回退已配市场）；收款步完成后会再回到域名步。
 function onDomainBack() { paymentStepNeeded.value = true }
+// 邮件步完成（保存或跳过）→ 进入后台。
+function onSmtpStepDone() { smtpStepNeeded.value = false }
+// 邮件步「上一步」→ 回到域名步。
+function onSmtpBack() { domainStepNeeded.value = true }
 onMounted(() => window.addEventListener('market-configured', onMarketConfigured))
 onUnmounted(() => window.removeEventListener('market-configured', onMarketConfigured))
 
@@ -174,6 +189,16 @@ onMounted(refresh)
     <DomainWizard @done="onDomainStepDone" @back="onDomainBack" />
   </template>
 
+  <!-- 域名已配/跳过、邮件未配且未跳过：走「配置邮件」向导步骤 -->
+  <template v-else-if="smtpStepNeeded">
+    <header class="app-header">
+      <div class="brand">Kartwo Admin · 开店向导</div>
+      <button @click="doLogout">登出</button>
+    </header>
+    <WizardProgress :step="wizardStep" />
+    <SmtpWizard @done="onSmtpStepDone" @back="onSmtpBack" />
+  </template>
+
   <!-- 已登录：应用 -->
   <template v-else>
     <header class="app-header">
@@ -185,6 +210,7 @@ onMounted(refresh)
         <RouterLink to="/market">市场</RouterLink>
         <RouterLink to="/payment">收款</RouterLink>
         <RouterLink to="/domain">域名</RouterLink>
+        <RouterLink to="/smtp">邮件</RouterLink>
         <span class="muted">{{ username }}</span>
         <button @click="doLogout">登出</button>
       </div>

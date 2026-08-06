@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/kartwo/kartwo/internal/mail"
 	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/internal/store/sqlcgen"
 )
@@ -116,10 +117,29 @@ func (s *Service) CapturePayPal(ctx context.Context, paypalOrderID string) (stri
 			"order_currency", ord.Currency, "capture_currency", res.Currency)
 		return res.OrderRef, ErrMismatch
 	}
-	if _, err := s.q.MarkOrderPaidByPublicID(ctx, sqlcgen.MarkOrderPaidByPublicIDParams{
+	// pending->paid + 入队确认信 同一事务原子（同步 capture 路无 webhook 去重表，靠 outbox UNIQUE 幂等）。
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return res.OrderRef, fmt.Errorf("payment: 开启事务失败: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := s.q.WithTx(tx)
+	n, err := q.MarkOrderPaidByPublicID(ctx, sqlcgen.MarkOrderPaidByPublicIDParams{
 		PaymentProvider: "paypal", PaymentRef: res.CaptureID, PublicID: res.OrderRef,
-	}); err != nil {
+	})
+	if err != nil {
 		return res.OrderRef, fmt.Errorf("payment: 更新订单状态失败: %w", err)
+	}
+	// 仅在真正发生 pending->paid（n>0）时入队确认信；已付/已取消单不再入队。best-effort 不阻断。
+	if n > 0 {
+		if err := mail.EnqueueOrderConfirmation(ctx, q, mail.OrderInfo{
+			ID: ord.ID, PublicID: ord.PublicID, Email: ord.Email, Currency: ord.Currency, TotalCents: ord.TotalCents,
+		}); err != nil {
+			slog.Error("入队确认信失败（不影响已付）", "order_ref", res.OrderRef, "err", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return res.OrderRef, fmt.Errorf("payment: 提交事务失败: %w", err)
 	}
 	slog.Info("PayPal 订单已付", "order_ref", res.OrderRef, "capture_id", res.CaptureID)
 	return res.OrderRef, nil
@@ -198,10 +218,21 @@ func (s *Service) markPaid(ctx context.Context, provider string, ev WebhookEvent
 	}
 
 	// 3) pending->paid（条件更新；非 pending 则 0 行，天然幂等、不回退已取消单）。同时落支付引用供退款。
-	if _, err := q.MarkOrderPaidByPublicID(ctx, sqlcgen.MarkOrderPaidByPublicIDParams{
+	n, err := q.MarkOrderPaidByPublicID(ctx, sqlcgen.MarkOrderPaidByPublicIDParams{
 		PaymentProvider: provider, PaymentRef: ev.PaymentRef, PublicID: ev.OrderRef,
-	}); err != nil {
+	})
+	if err != nil {
 		return fmt.Errorf("payment: 更新订单状态失败: %w", err)
+	}
+
+	// 4) 仅在真正 pending->paid（n>0）时入队确认信（同事务原子；INSERT OR IGNORE 幂等，
+	//    含 PayPal 同步 capture 已入队的情形）。best-effort 不阻断已付。
+	if n > 0 {
+		if err := mail.EnqueueOrderConfirmation(ctx, q, mail.OrderInfo{
+			ID: ord.ID, PublicID: ord.PublicID, Email: ord.Email, Currency: ord.Currency, TotalCents: ord.TotalCents,
+		}); err != nil {
+			slog.Error("入队确认信失败（不影响已付）", "order_ref", ev.OrderRef, "err", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
