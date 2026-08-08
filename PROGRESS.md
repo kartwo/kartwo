@@ -87,7 +87,8 @@
   - **任务 C 证伪结论（第二轮补充）**：「`CGO_ENABLED=0` 却动态链接」**经 Linux 原生 `file`/`readelf -d`/`readelf -l`/`ldd` 四方交叉验证——先前读数属实，不是误读**。根因链已锁定：`internal/media` → `gen2brain/webp` → `ebitengine/purego` 的 `//go:cgo_import_dynamic "libdl.so.2"`（逐依赖二分实证：hello world/sqlite/autocert 皆静态，webp/purego 皆动态）。影响：glibc 系正常、**musl(Alpine)/scratch 镜像跑不起来**。**已验证修复路 `-tags nodynamic`**（→ `statically linked`，全仓 13 包测试全绿，WebP 处理 380→423ms）。**本轮只诊断不修**，待排期
   - **任务 D（第二轮补充）**：release notes + README 下载段**逐平台标注验证状态**（linux/amd64 已验证；其余三平台未验证=仅编译通过），并标注 glibc 依赖与 musl 不支持
   - **D8-A cookie `Secure` 修复（第三轮补充，前提已坐实）**：Derek 非回环真机实证（`192.168.0.132:8080` + prod + Chrome）—— login 200 但两条 cookie 被整条丢弃、`/me` 401。落地 `secureFor(r)=r.TLS!=nil` 取代静态 `h.secure`，**session 与 csrf 两条一起改**（只修 session 会退化成「能登进后台但写操作全 403」，更隐蔽）；`setCookie`/`clearCookie` 均加 `r`（登出清除指令属性也须匹配）；`HttpOnly`/`SameSite=Lax` 不变。**修复实证**：prod 明文非回环跑通 建管理员 201 → 登录 200（两条 cookie 均无 Secure）→ `/me` 200 → 建商品 201。单测 4 分支 + 登出 + 属性无回归。附带 `InsecureNotice.vue` 明文访问常驻提示（http 且非回环才显示、inline 不 toast、零内联样式）
-  - **🟠 发现第三处同病（本轮只核对未改，按明令停手）**：**店面购物车 cookie**（`cart_http.go:50` / `checkout_http.go:164`）同样静态 `Secure: h.secure` → prod 明文态下**顾客加购不生效**。不在计时停表路径上，但 HTTP-only 评估态被定义为「一等受支持态」。修法与 D8 同形，待 Derek 拍板
+  - **第三处 cookie（店面购物车）已修**（第四轮，规划侧裁定「现在就修」）：`cart_http.go` 设置 + `checkout_http.go` 清除均改 `secureFor(r)`；`h.secure` 除此外已无用途 → 连同 `NewHTTP` 的 `secure` 参数移除。**全仓 grep 兜底确认设置 cookie 恰好 4 处、全部收敛，无第四处**。单测 4 分支 + 实证（明文非回环：加购 200 无 Secure → count=2 → 再加 count=3，同一辆车复用）
+  - **推理校准（第四轮）**：DECISIONS 中 D8 登出一条原写「属性不匹配所以浏览器不认这条清除指令」——**结论对但机理错**。`Secure` 不属于 cookie 身份三元组（name/domain/path），删除不靠它匹配；真机理是**明文来源发出的带 Secure 的 Set-Cookie 被整条丢弃**，清除指令根本没被处理。已更正并留痕（照错误推理去推 `SameSite` 等属性会推歪）
   - **未做（材料未到，按纪律停手）**：**任务 B（CI 修复）** —— 要求「据实定位、不拿假设当结论」，而**两个红 job 的报错原文连续两轮均未随指令送达**，未动一行
 
 ## 历史里程碑明细（M3 · 切 3 片，✅ v0.3.0）

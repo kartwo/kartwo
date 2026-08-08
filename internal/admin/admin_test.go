@@ -996,7 +996,9 @@ func TestCookieSecureFollowsRequestTLS(t *testing.T) {
 }
 
 // TestCookieSecureOnLogout 登出清 cookie 时同样按请求 TLS 决定 Secure——
-// 属性不匹配会导致浏览器不认这条清除指令、cookie 清不掉。
+// 机理：Secure 不属于 cookie 的身份三元组(name/domain/path)，删除并不靠它匹配；
+// 而是明文来源发出的带 Secure 的 Set-Cookie 会被整条丢弃，那条 Max-Age=-1
+// 的清除指令根本没被处理 → 登出静默失败、cookie 仍在。
 func TestCookieSecureOnLogout(t *testing.T) {
 	_, mux := newHTTP(t)
 	doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"supersecret"}`, nil, "")
