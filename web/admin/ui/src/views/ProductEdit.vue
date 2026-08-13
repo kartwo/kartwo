@@ -178,6 +178,18 @@ onMounted(() => { if (!isNew.value) load() })
       <option value="active">上架 active</option>
       <option value="archived">归档 archived</option>
     </select>
+    <!-- 草稿不会出现在店面，这是最常见的"商品建好了但店里看不到"原因，必须说在前面。 -->
+    <p class="status-hint" :class="{ warn: status === 'draft' }">
+      <template v-if="status === 'draft'">
+        ⚠️ <strong>草稿不会出现在店面</strong>，顾客看不到、也买不了。要让顾客能看到，请选<strong>「上架 active」</strong>。
+      </template>
+      <template v-else-if="status === 'active'">
+        ✅ 已上架：顾客能在店面看到并下单。
+      </template>
+      <template v-else>
+        归档的商品不会出现在店面，适合下架但想留着记录的商品。
+      </template>
+    </p>
   </div>
 
   <div class="spacer"></div>
@@ -250,3 +262,14 @@ onMounted(() => { if (!isNew.value) load() })
     </div>
   </template>
 </template>
+
+<style scoped>
+/* 状态说明：常驻 inline 说明（持续状态，非瞬时事件，故不用 toast）。 */
+.status-hint {
+  margin: var(--sp-2) 0 0; padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  font-size: var(--fs-sm); color: var(--text-muted); background: var(--surface-2);
+  line-height: 1.55; max-width: 64ch;
+}
+.status-hint.warn { color: var(--warn); background: var(--warn-bg); border-color: var(--warn); }
+</style>

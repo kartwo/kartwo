@@ -49,7 +49,7 @@ func (h *HTTP) cartCtx(w http.ResponseWriter, r *http.Request) (int64, error) {
 	if tok != token {
 		http.SetCookie(w, &http.Cookie{
 			Name: cartCookie, Value: tok, Path: "/", HttpOnly: true,
-			Secure: h.secure, SameSite: http.SameSiteLaxMode, MaxAge: 60 * 60 * 24 * 30,
+			Secure: secureFor(r), SameSite: http.SameSiteLaxMode, MaxAge: 60 * 60 * 24 * 30,
 		})
 	}
 	return id, nil

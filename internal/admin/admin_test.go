@@ -8,6 +8,7 @@ package admin
 import (
 	"bytes"
 	"context"
+	cryptotls "crypto/tls"
 	"encoding/json"
 	"errors"
 	"image"
@@ -912,5 +913,136 @@ func TestWizardSMTPSkip(t *testing.T) {
 	}
 	if r := doJSON(t, mux, "POST", "/admin/api/wizard/smtp/skip", "", auth, ""); r.StatusCode != http.StatusForbidden {
 		t.Fatalf("skip 缺 CSRF 应 403，得 %d", r.StatusCode)
+	}
+}
+
+// TestCookieSecureFollowsRequestTLS 锁死 D8-A：cookie 的 Secure 标记按**请求实际是否走 TLS**决定，
+// 而非静态的 Env=="prod"。session 与 csrf 两条各测两分支。
+//
+// 背景（真机实证）：prod 明文态下浏览器会整条丢弃明文来源的 `Set-Cookie; Secure`
+// （RFC 6265bis §5.5），表现为 login 返 200 而随后 me 返 401，商家永远登不进后台。
+// 若只修 session 漏了 csrf，则变成「能登进去但所有写操作 403」，更隐蔽。
+func TestCookieSecureFollowsRequestTLS(t *testing.T) {
+	_, mux := newHTTP(t)
+	doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"supersecret"}`, nil, "")
+
+	// login 一次，返回该请求下发的 session/csrf 两条 cookie 的 Secure 值。
+	login := func(tls bool) map[string]bool {
+		t.Helper()
+		req := httptest.NewRequest("POST", "/admin/api/login",
+			bytes.NewBufferString(`{"username":"admin","password":"supersecret"}`))
+		req.Header.Set("Content-Type", "application/json")
+		if tls {
+			req.TLS = &cryptotls.ConnectionState{} // httptest 默认 r.TLS==nil，显式置非 nil 模拟 TLS 请求
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		res := rec.Result()
+		defer func() { _ = res.Body.Close() }()
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("登录应 200，得 %d", res.StatusCode)
+		}
+		got := map[string]bool{}
+		for _, c := range res.Cookies() {
+			got[c.Name] = c.Secure
+		}
+		return got
+	}
+
+	// ① TLS 请求 → 两条都必须带 Secure。
+	overTLS := login(true)
+	for _, name := range []string{sessionCookie, csrfCookie} {
+		if secure, ok := overTLS[name]; !ok {
+			t.Fatalf("TLS 请求应下发 %s", name)
+		} else if !secure {
+			t.Fatalf("TLS 请求下 %s 必须带 Secure", name)
+		}
+	}
+
+	// ② 明文请求 → 两条都不得带 Secure（否则浏览器整条丢弃，商家登不进后台）。
+	overPlain := login(false)
+	for _, name := range []string{sessionCookie, csrfCookie} {
+		if secure, ok := overPlain[name]; !ok {
+			t.Fatalf("明文请求应下发 %s", name)
+		} else if secure {
+			t.Fatalf("明文请求下 %s 绝不能带 Secure（会被浏览器丢弃）", name)
+		}
+	}
+
+	// ③ 其余 cookie 属性不受影响：session 必须 HttpOnly、csrf 必须非 HttpOnly（供 SPA 读回传）、
+	//    两者均 SameSite=Lax。
+	req := httptest.NewRequest("POST", "/admin/api/login",
+		bytes.NewBufferString(`{"username":"admin","password":"supersecret"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	res := rec.Result()
+	defer func() { _ = res.Body.Close() }()
+	for _, c := range res.Cookies() {
+		if c.SameSite != http.SameSiteLaxMode {
+			t.Fatalf("%s 的 SameSite 应保持 Lax，得 %v", c.Name, c.SameSite)
+		}
+		switch c.Name {
+		case sessionCookie:
+			if !c.HttpOnly {
+				t.Fatal("session cookie 必须保持 HttpOnly")
+			}
+		case csrfCookie:
+			if c.HttpOnly {
+				t.Fatal("csrf cookie 必须保持非 HttpOnly（SPA 需读取回传）")
+			}
+		}
+	}
+}
+
+// TestCookieSecureOnLogout 登出清 cookie 时同样按请求 TLS 决定 Secure——
+// 机理：Secure 不属于 cookie 的身份三元组(name/domain/path)，删除并不靠它匹配；
+// 而是明文来源发出的带 Secure 的 Set-Cookie 会被整条丢弃，那条 Max-Age=-1
+// 的清除指令根本没被处理 → 登出静默失败、cookie 仍在。
+func TestCookieSecureOnLogout(t *testing.T) {
+	_, mux := newHTTP(t)
+	doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"supersecret"}`, nil, "")
+
+	for _, tc := range []struct {
+		name      string
+		tls, want bool
+	}{
+		{"明文登出 → 不带 Secure", false, false},
+		{"TLS 登出 → 带 Secure", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// 每个子用例各自登录一次：登出会作废会话，复用同一会话会让第二个子用例拿不到清除指令。
+			lr := doJSON(t, mux, "POST", "/admin/api/login", `{"username":"admin","password":"supersecret"}`, nil, "")
+			var csrf string
+			for _, c := range lr.Cookies {
+				if c.Name == csrfCookie {
+					csrf = c.Value
+				}
+			}
+			req := httptest.NewRequest("POST", "/admin/api/logout", nil)
+			req.Header.Set(csrfHeader, csrf)
+			for _, c := range lr.Cookies {
+				req.AddCookie(c)
+			}
+			if tc.tls {
+				req.TLS = &cryptotls.ConnectionState{}
+			}
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, req)
+			res := rec.Result()
+			defer func() { _ = res.Body.Close() }()
+			n := 0
+			for _, c := range res.Cookies() {
+				if c.MaxAge < 0 {
+					n++
+					if c.Secure != tc.want {
+						t.Fatalf("%s 清除指令 Secure=%v，期望 %v", c.Name, c.Secure, tc.want)
+					}
+				}
+			}
+			if n != 2 {
+				t.Fatalf("登出应清 session+csrf 两条，得 %d 条", n)
+			}
+		})
 	}
 }

@@ -41,7 +41,6 @@ type HTTP struct {
 	pay       PaymentGateway // 可为 nil（未接入收款）
 	shopName  string
 	baseURL   string // 配置基址；空则按请求推导
-	secure    bool   // prod 下 cookie 加 Secure
 	homeTmpl  *template.Template
 	prodTmpl  *template.Template
 	cartTmpl  *template.Template
@@ -49,14 +48,27 @@ type HTTP struct {
 	orderTmpl *template.Template
 }
 
+// secureFor 判定本次响应的 cookie 是否该带 Secure：**按请求实际是否走 TLS**，
+// 而非静态的 Env=="prod"（决策 D8-A 同口径；admin 包内有同名同义实现，
+// 两包互不依赖故各留一份，与 effectiveDomain 在 admin 内复刻 server 口径同例）。
+//
+// 明文来源发出的带 Secure 的 Set-Cookie 会被浏览器整条丢弃（RFC 6265bis §5.5）——
+// 对购物车 cookie 意味着 prod 明文态（HTTP-only 评估态 / 裸 IP 逃生路）下
+// 顾客每次请求都拿到新的空车，**加购不生效**。
+//
+// 已知限制（同 D8-A，本轮不做）：反代终止 TLS 时 r.TLS==nil，会发出非 Secure cookie。
+// 正解需可信代理白名单 + 仅在白名单内采信 X-Forwarded-Proto，盲信该头可被伪造。
+func secureFor(r *http.Request) bool { return r.TLS != nil }
+
 // NewHTTP 构建店面 HTTP 层。货币按当前主攻市场逐请求解析（向导切市场即时生效）。
-func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, settingsSvc *settings.Service, pay PaymentGateway, shopName, baseURL string, secure bool) *HTTP {
+// 注：cookie 的 Secure 标记按**每次请求**是否走 TLS 决定（见 secureFor），故不再需要 secure 参数。
+func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, settingsSvc *settings.Service, pay PaymentGateway, shopName, baseURL string) *HTTP {
 	parse := func(page string) *template.Template {
 		return template.Must(template.New("").ParseFS(tmplFS, "templates/base.html", page))
 	}
 	return &HTTP{
 		svc: svc, cart: cartSvc, order: orderSvc, settings: settingsSvc, pay: pay, shopName: shopName,
-		baseURL: strings.TrimRight(baseURL, "/"), secure: secure,
+		baseURL: strings.TrimRight(baseURL, "/"),
 		homeTmpl:  parse("templates/home.html"),
 		prodTmpl:  parse("templates/product.html"),
 		cartTmpl:  parse("templates/cart.html"),

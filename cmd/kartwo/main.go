@@ -71,7 +71,7 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	// 子命令分发：默认 serve；seed-demo 装演示数据后退出。
+	// 子命令分发：默认 serve；seed-demo 装演示数据后退出；version 打印版本后退出。
 	sub := "serve"
 	if len(os.Args) > 1 {
 		sub = os.Args[1]
@@ -83,8 +83,11 @@ func main() {
 		err = runServe(logger)
 	case "seed-demo":
 		err = runSeedDemo(logger)
+	case "version", "--version", "-v":
+		// 纯文本单行输出（不走 slog）：商家反馈问题时的第一手信息，也供 release 流水线自检。
+		fmt.Println(Version)
 	default:
-		err = fmt.Errorf("未知子命令 %q（可用：serve | seed-demo）", sub)
+		err = fmt.Errorf("未知子命令 %q（可用：serve | seed-demo | version）", sub)
 	}
 	if err != nil {
 		logger.Error("执行失败", "subcommand", sub, "err", err)
@@ -208,7 +211,7 @@ func runServe(logger *slog.Logger) error {
 
 	orderSvc := order.New(st.DB, settingsSvc)
 	adminHTTP := admin.NewHTTP(adminSvc, catalog.New(st.DB), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, cfg.Domain, cfg.Env == "prod")
-	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, cfg.ShopName, cfg.BaseURL, cfg.Env == "prod")
+	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, cfg.ShopName, cfg.BaseURL)
 	payHTTP := payment.NewHTTP(paySvc)
 	// 解析"当前生效域名"（env 覆盖 DB），决定是否启用 HTTPS（仅 prod）。
 	baseCtx := context.Background()
@@ -268,8 +271,9 @@ func runServe(logger *slog.Logger) error {
 		}
 		logger.Info("自动 HTTPS 已启用", "domain", domain, "domain_source", domainSource,
 			"https_addr", cfg.HTTPSAddr, "http_addr", cfg.HTTPAddr, "acme", acmeLabel(cfg.ACMEDirectory))
-		// :80 服 ACME HTTP-01 challenge，其余 301 跳 HTTPS。
-		if err := serveOn(cfg.HTTPAddr, server.ChallengeHandler(mgr, domain), "prod-http-challenge"); err != nil {
+		// :80 服 ACME HTTP-01 challenge；其余按 Host 决定：匹配域名 301 跳 HTTPS，
+		// 非该域名（裸 IP 直连等）直接服应用，作 DNS/证书未就绪时的明文逃生路。
+		if err := serveOn(cfg.HTTPAddr, server.ChallengeHandler(mgr, domain, srv), "prod-http-challenge"); err != nil {
 			return err
 		}
 		// :443 服真应用（TLS，证书由 autocert 按需签发）。

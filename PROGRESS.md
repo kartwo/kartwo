@@ -3,12 +3,17 @@
 > 项目进度的**单一事实来源**。Claude Code 每轮收尾必须更新此文件。
 > 进度以本文件 + git tag 为准，不依赖对话记忆。
 > 作者：仗键天涯(daxing) ｜ 3442535897@qq.com
-> 最后更新：2026-08-06（**M4.3 SMTP + 邮件队列 + 订单确认信**，人工验收四段全绿，已合主干，不打 tag；M4 仅剩北极星 30 分钟计时验收）
+> 最后更新：2026-08-06（**M4 北极星前置补丁**：release workflow + 草稿提示 + R2 Host 判断，待验收；北极星计时为第三轮）
 
 ---
 
 ## 当前状态
-- **阶段**：**M4.3（向导 SMTP 步骤 + 邮件队列 + 订单确认信）✅ 人工验收通过，已合主干**（分支 `feat/m4-mail` → `main`，**不打 tag**）。至此 **M4 功能项全部落地**，仅剩**北极星「30 分钟开店」计时验收**即可收官打 `v0.4.0`。
+- **阶段**：**M4 北极星前置补丁（release 产物 + 草稿提示 + R2 Host 判断）🟡 待 Derek 验收**（分支 `feat/m4-final-prep`）。第一轮诊断产出 → Derek 拍板 D1-A/D2-B/D7-B → 本轮三项补丁并为一片交付。
+  - **背景（第一轮诊断的三个实证发现）**：**P1** GitHub Releases 为空、无 release workflow、Makefile 无交叉编译目标、CI 不产 artifact → 北极星第一个动词「下载」当前无法按商家真实路径执行；**R1** 新建商品默认 `draft` 而店面只显示 `active`、中间零提示，且 `seed-demo` 硬编码 `active` 使历次自测**从结构上绕开**该坑；**R2** `:80` 无条件 301 到配置域名，DNS 未生效时店面与后台**同时失联且无自救路径**。
+  - **本轮落地**：①`.github/workflows/release.yml`（push tag 触发、**现场构建前端再 embed**、四平台 + SHA256、流水线自检版本注入）+ `version` 子命令；②草稿态提示（编辑页随状态变化的 inline 说明 + 列表 chip 人话化与 `--warn` 着色，**不改默认值/后端/店面查询**）；③`httpsRedirect` 加 Host 判断 + 明文逃生路（`normalizeHost` 去端口/尾点/大小写，`ChallengeHandler` 加 app 参数，**不动 HostPolicy**）+ 11 个用例的回归单测。
+  - **🔴 待 Derek 拍板 D8（阻塞北极星 T2）**：prod 下会话 cookie 恒带 `Secure`，而 T2 商家经 `http://<IP>/admin/` 明文登录 → 按 RFC 6265bis 浏览器应整条忽略该 cookie，**可能登录不进后台**。涉会话令牌明文传输的安全取舍，按纪律停下未自行处理，详见 `DECISIONS.md` 待定表。
+  - **tag 纪律**：本轮只允许打**预发布 tag `v0.4.0-rc1`** 用于触发并验证 release 流程；**`v0.4.0-rc1` ≠ M4 收官**。正式 `v0.4.0` 须等北极星计时验收通过后才打。
+- **阶段（前序）**：**M4.3（向导 SMTP 步骤 + 邮件队列 + 订单确认信）✅ 人工验收通过，已合主干**（分支 `feat/m4-mail` → `main`，**不打 tag**）。至此 **M4 功能项全部落地**，仅剩**北极星「30 分钟开店」计时验收**即可收官打 `v0.4.0`。
   - **验收四段全绿（2026-08-06 Derek 真机）**：**A 测试发信（D5）** Mailtrap 沙箱收到测试信，SMTP 全链路通；**B 订单确认信（核心）** Stripe 沙箱付款 → webhook 经 `stripe listen` 回本地 → 验签通过 → 订单 `019fd562` 转 **paid** → worker 20s 内发确认信到 Mailtrap，正文 `Your order 019fd562 is confirmed`、订单号/金额 `USD 99.00`/商品行（经典T恤 尺码M x1）全对、纯文本英文单模板（D9），**outbox→worker→SMTP 整条链路真机验实**；**C 未配置/未付不阻塞** 未配 SMTP 下单成功、`status=pending`、不卡，pending 未付不发确认信；**D 向导第 4 步** 进度条 N=4、「配置邮件」步、可跳过、字段集与文案诚实。
   - **实现要点**：`0011_email_outbox.sql`（`UNIQUE(order_id,kind)` 幂等锚点 + `ix_email_outbox_due` 检索索引）；`internal/mail` 包（config 设置键+env 旁路+KEK 绑定内存缓存 / smtp 发送 / outbox 入队与组信 / worker 轮询重试）；`internal/payment` 两处入队（`CapturePayPal` 同步 capture 路 + `markPaid` webhook 路），**n>0 才入队、与 pending→paid 同事务、入队失败仅记日志不阻断已付**；`internal/admin/smtp.go`（SMTP 设置读写/测试发信/向导状态与跳过，env 覆盖只读 409）；`main.go` 装配 worker 随优雅关停退出；前端 `SmtpSettings.vue` + `SmtpWizard.vue` + 向导进度 N=3→4。
   - **零新增依赖**：全部走 stdlib `net/smtp` + `crypto/tls`，`go.mod`/`go.sum`/前端 `package.json` 均未动（守「默认无外部依赖」底线）。
@@ -25,8 +30,12 @@
 - **债1 PayPal webhook 真实验签**：✅ **已了结（2026-07-06 真机验收）**——M3.3b-2 推迟项闭环，冒烟清单第 3 条已勾。
 - **债2 Stripe-Version 钉死**：✅ **已了结（2026-07-06，选项 A：我方常量 `2026-06-24.dahlia` 不引 SDK）**。
 - **M4.1 后一批小修/补全（均已 Derek 验收合主干、不打 tag）**：① CJK 竖排 bug（`214cd58`+`e45d43f`）；② 商品改价缺口补全 + 0 价必填口径（`c9c9453`+`b503c2d`+`6578a96`）；③ 轻量 toast 通知机制 + 视口居中，先接改价/新建提示（`b2f0d82`+`01efe0d`）。
-- **下一步**：**M4 收官 = 北极星「30 分钟开店」计时验收**（全新库从零：下载运行 → 走完向导〔市场/收款/域名/邮件 四步〕→ 发布首个商品 → 店面带 HTTPS 可访问，全程计时 ≤ 30 分钟）。**过则打 `v0.4.0`**。散落待办（PayPal webhook INFO 日志、TLS 噪声日志治理、slug 自动、上传进度）按批统筹。
-- **最新 git tag**：`v0.3.0`（M3）。M4.1、M4.2 各片、M4.3 及其间小修均已合主干，按切片纪律不单独打 tag；`v0.4.0` 待北极星计时验收通过后打。
+- **🔴 `v0.4.0` 打 tag 的阻塞 gate（两项并列，缺一不可）**：
+  1. **北极星「30 分钟开店」计时验收通过**（判定三档，见下）。
+  2. **GitHub CI 修绿**。**这不是备忘、不是待办，是 tag 前的 gate。** 现状：main 上 CI **13/13 全红、从未绿过**（最早 2026-06-18），失败 job = 「静态检查」(golangci-lint) + 「安全门禁」(gitleaks)；门禁实质一直靠本地 `make check` + 本地 `gitleaks` 人肉守住。**理由**：`v0.4.0` 是第一个带公开产物的发布版，main 上挂一个从未绿过的 CI 徽章，对开源项目是信誉问题。已裁定「M4 收官后单独一片、不抢在北极星计时前」，但**推后不等于无限期**。
+     - **⚠️ 取材方式（曾连续三轮卡在此处，故钉死）**：执行端读不到截图，匿名 API 取 job 日志返回 403「Must have admin rights」。取报错原文用 **`gh run view 31072574900 --log-failed`**，或网页展开红色步骤后**复制文字**。
+- **下一步**：**第三轮 = M4 收官北极星「30 分钟开店」计时验收**（真机 VPS、新子域 `m4final.kartwo.com`、全新库 `~/kartwo-data-m4final`；T0=从 Release 页下载起表，停表=外网 HTTPS 绿锁 + 首页看到刚发布的带图商品）。**判定三档**：`>30:00` 未达标｜`15:00–30:00` 达标但无余量（条件通过，须列耗时分布与优化靶子）｜`≤15:00` 达标且有余量。**过了也不能立刻打 `v0.4.0`** —— 还须 CI 修绿（上方两项 gate 并列）。**前置 D8 已了结**（2026-08-07 选项 A 实施完毕，T2 不再卡死）。散落待办（PayPal webhook INFO 日志、TLS 噪声日志治理、slug 自动、上传进度、Stripe 测试连接按钮）按批统筹。
+- **最新 git tag**：`v0.3.0`（M3）。M4.1、M4.2 各片、M4.3 及其间小修均已合主干，按切片纪律不单独打 tag。**`v0.4.0-rc1` 为预发布 tag**（仅用于触发验证 release 流程，不代表 M4 收官）；正式 `v0.4.0` 待北极星计时验收通过后打。
 
 ## 里程碑总览
 
@@ -74,6 +83,17 @@
   - **UI**：向导第 4 步「配置邮件」（进度条 N=3→4、可跳过并持久化 `wizard.smtp_skipped`）+ 后台 SMTP 设置页 + **测试发信**按钮（D5）
   - **零新增依赖**：stdlib `net/smtp`+`crypto/tls`（none/STARTTLS 587/隐式 TLS 465），`go.mod` 未动
   - 单测：`internal/mail` 275 行（配置解析/env 覆盖/缓存生命周期/组信/worker 重试与死信/skipped 路径）+ `internal/admin` SMTP 端点测试（鉴权/CSRF/env 只读 409）
+- [ ] **M4 北极星前置补丁**（🟡 待 Derek 验收，分支 `feat/m4-final-prep`，三项并为一片）：
+  - **D1-A release 产物**：`.github/workflows/release.yml` —— 只在 push tag 触发；**严格串行 `npm ci && npm run build` → 校验 dist 存在 → `go build`**（不沿用 ci.yml 两个无 `needs:` job 的模式，杜绝 embed 陈旧前端）；`CGO_ENABLED=0 -trimpath -ldflags "-s -w -X main.Version=<tag>"`；四平台（linux/amd64 必需 + linux/arm64 + darwin/arm64 + windows/amd64）+ `SHA256SUMS.txt`；**流水线自检 `kartwo version` 输出 == tag**；含 `-` 的 tag 自动标 prerelease。新增 `version` 子命令。**Gitee 不做自动化**（本轮仅代码镜像）
+  - **D2-B 草稿提示**（纯前端，**不改默认值/后端/店面查询**）：ProductEdit 状态下拉下方随状态变化的**常驻 inline 说明**（草稿=⚠️「不会出现在店面…请选『上架』」；上架=✅；归档=说明）——持续状态故 inline 不 toast；ProductList chip 人话化（`草稿 · 店面看不到`/`上架`/`归档`）+ 草稿态 `--warn/--warn-bg` 着色（新增 token 对，守 §8.5 无内联样式）
+  - **D7-B 修 R2**：`normalizeHost`（`net.SplitHostPort` 去端口 + 去尾点 + 小写）；`httpsRedirect(domain, fallback)` —— Host **等于**配置域名才 301，其余（裸 IP / 其它域名 / 空 Host / IPv6 字面量）直接服应用作**明文逃生路**；`ChallengeHandler(m, domain, app)` 加 app 参数，ACME challenge 仍由 autocert 优先截获；**不动 HostPolicy**。单测 11 例（匹配/带端口/大小写/尾点/裸IP/IPv6/他域/空 Host/空域名/ACME 优先）
+  - **任务 E 遗留诊断结论**：**「创建后不能改价」缺口确认已闭环**，PROGRESS 勾选状态与代码实况一致，无需处理（详见回报）
+  - **任务 C 证伪结论（第二轮补充）**：「`CGO_ENABLED=0` 却动态链接」**经 Linux 原生 `file`/`readelf -d`/`readelf -l`/`ldd` 四方交叉验证——先前读数属实，不是误读**。根因链已锁定：`internal/media` → `gen2brain/webp` → `ebitengine/purego` 的 `//go:cgo_import_dynamic "libdl.so.2"`（逐依赖二分实证：hello world/sqlite/autocert 皆静态，webp/purego 皆动态）。影响：glibc 系正常、**musl(Alpine)/scratch 镜像跑不起来**。**已验证修复路 `-tags nodynamic`**（→ `statically linked`，全仓 13 包测试全绿，WebP 处理 380→423ms）。**本轮只诊断不修**，待排期
+  - **任务 D（第二轮补充）**：release notes + README 下载段**逐平台标注验证状态**（linux/amd64 已验证；其余三平台未验证=仅编译通过），并标注 glibc 依赖与 musl 不支持
+  - **D8-A cookie `Secure` 修复（第三轮补充，前提已坐实）**：Derek 非回环真机实证（`192.168.0.132:8080` + prod + Chrome）—— login 200 但两条 cookie 被整条丢弃、`/me` 401。落地 `secureFor(r)=r.TLS!=nil` 取代静态 `h.secure`，**session 与 csrf 两条一起改**（只修 session 会退化成「能登进后台但写操作全 403」，更隐蔽）；`setCookie`/`clearCookie` 均加 `r`（登出清除指令属性也须匹配）；`HttpOnly`/`SameSite=Lax` 不变。**修复实证**：prod 明文非回环跑通 建管理员 201 → 登录 200（两条 cookie 均无 Secure）→ `/me` 200 → 建商品 201。单测 4 分支 + 登出 + 属性无回归。附带 `InsecureNotice.vue` 明文访问常驻提示（http 且非回环才显示、inline 不 toast、零内联样式）
+  - **第三处 cookie（店面购物车）已修**（第四轮，规划侧裁定「现在就修」）：`cart_http.go` 设置 + `checkout_http.go` 清除均改 `secureFor(r)`；`h.secure` 除此外已无用途 → 连同 `NewHTTP` 的 `secure` 参数移除。**全仓 grep 兜底确认设置 cookie 恰好 4 处、全部收敛，无第四处**。单测 4 分支 + 实证（明文非回环：加购 200 无 Secure → count=2 → 再加 count=3，同一辆车复用）
+  - **推理校准（第四轮）**：DECISIONS 中 D8 登出一条原写「属性不匹配所以浏览器不认这条清除指令」——**结论对但机理错**。`Secure` 不属于 cookie 身份三元组（name/domain/path），删除不靠它匹配；真机理是**明文来源发出的带 Secure 的 Set-Cookie 被整条丢弃**，清除指令根本没被处理。已更正并留痕（照错误推理去推 `SameSite` 等属性会推歪）
+  - **未做（材料未到，按纪律停手）**：**任务 B（CI 修复）** —— 要求「据实定位、不拿假设当结论」，而**两个红 job 的报错原文连续两轮均未随指令送达**，未动一行
 
 ## 历史里程碑明细（M3 · 切 3 片，✅ v0.3.0）
 - [x] **M3.1 市场框架 + 向导市场选择 + 加密设置地基**（✅ 已验收，含店面默认英文补丁）：可扩展 Market 注册表(US 点亮/其余即将上线)、AES-GCM(KEK)加密设置、向导市场步骤(大白话文案)、店面货币随市场；单测+实测

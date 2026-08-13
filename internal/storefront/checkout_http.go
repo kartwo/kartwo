@@ -80,7 +80,7 @@ func (h *HTTP) checkoutSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 下单成功：清购物车 cookie（车已转换；下次购物自动新建）。
-	h.clearCartCookie(w)
+	h.clearCartCookie(w, r)
 
 	// 收款已就绪 → 发起托管收银会话并跳转网关。Stripe「已付」以 Webhook 为准；PayPal 以同步 capture 为准。
 	if h.pay != nil {
@@ -159,9 +159,10 @@ func (h *HTTP) paypalReturn(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/order/"+orderRef+"?paid=1", http.StatusSeeOther)
 }
 
-// clearCartCookie 清空购物车 cookie。
-func (h *HTTP) clearCartCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{Name: cartCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: h.secure, SameSite: http.SameSiteLaxMode})
+// clearCartCookie 清空购物车 cookie。需要 r：清除指令的 Secure 同样按请求实际是否 TLS 判定
+// （明文来源发出的带 Secure 的 Set-Cookie 会被浏览器整条丢弃，清除指令根本不会被处理）。
+func (h *HTTP) clearCartCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{Name: cartCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: secureFor(r), SameSite: http.SameSiteLaxMode})
 }
 
 func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {

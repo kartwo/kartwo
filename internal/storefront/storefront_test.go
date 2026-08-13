@@ -7,6 +7,7 @@ package storefront
 
 import (
 	"context"
+	cryptotls "crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -51,7 +52,7 @@ func TestOrderPayPendingOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db),
-		fakeGateway{methods: []string{"stripe"}, url: "https://gw/pay"}, "Shop", "https://shop", false)
+		fakeGateway{methods: []string{"stripe"}, url: "https://gw/pay"}, "Shop", "https://shop")
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -161,7 +162,7 @@ func newHTTP(t *testing.T) (*HTTP, http.Handler) {
 	if _, err := cat.CreateProduct(context.Background(), activeTee("tee")); err != nil {
 		t.Fatal(err)
 	}
-	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db), nil, "测试店", "https://shop.example", false)
+	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db), nil, "测试店", "https://shop.example")
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
@@ -233,4 +234,96 @@ func TestJSONLDValid(t *testing.T) {
 	if !json.Valid([]byte(raw)) {
 		t.Fatalf("JSON-LD 非法: %s", raw)
 	}
+}
+
+// TestCartCookieSecureFollowsRequestTLS 锁死第三处 cookie（购物车）与 D8-A 同口径：
+// Secure 按**请求实际是否走 TLS**决定，而非静态 Env=="prod"。设置与清除两条路径各测两分支。
+//
+// 机理：明文来源发出的带 Secure 的 Set-Cookie 会被浏览器整条丢弃（RFC 6265bis §5.5）。
+// 对购物车 cookie 而言，prod 明文态（HTTP-only 评估态 / 裸 IP 逃生路）下顾客每次请求
+// 都拿到新的空车 —— 加购不生效。清除路径同理：那条 Max-Age=-1 根本不会被处理。
+func TestCartCookieSecureFollowsRequestTLS(t *testing.T) {
+	// cartSet 触发 cartCtx 下发新车 cookie；返回该响应里的购物车 cookie。
+	cartCookieFrom := func(t *testing.T, mux http.Handler, tls bool) *http.Cookie {
+		t.Helper()
+		req := httptest.NewRequest("GET", "/cart", nil)
+		if tls {
+			req.TLS = &cryptotls.ConnectionState{} // httptest 默认 r.TLS==nil
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		res := rec.Result()
+		defer func() { _ = res.Body.Close() }()
+		for _, c := range res.Cookies() {
+			if c.Name == cartCookie {
+				return c
+			}
+		}
+		t.Fatalf("应下发购物车 cookie，得 %v", res.Cookies())
+		return nil
+	}
+
+	t.Run("设置路径", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			tls  bool
+			want bool
+		}{
+			{"TLS 请求 → 带 Secure", true, true},
+			{"明文请求 → 不带 Secure（否则顾客加购不生效）", false, false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				_, mux := newHTTP(t)
+				c := cartCookieFrom(t, mux, tc.tls)
+				if c.Secure != tc.want {
+					t.Fatalf("Secure=%v，期望 %v", c.Secure, tc.want)
+				}
+				// 其余属性不受影响。
+				if !c.HttpOnly {
+					t.Fatal("购物车 cookie 必须保持 HttpOnly")
+				}
+				if c.SameSite != http.SameSiteLaxMode {
+					t.Fatalf("SameSite 应保持 Lax，得 %v", c.SameSite)
+				}
+			})
+		}
+	})
+
+	t.Run("清除路径", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			tls  bool
+			want bool
+		}{
+			{"TLS 请求 → 清除指令带 Secure", true, true},
+			{"明文请求 → 清除指令不带 Secure", false, false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				h := &HTTP{} // clearCartCookie 只用 w/r，不碰其它字段
+				req := httptest.NewRequest("POST", "/checkout", nil)
+				if tc.tls {
+					req.TLS = &cryptotls.ConnectionState{}
+				}
+				rec := httptest.NewRecorder()
+				h.clearCartCookie(rec, req)
+				res := rec.Result()
+				defer func() { _ = res.Body.Close() }()
+				var got *http.Cookie
+				for _, c := range res.Cookies() {
+					if c.Name == cartCookie {
+						got = c
+					}
+				}
+				if got == nil {
+					t.Fatal("应下发购物车清除指令")
+				}
+				if got.MaxAge >= 0 {
+					t.Fatalf("清除指令 MaxAge 应为负，得 %d", got.MaxAge)
+				}
+				if got.Secure != tc.want {
+					t.Fatalf("清除指令 Secure=%v，期望 %v", got.Secure, tc.want)
+				}
+			})
+		}
+	})
 }

@@ -9,6 +9,7 @@ import SmtpWizard from './views/SmtpWizard.vue'
 import WizardProgress from './components/WizardProgress.vue'
 import ToastHost from './components/ToastHost.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
+import InsecureNotice from './components/InsecureNotice.vue'
 
 const loading = ref(true)
 const initialized = ref(false)
@@ -127,6 +128,8 @@ onMounted(refresh)
   <!-- 全局 toast 宿主 + 统一确认弹窗：始终挂载，跨所有页面状态可用 -->
   <ToastHost />
   <ConfirmDialog />
+  <!-- 明文访问提示：登录页/向导/后台各态都要能看到（商家最可能在登录页就撞上） -->
+  <InsecureNotice />
 
   <div v-if="loading" class="center-screen muted">加载中…</div>
 
