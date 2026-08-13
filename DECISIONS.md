@@ -2,6 +2,14 @@
 
 > 每个关键决策记一行：日期 / 决策 / 理由 / 影响范围。由 Claude Code 在每轮收尾追加维护。
 > 作者：仗键天涯(daxing) ｜ 3442535897@qq.com
+>
+> **通例一：DECISIONS 记可复用的推理，不只是结论。** 结论对而推理错，同样必须修 —— 后来者会照着推理去推别的东西。
+> **通例二：校准留痕，不抹平。** 更正既有条目时，保留「原写作 X ——（错在哪）——故更正」的痕迹，**不要改成一条平滑无痕的正确结论**。
+> 理由：平滑的正确结论会让人以为它一直就对，从而**低估同类推理的出错概率**；留痕才让人看到「这里曾经推错过」，对同类判断保持警觉。
+> 首例见 2026-08-08 D8-A 登出 cookie 机理校准（原写「属性不匹配」，实为「明文来源的 Secure cookie 被整条丢弃」）。
+>
+> **通例三：「我确认没有遗漏」类结论必须附可复核证据。** 给命令与完整输出（如全仓 grep 的原始结果），不给「我找过了」的结论。
+> 首例见 2026-08-08 第三处 cookie 的 grep 兜底（全仓 `Secure:` 恰好 4 次、4 次全是 `secureFor(r)`）。
 
 ---
 
@@ -143,7 +151,7 @@
 | ~~D8：prod 明文访问下会话 cookie 的 `Secure` 标记~~ | ~~北极星计时开表前~~ | ✅ **已了结（2026-08-07，选项 A）**：Derek 非回环真机实测坐实（login 200 / me 401、两条 cookie 均被丢弃），session+csrf 一并改按 `r.TLS != nil` 判定，见上表决策行 |
 | ~~店面购物车 cookie 同病（第三处）~~ | ~~`v0.4.0` 之前~~ | ✅ **已了结（2026-08-08，裁定"现在就修"）**：两条路径均改 `secureFor(r)`，全仓 grep 兜底确认无第四处，见上表决策行 |
 | **`-tags nodynamic`（严格静态二进制）是否采纳** | **待北极星 T10 实测编码耗时后拍板** | 🟡 **真取舍，现在拍是拍脑袋，故明确绑定在计时结果之后**。**收益**：产出严格静态二进制（`file` 报 `statically linked`），对齐「Go 单静态二进制」技术底线，打开 **Alpine/musl 与 scratch/distroless** 支持。**代价**：WebP 编码走纯 wazero WASM 路，开发机实测 380ms→423ms（**+11%**）——而**图片上传慢正是已登记的 1C1G 痛点**（PROGRESS 待办「上传进度反馈」的由来）。**判断依据（T10 给出真实数据后套用）**：北极星 T10 会实测 2–4MB 照片在 1C1G 上的编码耗时——**若该耗时本就是 T10 的瓶颈（占该段大头/绝对值达数秒），+11% 不可接受，维持现状**；**若耗时占比很小（相对其它步骤可忽略），则应取严格静态**。**诚实性上不欠债**：任务 D 已逐平台标注验证状态、README 已写明 glibc 依赖与 musl 不支持，不存在"对外宣称静态实则不是"的问题。**本轮不动构建配置** |
-| **反代终止 TLS 时 cookie 降级（D8-A 的已知限制）** | 与 D8 同批实施时登记 | 🟡 反代终止 TLS 时 `r.TLS == nil`，D8-A 会令 HTTPS 站点发出**非 Secure** cookie（功能不坏但是降级）。`listenHint` 自己把「高位端口+反代」列为四条解法之一，故这是受支持形态。**本轮明确不做 `X-Forwarded-Proto` 信任**——盲信可伪造，正解需「可信代理白名单 + 仅在白名单内采信该头」，属超范围。**将来正解方向**：加可信代理配置项（如 `KARTWO_TRUSTED_PROXIES`），仅当 RemoteAddr 命中白名单时才采信 `X-Forwarded-Proto` |
-| **CI 全红修复** | **正式 `v0.4.0` 之前必须修**（Derek 拍：收官后单独一片，不抢在北极星计时前） | 🟠 **已验证事实**：GitHub CI 在 main 上 **13 次运行 13 次全红、从未绿过**（最早 2026-06-18）。失败 job = 「静态检查」(golangci-lint 步骤) + 「安全门禁」(gitleaks 步骤；govulncheck 步骤本身过)。**与宪法级表述「CI 安全门禁…无高危方可合主干」直接冲突**——门禁实质一直靠本地 `make check` + 本地 `gitleaks` 人肉守住，自动兜底失效。**根因待据实定位**（匿名 API 取 job 日志 403，需 Derek 提供报错原文；我的两个假设——action@v6 不支持 golangci-lint v2.x 需 v7+ / gitleaks-action@v2 对 org 要 `GITLEAKS_LICENSE`——**是推测不是结论**）。修复要求：让本地 `make check` 与 CI **跑同一个东西**（说明版本从哪来、谁是权威）；gitleaks 若确因 license 卡住则列选项由 Derek 拍；**时间盒：若根因非小配置问题或需动 CI 结构则停下回报**；修完须在非 main 分支先跑绿一次再合 |
+| **可信代理支持（统一口径）** —— 合并原「反代终止 TLS 时 cookie 降级」与「`base()` 盲信 `X-Forwarded-Proto`」两条 | 待定，**不在 M4 范围** | 🟡 同一件事的两个口径，**必须一起收，不各记各的**。**现状 A（cookie）**：`Secure` 只认 `r.TLS != nil`，**不信** `X-Forwarded-Proto` → 反代终止 TLS 时 HTTPS 站点会发出**非 Secure** cookie（功能不坏但是降级）。`listenHint` 自己把「高位端口+反代」列为四条解法之一，故反代是受支持形态。**现状 B（SEO）**：`storefront/http.go:116` 的 `base()` 判 scheme 用 `r.TLS != nil \|\| r.Header.Get("X-Forwarded-Proto") == "https"`，**已在盲信该头**；用途是生成 canonical/sitemap 绝对 URL，属 SEO 不属安全判定，**风险等级远低于 cookie**，故未随 D8 一并改。**问题**：A 严禁盲信、B 正在盲信，口径不一致。**正解方向**：加可信代理配置项（如 `KARTWO_TRUSTED_PROXIES`），**仅当 `RemoteAddr` 命中白名单时才采信 `X-Forwarded-Proto`**，A 与 B **统一走同一判定函数**（而非各自判断） |
+| **CI 全红修复** | 🔴 **`v0.4.0` 打 tag 前的阻塞 gate**（与「北极星计时通过」并列，见 `PROGRESS.md`）。已裁定 M4 收官后单独一片，不抢在北极星计时前 | 🟠 **已验证事实**：GitHub CI 在 main 上 **13 次运行 13 次全红、从未绿过**（最早 2026-06-18）。失败 job = 「静态检查」(golangci-lint 步骤) + 「安全门禁」(gitleaks 步骤；govulncheck 步骤本身过)。**与宪法级表述「CI 安全门禁…无高危方可合主干」直接冲突**——门禁实质一直靠本地 `make check` + 本地 `gitleaks` 人肉守住，自动兜底失效。**根因待据实定位**（匿名 API 取 job 日志 403，需 Derek 提供报错原文；我的两个假设——action@v6 不支持 golangci-lint v2.x 需 v7+ / gitleaks-action@v2 对 org 要 `GITLEAKS_LICENSE`——**是推测不是结论**）。修复要求：让本地 `make check` 与 CI **跑同一个东西**（说明版本从哪来、谁是权威）；gitleaks 若确因 license 卡住则列选项由 Derek 拍；**时间盒：若根因非小配置问题或需动 CI 结构则停下回报**；修完须在非 main 分支先跑绿一次再合。**⚠️ 取材方式（曾连续三轮卡在此处，故钉死）**：匿名 GitHub API 取 job 日志返回 403「Must have admin rights」，**执行端读不到、也读不了截图**。取原文用 **`gh run view <run-id> --log-failed`**（如 `gh run view 31072574900 --log-failed`），或在网页展开红色步骤后**复制文字**粘贴过来 |
 | **§7 向导口径对齐**（六步 vs 实现四步；店名不可配 R4；向导内无一键 demo） | M4 收官后 | 🟡 已登记未拍板。`ARCHITECTURE §7` 列 6 步，实现为「初始化 + 市场/收款/域名/邮件 4 步」；`ShopName` 仅 `KARTWO_SHOP_NAME` env 可配、后台零入口；`seed-demo` 仅 CLI 子命令（Derek 不碰命令行=对其不可用）。**D5-A 已定本轮不管、记观察项**，三件事合并成一个决策待 M4 收官后拍 |
 | **Stripe 密钥「测试连接」按钮**（D4-C 的后续） | M4 之后 | 🟡 已登记未拍板。现状：保存收款密钥**无任何在线校验**（`admin/payment.go` 只校验 `mode` 枚举 + 加密写库），而 SMTP 已有「测试发信」——两者不对称。建议补对称的探活按钮，排 M4 之后 |
