@@ -96,5 +96,5 @@ jobs:
 
       - name: gitleaks（密钥泄漏扫描）
         run: |
-          go install github.com/gitleaks/gitleaks/v8@${{ env.GITLEAKS_VERSION }}
+          go install github.com/zricethezav/gitleaks/v8@${{ env.GITLEAKS_VERSION }}
           gitleaks detect --source . --redact --no-banner
