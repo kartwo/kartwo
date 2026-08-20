@@ -141,6 +141,7 @@
 
 | 2026-08-20 | **北极星 30 分钟计时由 Derek 明确决定跳过**。记录口径固定为“未验收”，不得写成通过；因此原 DoD 下仍不能据此打正式 `v0.4.0`。若后续仍要发布，须恢复验收，或由 Derek 明确修改里程碑 DoD | 跳过是进度选择，不会自动产生验收证据；保持发布声明诚实 | M4 验收/发布 |
 | 2026-08-20 | **CI 全红根因据原始 Actions 日志坐实并采用开源 CLI 修复**：①`golangci-lint-action@v6` 明确报“不支持 lint v2.5.0，须升 v7”→ action 升 `v7`，lint 版本仍钉 `v2.5.0`；②`gitleaks-action@v2` 因 `kartwo` 为组织而要求 `GITLEAKS_LICENSE`，在扫描前退出→不购买/托管商业 license，改为 `go install github.com/gitleaks/gitleaks/v8@v8.30.1` 后执行 `gitleaks detect --source . --redact --no-banner`。`Makefile tools/check` 同步固定同版本并纳入 `leaks`，本地与 CI 同口径 | 两处均为工具编排失败而非代码/密钥命中；直接运行开源 CLI 保留完整密钥门禁、消除组织许可证依赖，也修复本地 `make check` 原本未实际包含 gitleaks 的口径漏洞 | CI/安全门禁 |
+| 2026-08-20 | **PR #1 首轮 CI 的新增事实与修复**：①action v7 已越过 v2 兼容关，但下载的 lint v2.5.0 官方二进制由 Go 1.25 构建，拒绝目标 Go 1.26.5 → CI 先用当前 Go 执行与 Makefile 同源的 `go install ...@v2.5.0`，action 设 `install-mode: none` 只负责运行；②govulncheck 报 7 个真实可达漏洞：GO-2026-6222（`x/image` WebP VP8L 过量内存）升 v0.45.0；GO-2026-6218/6091/6090/6089/5972/5026（标准库 URL/template/TLS/HTTP/ASN.1 等）统一升 Go 1.26.6。release 与 CI Go 版本一并前移，不加忽略项 | CI 真正跑起来后应让真实安全门禁继续暴露问题；同小版本安全补丁按既定机械升级原则直接处理，发布构建必须与 CI 使用同一 Go 版本 | CI/依赖/安全 |
 
 ---
 
