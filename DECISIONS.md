@@ -139,6 +139,9 @@
 
 | 2026-08-08 | **第三处 cookie（店面购物车）与 D8-A 同口径修正，规划侧裁定「现在就修」而非与 CI 同批**。`storefront/cart_http.go`（设置）+ `checkout_http.go`（清除）原为静态 `Secure: h.secure`（=`Env=="prod"`），与 D8 完全同一机理 → prod 明文态（HTTP-only 评估态 / 裸 IP 逃生路）下购物车 cookie 被整条丢弃，**顾客每次请求都拿到新的空车、加购不生效**。**裁定理由（三条）**：①CI 那片被报错原文卡着，同批等于把已定位、已知修法的 bug 挂在工期未知的任务后面；②**同一机理只修三分之二更糟**——将来维护者看到 admin 改了、storefront 没改，会以为存在某种刻意区分，而实际上没有，这种「看似有意的不一致」比 bug 本身更贵；③修法同形且更小，趁上下文热时一次做完最省。落地：两条路径均改 `secureFor(r)`（storefront 包内同名同义实现，两包互不依赖故各留一份）；`clearCartCookie` 加 `r` 参数；`h.secure` 除这两处外**已无用途 → 连同 `NewHTTP` 的 `secure` 参数一并移除**。**全仓 grep 兜底确认设置 cookie 恰好 4 处、全部收敛到 `secureFor(r)`，无第四处**（前端 `api.js` 仅**读** `document.cookie` 取 csrf，从不写；模板/静态资源无 `Set-Cookie`）。单测 4 分支（设置/清除 × TLS/明文）+ HttpOnly/SameSite 无回归。**实证**（`192.168.0.132:8190` prod 明文非回环）：加购 200 且 `Set-Cookie: kartwo_cart=…; HttpOnly; SameSite=Lax`（**无 Secure**）→ 回读 `count=2` → 再加 `count=3`（同一辆车被复用；修复前恒为空车） | 同一机理必须一次改干净，留三分之一等于给将来埋一个「看似有意」的陷阱；不阻塞北极星不等于该拖 | 安全/店面（M4 收官前置） |
 
+| 2026-08-20 | **北极星 30 分钟计时由 Derek 明确决定跳过**。记录口径固定为“未验收”，不得写成通过；因此原 DoD 下仍不能据此打正式 `v0.4.0`。若后续仍要发布，须恢复验收，或由 Derek 明确修改里程碑 DoD | 跳过是进度选择，不会自动产生验收证据；保持发布声明诚实 | M4 验收/发布 |
+| 2026-08-20 | **CI 全红根因据原始 Actions 日志坐实并采用开源 CLI 修复**：①`golangci-lint-action@v6` 明确报“不支持 lint v2.5.0，须升 v7”→ action 升 `v7`，lint 版本仍钉 `v2.5.0`；②`gitleaks-action@v2` 因 `kartwo` 为组织而要求 `GITLEAKS_LICENSE`，在扫描前退出→不购买/托管商业 license，改为 `go install github.com/gitleaks/gitleaks/v8@v8.30.1` 后执行 `gitleaks detect --source . --redact --no-banner`。`Makefile tools/check` 同步固定同版本并纳入 `leaks`，本地与 CI 同口径 | 两处均为工具编排失败而非代码/密钥命中；直接运行开源 CLI 保留完整密钥门禁、消除组织许可证依赖，也修复本地 `make check` 原本未实际包含 gitleaks 的口径漏洞 | CI/安全门禁 |
+
 ---
 
 ## 待定（未拍板前 Claude Code 不擅自选定）
