@@ -15,6 +15,7 @@ import (
 
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/migrate"
+	"github.com/kartwo/kartwo/internal/redirect"
 	"github.com/kartwo/kartwo/migrations"
 )
 
@@ -41,7 +42,7 @@ func newService(t *testing.T) (*Service, *catalog.Service) {
 		t.Fatalf("迁移失败: %v", err)
 	}
 	cat := catalog.New(db)
-	return New(db, cat, nil), cat
+	return New(db, cat, nil, redirect.New(db)), cat
 }
 
 func TestPreviewAndExecuteCSV(t *testing.T) {
@@ -110,6 +111,9 @@ func TestPreviewAndExecuteShopifyCSV(t *testing.T) {
 	products, err := cat.ListProducts(ctx)
 	if err != nil || len(products) != 1 || products[0].Slug != "shopify-tee" {
 		t.Fatalf("Shopify 执行商品异常: %+v, %v", products, err)
+	}
+	if slug, err := svc.redirect.ResolveShopifyHandle(ctx, "shopify-tee"); err != nil || slug != "shopify-tee" {
+		t.Fatalf("Shopify 导入应保存旧链接映射，slug=%q err=%v", slug, err)
 	}
 }
 

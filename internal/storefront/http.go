@@ -19,6 +19,7 @@ import (
 	"github.com/kartwo/kartwo/internal/cart"
 	"github.com/kartwo/kartwo/internal/order"
 	"github.com/kartwo/kartwo/internal/payment"
+	"github.com/kartwo/kartwo/internal/redirect"
 	"github.com/kartwo/kartwo/internal/settings"
 )
 
@@ -39,6 +40,7 @@ type HTTP struct {
 	order     *order.Service
 	settings  *settings.Service
 	pay       PaymentGateway // 可为 nil（未接入收款）
+	redirect  *redirect.Service
 	shopName  string
 	baseURL   string // 配置基址；空则按请求推导
 	homeTmpl  *template.Template
@@ -62,13 +64,13 @@ func secureFor(r *http.Request) bool { return r.TLS != nil }
 
 // NewHTTP 构建店面 HTTP 层。货币按当前主攻市场逐请求解析（向导切市场即时生效）。
 // 注：cookie 的 Secure 标记按**每次请求**是否走 TLS 决定（见 secureFor），故不再需要 secure 参数。
-func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, settingsSvc *settings.Service, pay PaymentGateway, shopName, baseURL string) *HTTP {
+func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, settingsSvc *settings.Service, pay PaymentGateway, redirectSvc *redirect.Service, shopName, baseURL string) *HTTP {
 	parse := func(page string) *template.Template {
 		return template.Must(template.New("").ParseFS(tmplFS, "templates/base.html", page))
 	}
 	return &HTTP{
-		svc: svc, cart: cartSvc, order: orderSvc, settings: settingsSvc, pay: pay, shopName: shopName,
-		baseURL: strings.TrimRight(baseURL, "/"),
+		svc: svc, cart: cartSvc, order: orderSvc, settings: settingsSvc, pay: pay, redirect: redirectSvc, shopName: shopName,
+		baseURL:   strings.TrimRight(baseURL, "/"),
 		homeTmpl:  parse("templates/home.html"),
 		prodTmpl:  parse("templates/product.html"),
 		cartTmpl:  parse("templates/cart.html"),
@@ -87,6 +89,7 @@ func (h *HTTP) money(ctx context.Context) func(int64) string { return moneyFunc(
 func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /{$}", h.home) // 仅根路径，避免吃掉其它前缀
 	mux.HandleFunc("GET /p/{slug}", h.product)
+	mux.HandleFunc("GET /products/{handle}", h.shopifyProductRedirect)
 	mux.HandleFunc("GET /sitemap.xml", h.sitemap)
 	mux.HandleFunc("GET /robots.txt", h.robots)
 	mux.HandleFunc("GET /static/cart.js", h.cartJS)
@@ -102,6 +105,28 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /order/{id}", h.orderPage)
 	mux.HandleFunc("POST /order/{id}/pay", h.orderPay)   // 未付订单「去支付」重新发起
 	mux.HandleFunc("GET /paypal/return", h.paypalReturn) // PayPal 审批后跳回做同步 capture
+}
+
+// shopifyProductRedirect 将 Shopify 历史商品链接永久迁移到 Kartwo 商品页。
+func (h *HTTP) shopifyProductRedirect(w http.ResponseWriter, r *http.Request) {
+	if h.redirect == nil {
+		http.NotFound(w, r)
+		return
+	}
+	slug, err := h.redirect.ResolveShopifyHandle(r.Context(), r.PathValue("handle"))
+	if errors.Is(err, redirect.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+	target := "/p/" + slug
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
+	}
+	http.Redirect(w, r, target, http.StatusMovedPermanently)
 }
 
 type seo struct {
