@@ -55,11 +55,11 @@ func prepareRemoteImages(ctx context.Context, refs []imageReference) ([]prepared
 	for _, ref := range refs {
 		b, err := fetchRemoteImage(ctx, ref.URL)
 		if err != nil {
-			return nil, fmt.Errorf("import: 第 %d 行图片下载失败: %w", ref.Row, err)
+			return nil, &ValidationError{Message: fmt.Sprintf("第 %d 行图片下载失败：%v", ref.Row, err)}
 		}
 		p, err := media.Process(b)
 		if err != nil {
-			return nil, fmt.Errorf("import: 第 %d 行图片无效: %w", ref.Row, err)
+			return nil, &ValidationError{Message: fmt.Sprintf("第 %d 行图片无效：%v", ref.Row, err)}
 		}
 		out = append(out, preparedImage{Slug: ref.Slug, Row: ref.Row, Processed: p})
 	}

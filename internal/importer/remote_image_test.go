@@ -6,6 +6,8 @@
 package importer
 
 import (
+	"context"
+	"errors"
 	"net/netip"
 	"testing"
 )
@@ -29,6 +31,14 @@ func TestValidateRemoteImageURL(t *testing.T) {
 		if err := validateRemoteImageURL(raw); err == nil {
 			t.Fatalf("不安全地址 %q 未被拒绝", raw)
 		}
+	}
+}
+
+func TestPrepareRemoteImagesReturnsValidationError(t *testing.T) {
+	_, err := prepareRemoteImages(context.Background(), []imageReference{{Row: 2, URL: "https://127.0.0.1/secret.png"}})
+	var ve *ValidationError
+	if !errors.As(err, &ve) || ve.Message == "" {
+		t.Fatalf("下载失败应给出可展示校验错误: %v", err)
 	}
 }
 
