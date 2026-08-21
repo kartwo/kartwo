@@ -42,6 +42,16 @@ func TestPrepareRemoteImagesReturnsValidationError(t *testing.T) {
 	}
 }
 
+func TestRemoteImageRequestHeaders(t *testing.T) {
+	req, err := newRemoteImageRequest(context.Background(), "https://cdn.example.com/image.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Header.Get("User-Agent") == "" {
+		t.Fatal("远程图片请求必须带可识别的 User-Agent")
+	}
+}
+
 func TestIsPublicIP(t *testing.T) {
 	for _, raw := range []string{"127.0.0.1", "10.0.0.1", "169.254.1.1", "::1", "fc00::1", "100.64.0.1"} {
 		ip := netip.MustParseAddr(raw)

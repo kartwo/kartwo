@@ -100,7 +100,11 @@ func fetchRemoteImage(ctx context.Context, raw string) ([]byte, error) {
 			return fmt.Errorf("图片地址不允许重定向")
 		},
 	}
-	resp, err := client.Get(raw) //nolint:gosec // URL、DNS 与连接地址均在上方受限。
+	req, err := newRemoteImageRequest(ctx, raw)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req) //nolint:gosec // URL、DNS 与连接地址均在上方受限。
 	if err != nil {
 		return nil, err
 	}
@@ -116,6 +120,17 @@ func fetchRemoteImage(ctx context.Context, raw string) ([]byte, error) {
 		return nil, fmt.Errorf("图片超过 10MB")
 	}
 	return b, nil
+}
+
+func newRemoteImageRequest(ctx context.Context, raw string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
+	if err != nil {
+		return nil, err
+	}
+	// 部分公开图片 CDN 会拒绝 Go 默认的空白请求标识；明确表明导入用途，不伪装浏览器。
+	req.Header.Set("User-Agent", "Kartwo/0.5 (+https://kartwo.com; self-hosted image importer)")
+	req.Header.Set("Accept", "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8")
+	return req, nil
 }
 
 func isPublicIP(ip netip.Addr) bool {
