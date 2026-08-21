@@ -3,12 +3,12 @@
 > 项目进度的**单一事实来源**。Claude Code 每轮收尾必须更新此文件。
 > 进度以本文件 + git tag 为准，不依赖对话记忆。
 > 作者：仗键天涯(daxing) ｜ 3442535897@qq.com
-> 最后更新：2026-08-20（北极星计时由 Derek 明确跳过，记为未验收；CI 全红根因已取得原始日志，进入修复片）
+> 最后更新：2026-08-21（PR #1 CI 四项全绿，待合并；北极星计时仍未验收）
 
 ---
 
 ## 当前状态
-- **阶段**：**M4 CI 门禁修复片 🟡 进行中**（分支 `feat/m4-ci-gate`）。北极星前置补丁已由 Derek 验收并合入 `main`；2026-08-20 Derek 明确决定跳过 30 分钟计时，故该项只能记为**未验收**，不能等同通过。
+- **阶段**：**M4 CI 门禁修复片 ✅ PR 验证通过、待合并**（分支 `feat/m4-ci-gate`，草稿 PR #1）。北极星前置补丁已由 Derek 验收并合入 `main`；2026-08-20 Derek 明确决定跳过 30 分钟计时，故该项只能记为**未验收**，不能等同通过。
   - **背景（第一轮诊断的三个实证发现）**：**P1** GitHub Releases 为空、无 release workflow、Makefile 无交叉编译目标、CI 不产 artifact → 北极星第一个动词「下载」当前无法按商家真实路径执行；**R1** 新建商品默认 `draft` 而店面只显示 `active`、中间零提示，且 `seed-demo` 硬编码 `active` 使历次自测**从结构上绕开**该坑；**R2** `:80` 无条件 301 到配置域名，DNS 未生效时店面与后台**同时失联且无自救路径**。
   - **本轮落地**：①`.github/workflows/release.yml`（push tag 触发、**现场构建前端再 embed**、四平台 + SHA256、流水线自检版本注入）+ `version` 子命令；②草稿态提示（编辑页随状态变化的 inline 说明 + 列表 chip 人话化与 `--warn` 着色，**不改默认值/后端/店面查询**）；③`httpsRedirect` 加 Host 判断 + 明文逃生路（`normalizeHost` 去端口/尾点/大小写，`ChallengeHandler` 加 app 参数，**不动 HostPolicy**）+ 11 个用例的回归单测。
   - **D8 已了结**：Admin session/CSRF 与店面购物车 cookie 均已改为按请求实际 TLS 判定，并经非回环 prod 明文真机实证通过。
@@ -34,9 +34,10 @@
   1. **北极星「30 分钟开店」计时验收通过**：2026-08-20 Derek 决定跳过，当前状态为**未验收/未通过 gate**。
   2. **GitHub CI 修绿**。原始日志已取得，根因坐实：`golangci-lint-action@v6` 明确不支持 lint v2，须升 v7；`gitleaks-action@v2` 因组织仓库要求商业 license，在真正扫描前退出。当前修复片改为 action v7 + 固定版本开源 gitleaks CLI，并让本地 `make check` 纳入同一密钥扫描。
      - **PR #1 首轮又揭出两个真实 gate**：lint v2.5.0 官方预编译包由 Go 1.25 构建，拒绝分析目标 Go 1.26.5 → 改为用 CI 当前 Go 从源码安装，再由 action v7 运行；govulncheck 新报 7 个真实可达漏洞 → Go **1.26.5→1.26.6** 修 6 个标准库漏洞，`golang.org/x/image` **v0.43.0→v0.45.0** 修 WebP VP8L 过量内存分配。均不降级门禁、不加例外。
-     - **PR #1 第二轮确认的工具元数据问题**：gitleaks v8.30.1 的 Go module path 是 `github.com/zricethezav/gitleaks/v8`，并非组织迁移后的路径；因此安装阶段冲突、扫描未运行。CI 与 Makefile 均已改为该声明路径；本地实跑通过，等待第三轮 CI 验证。
+     - **PR #1 第二轮确认的工具元数据问题**：gitleaks v8.30.1 的 Go module path 是 `github.com/zricethezav/gitleaks/v8`，并非组织迁移后的路径；因此安装阶段冲突、扫描未运行。CI 与 Makefile 均已改为该声明路径；本地实跑与 **第三轮 PR CI** 均通过。
+     - **第三轮 CI（run #17）四项全绿**：构建与测试（含 `go vet`、单元测试、静态二进制构建）、静态检查、漏洞与密钥扫描（`govulncheck` + `gitleaks`）、Admin 前端构建均通过。PR 仍为草稿，尚未合并到 `main`。
      - **⚠️ 取材方式（曾连续三轮卡在此处，故钉死）**：执行端读不到截图，匿名 API 取 job 日志返回 403「Must have admin rights」。取报错原文用 **`gh run view 31072574900 --log-failed`**，或网页展开红色步骤后**复制文字**。
-- **下一步**：完成 CI 修复片的本地门禁与 GitHub 分支验证；CI 变绿后，M4 仍因北极星计时被跳过而不能按原 DoD 打正式 `v0.4.0`。届时需由 Derek 决定恢复验收，或明确修改里程碑 DoD（后者属于产品级决策，不能由执行端代拍）。
+- **下一步**：合并已绿的 CI 修复片并确认 `main` 的合并后 CI；M4 仍因北极星计时被跳过而不能按原 DoD 打正式 `v0.4.0`。届时需由 Derek 决定恢复验收，或明确修改里程碑 DoD（后者属于产品级决策，不能由执行端代拍）。
 - **最新 git tag**：`v0.3.0`（M3）。M4.1、M4.2 各片、M4.3 及其间小修均已合主干，按切片纪律不单独打 tag。**`v0.4.0-rc1` 为预发布 tag**（仅用于触发验证 release 流程，不代表 M4 收官）；正式 `v0.4.0` 待北极星计时验收通过后打。
 
 ## 里程碑总览
