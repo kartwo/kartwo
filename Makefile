@@ -7,7 +7,7 @@
 BIN := $(CURDIR)/.bin
 TOOLPATH := PATH="$(BIN):$$PATH"
 
-.PHONY: all build test vet lint vuln gen tidy run check tools web
+.PHONY: all build test vet lint vuln leaks gen tidy run check tools web
 
 all: check
 
@@ -18,7 +18,8 @@ tools:         ## 安装钉死版本的开发工具到 ./.bin（版本与 CI 一
 	GOBIN=$(BIN) go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
 	GOBIN=$(BIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.5.0
 	GOBIN=$(BIN) go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
-	@echo "✅ 工具已装入 ./.bin（gitleaks 请用 brew install gitleaks）"
+	GOBIN=$(BIN) go install github.com/zricethezav/gitleaks/v8@v8.30.1
+	@echo "✅ 工具已装入 ./.bin"
 
 gen:           ## 由 sqlc 重新生成数据层代码
 	$(TOOLPATH) sqlc generate
@@ -41,8 +42,11 @@ lint:
 vuln:
 	$(TOOLPATH) govulncheck ./...
 
+leaks:
+	$(TOOLPATH) gitleaks detect --source . --redact --no-banner
+
 run: build     ## 本地启动（默认 :8080、./data）
 	./kartwo
 
-check: vet test build lint vuln  ## 合主干前本地全量门禁
+check: vet test build lint vuln leaks  ## 合主干前本地全量门禁（与 CI 同口径）
 	@echo "✅ 全部门禁通过"

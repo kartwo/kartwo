@@ -16,7 +16,7 @@ permissions:
   contents: write     # 建 Release 与上传 asset 所需
 
 env:
-  GO_VERSION: "1.26.5"
+  GO_VERSION: "1.26.6"
   NODE_VERSION: "24"
 
 jobs:
