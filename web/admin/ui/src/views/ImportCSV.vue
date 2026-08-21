@@ -46,7 +46,7 @@ async function execute() {
     <label>CSV 文件</label>
     <input type="file" accept=".csv,text/csv" @change="choose" />
     <p v-if="format === 'generic'" class="muted">列：title、slug、status、description、option1_name、option1_value、option2_name、option2_value、sku、price_cents、quantity。</p>
-    <p v-else class="muted">支持 Shopify 商品、两轴变体、SKU、价格、库存和状态；图片与第三变体轴将在后续导入片支持。</p>
+    <p v-else class="muted">支持 Shopify 商品、两轴变体、SKU、价格、库存、状态和公开 HTTPS 图片；第三变体轴将在后续导入片支持。</p>
     <button class="primary" :disabled="busy || !file" @click="dryRun">{{ busy ? '处理中…' : '预览导入' }}</button>
     <p v-if="err" class="err">{{ err }}</p>
   </section>

@@ -224,7 +224,7 @@ func newHTTPEnvDomain(t *testing.T, envDomain string) (*HTTP, http.Handler) {
 	mc := mail.NewCache(set)
 	svc.SetMailKeys(mc)
 	cat := catalog.New(svc.db)
-	h := NewHTTP(svc, cat, importer.New(svc.db, cat), md, set, ord, nil, mc, envDomain, false)
+	h := NewHTTP(svc, cat, importer.New(svc.db, cat, md), md, set, ord, nil, mc, envDomain, false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux

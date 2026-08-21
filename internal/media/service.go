@@ -124,6 +124,47 @@ func (s *Service) Upload(ctx context.Context, productID int64, data []byte) (*As
 	return view, nil
 }
 
+// StoreProcessedTx 把已校验处理的图片写入调用方事务，供批量导入复用媒体管线。
+// 文件采用内容哈希命名；若外层事务回滚，文件没有数据库引用，随后可由常规清理处理。
+func (s *Service) StoreProcessedTx(ctx context.Context, tx *sql.Tx, productID int64, p *Processed) error {
+	if err := s.policy.AllowUpload(int64(len(p.OriginalBytes))); err != nil {
+		return err
+	}
+	q := s.q.WithTx(tx)
+	cnt, err := q.CountMediaByProduct(ctx, productID)
+	if err != nil {
+		return fmt.Errorf("media: 统计图片失败: %w", err)
+	}
+	if s.maxPerProduct > 0 && cnt >= int64(s.maxPerProduct) {
+		return ErrTooManyPerProduct
+	}
+	origPath := path.Join("originals", p.ContentHash+"."+p.Ext)
+	if err := s.backend.Put(origPath, p.OriginalBytes); err != nil {
+		return err
+	}
+	for _, d := range p.Derivatives {
+		if err := s.backend.Put(derivedPath(p.ContentHash, d.Label), d.Bytes); err != nil {
+			return err
+		}
+	}
+	assetID, err := q.CreateMediaAsset(ctx, sqlcgen.CreateMediaAssetParams{
+		PublicID: uuid.Must(uuid.NewV7()).String(), ProductID: productID, ContentHash: p.ContentHash, OriginalPath: origPath,
+		Mime: p.MIME, Width: int64(p.Width), Height: int64(p.Height), SizeBytes: int64(len(p.OriginalBytes)), Position: cnt,
+	})
+	if err != nil {
+		return fmt.Errorf("media: 记录资产失败: %w", err)
+	}
+	for _, d := range p.Derivatives {
+		if err := q.AddDerivative(ctx, sqlcgen.AddDerivativeParams{
+			AssetID: assetID, Label: d.Label, Path: derivedPath(p.ContentHash, d.Label), Format: d.Format,
+			Width: int64(d.Width), Height: int64(d.Height), SizeBytes: int64(len(d.Bytes)),
+		}); err != nil {
+			return fmt.Errorf("media: 记录派生失败: %w", err)
+		}
+	}
+	return nil
+}
+
 // ListByProduct 列出商品的媒体（含派生）。
 func (s *Service) ListByProduct(ctx context.Context, productID int64) ([]Asset, error) {
 	rows, err := s.q.ListMediaByProduct(ctx, productID)

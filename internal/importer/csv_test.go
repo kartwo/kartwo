@@ -41,7 +41,7 @@ func newService(t *testing.T) (*Service, *catalog.Service) {
 		t.Fatalf("迁移失败: %v", err)
 	}
 	cat := catalog.New(db)
-	return New(db, cat), cat
+	return New(db, cat, nil), cat
 }
 
 func TestPreviewAndExecuteCSV(t *testing.T) {
@@ -113,7 +113,7 @@ func TestPreviewAndExecuteShopifyCSV(t *testing.T) {
 	}
 }
 
-func TestPreviewShopifyCSVRejectsImage(t *testing.T) {
+func TestPreviewShopifyCSVAcceptsPublicImageURL(t *testing.T) {
 	svc, _ := newService(t)
 	ctx := context.Background()
 	withImage := strings.Replace(shopifySample, "SHOPIFY-WHITE,8,29.99,active,", "SHOPIFY-WHITE,8,29.99,active,https://cdn.example.test/tee.jpg", 1)
@@ -121,7 +121,29 @@ func TestPreviewShopifyCSVRejectsImage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Status != "rejected" || len(p.Errors) != 1 || p.Errors[0].Row != 3 {
-		t.Fatalf("图片应被拒绝: %+v", p)
+	if p.Status != "previewed" || len(p.Errors) != 0 || p.ProductCount != 1 || p.VariantCount != 2 {
+		t.Fatalf("公开 HTTPS 图片应可预览: %+v", p)
+	}
+}
+
+func TestPreviewShopifyCSVRejectsUnsafeImageURL(t *testing.T) {
+	svc, _ := newService(t)
+	ctx := context.Background()
+	withImage := strings.Replace(shopifySample, "SHOPIFY-WHITE,8,29.99,active,", "SHOPIFY-WHITE,8,29.99,active,http://127.0.0.1/secret.png", 1)
+	p, err := svc.PreviewShopifyCSV(ctx, strings.NewReader(withImage))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Status != "rejected" || len(p.Errors) != 1 || p.Errors[0].Row != 3 || !strings.Contains(p.Errors[0].Message, "HTTPS") {
+		t.Fatalf("不安全图片地址应被拒绝: %+v", p)
+	}
+}
+
+func TestFormatHashKey(t *testing.T) {
+	if got := formatHashKey(FormatShopify); got != "shopify-v2-images" {
+		t.Fatalf("Shopify 解析版本=%q", got)
+	}
+	if got := formatHashKey(FormatGeneric); got != FormatGeneric {
+		t.Fatalf("通用格式不应变更 hash key: %q", got)
 	}
 }

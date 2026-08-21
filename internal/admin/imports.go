@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/kartwo/kartwo/internal/importer"
+	"github.com/kartwo/kartwo/internal/media"
 )
 
 func (h *HTTP) previewCSVImport(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +65,12 @@ func (h *HTTP) writeImportErr(w http.ResponseWriter, err error) {
 		writeErr(w, http.StatusNotFound, "导入任务不存在")
 	case errors.Is(err, http.ErrMissingFile):
 		writeErr(w, http.StatusBadRequest, "请选择 CSV 文件")
+	case errors.Is(err, media.ErrDiskFull):
+		writeErr(w, http.StatusServiceUnavailable, "磁盘空间不足，暂时不能保存导入图片")
+	case errors.Is(err, media.ErrFileTooLarge):
+		writeErr(w, http.StatusBadRequest, "导入图片超过大小上限")
+	case errors.Is(err, media.ErrTooManyPerProduct):
+		writeErr(w, http.StatusBadRequest, "该商品图片数量已达上限")
 	case errors.As(err, &ve):
 		writeErr(w, http.StatusBadRequest, ve.Message)
 	default:

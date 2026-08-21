@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kartwo/kartwo/internal/catalog"
+	"github.com/kartwo/kartwo/internal/media"
 )
 
 const maxCSVBytes = 5 << 20
@@ -48,10 +49,11 @@ type Preview struct {
 type Service struct {
 	db      *sql.DB
 	catalog *catalog.Service
+	media   *media.Service
 }
 
-func New(db *sql.DB, catalogSvc *catalog.Service) *Service {
-	return &Service{db: db, catalog: catalogSvc}
+func New(db *sql.DB, catalogSvc *catalog.Service, mediaSvc *media.Service) *Service {
+	return &Service{db: db, catalog: catalogSvc, media: mediaSvc}
 }
 
 // PreviewCSV 解析并持久化一次干跑。相同字节内容返回原任务，不会产生第二份任务。
@@ -59,7 +61,7 @@ func (s *Service) PreviewCSV(ctx context.Context, src io.Reader) (Preview, error
 	return s.preview(ctx, src, FormatGeneric)
 }
 
-// PreviewShopifyCSV 以 Shopify 商品 CSV 协议干跑预览，尚不下载远程图片。
+// PreviewShopifyCSV 以 Shopify 商品 CSV 协议干跑预览；远程图片在执行阶段才下载。
 func (s *Service) PreviewShopifyCSV(ctx context.Context, src io.Reader) (Preview, error) {
 	return s.preview(ctx, src, FormatShopify)
 }
@@ -72,17 +74,18 @@ func (s *Service) preview(ctx context.Context, src io.Reader, format string) (Pr
 	if len(b) > maxCSVBytes {
 		return Preview{}, &ValidationError{Message: "CSV 不能超过 5MB"}
 	}
-	h := sha256.Sum256(append([]byte(format+"\x00"), b...))
+	h := sha256.Sum256(append([]byte(formatHashKey(format)+"\x00"), b...))
 	hash := hex.EncodeToString(h[:])
 	if old, err := s.getByHash(ctx, hash); err == nil {
 		return old, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return Preview{}, err
 	}
-	p, inputs := parseForFormat(format, b)
+	parsed := parseForFormat(format, b)
+	p := parsed.preview
 	p.PublicID = uuid.Must(uuid.NewV7()).String()
 	p.Format = format
-	if len(p.Errors) == 0 && len(inputs) > 0 {
+	if len(p.Errors) == 0 && len(parsed.inputs) > 0 {
 		p.Status = "previewed"
 	} else {
 		p.Status = "rejected"
@@ -95,14 +98,18 @@ func (s *Service) preview(ctx context.Context, src io.Reader, format string) (Pr
 	return p, nil
 }
 
+// formatHashKey 随解析语义变化升级，避免历史被拒绝预览阻止修复后的同一文件重试。
+func formatHashKey(format string) string {
+	if format == FormatShopify {
+		return "shopify-v2-images"
+	}
+	return format
+}
+
 // Execute 将一个无错误预览一次性写入；成功任务重复执行只返回原结果。
 func (s *Service) Execute(ctx context.Context, publicID string) (Preview, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return Preview{}, fmt.Errorf("import: 开启事务: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	p, source, err := getByID(ctx, tx, publicID)
+	// 图片先在事务外下载、校验并处理，避免在数据库事务中等待网络。
+	p, err := s.Get(ctx, publicID)
 	if err != nil {
 		return Preview{}, err
 	}
@@ -112,11 +119,38 @@ func (s *Service) Execute(ctx context.Context, publicID string) (Preview, error)
 	if p.Status != "previewed" {
 		return Preview{}, &ValidationError{Message: "该导入任务存在行错误，不能执行"}
 	}
-	check, inputs := parseForFormat(p.Format, []byte(source))
-	if len(check.Errors) != 0 || len(inputs) == 0 {
+	_, source, err := getByID(ctx, s.db, publicID)
+	if err != nil {
+		return Preview{}, err
+	}
+	parsed := parseForFormat(p.Format, []byte(source))
+	if len(parsed.preview.Errors) != 0 || len(parsed.inputs) == 0 {
 		return Preview{}, &ValidationError{Message: "导入源已无效，请重新预览"}
 	}
-	if _, err := s.catalog.CreateProductsTx(ctx, tx, inputs); err != nil {
+	prepared, err := prepareRemoteImages(ctx, parsed.images)
+	if err != nil {
+		return Preview{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Preview{}, fmt.Errorf("import: 开启事务: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	p, _, err = getByID(ctx, tx, publicID)
+	if err != nil {
+		return Preview{}, err
+	}
+	if p.Status == "succeeded" {
+		return p, nil
+	}
+	if p.Status != "previewed" {
+		return Preview{}, &ValidationError{Message: "该导入任务存在行错误，不能执行"}
+	}
+	ids, err := s.catalog.CreateProductsTx(ctx, tx, parsed.inputs)
+	if err != nil {
+		return Preview{}, err
+	}
+	if err := s.storeImportedImages(ctx, tx, ids, parsed.inputs, prepared); err != nil {
 		return Preview{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE import_job SET status = 'succeeded', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id = ? AND status = 'previewed'`, publicID); err != nil {
@@ -142,6 +176,33 @@ func (s *Service) getByHash(ctx context.Context, hash string) (Preview, error) {
 	return s.Get(ctx, id)
 }
 
+func (s *Service) storeImportedImages(ctx context.Context, tx *sql.Tx, ids []string, inputs []catalog.ProductInput, prepared []preparedImage) error {
+	if len(prepared) == 0 {
+		return nil
+	}
+	if s.media == nil {
+		return fmt.Errorf("import: 图片服务未配置")
+	}
+	productIDs := make(map[string]int64, len(ids))
+	for i, publicID := range ids {
+		productID, err := s.catalog.ProductIDByPublicIDTx(ctx, tx, publicID)
+		if err != nil {
+			return err
+		}
+		productIDs[inputs[i].Slug] = productID
+	}
+	for _, img := range prepared {
+		productID, ok := productIDs[img.Slug]
+		if !ok {
+			return fmt.Errorf("import: 图片引用的商品不存在")
+		}
+		if err := s.media.StoreProcessedTx(ctx, tx, productID, img.Processed); err != nil {
+			return fmt.Errorf("import: 第 %d 行图片写入失败: %w", img.Row, err)
+		}
+	}
+	return nil
+}
+
 type queryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
@@ -160,14 +221,21 @@ func getByID(ctx context.Context, q queryer, id string) (Preview, string, error)
 	return p, source, nil
 }
 
-func parseForFormat(format string, b []byte) (Preview, []catalog.ProductInput) {
+type parsedImport struct {
+	preview Preview
+	inputs  []catalog.ProductInput
+	images  []imageReference
+}
+
+func parseForFormat(format string, b []byte) parsedImport {
 	switch format {
 	case FormatGeneric:
-		return parseCSV(b)
+		p, inputs := parseCSV(b)
+		return parsedImport{preview: p, inputs: inputs}
 	case FormatShopify:
 		return parseShopifyCSV(b)
 	default:
-		return Preview{Errors: []RowError{{Row: 1, Message: "不支持的导入来源"}}}, nil
+		return parsedImport{preview: Preview{Errors: []RowError{{Row: 1, Message: "不支持的导入来源"}}}}
 	}
 }
 
@@ -281,14 +349,14 @@ func buildInputs(p Preview, groups map[string]*grouped, order []string) (Preview
 
 var shopifyColumns = []string{"Handle", "Title", "Body (HTML)", "Option1 Name", "Option1 Value", "Option2 Name", "Option2 Value", "Option3 Name", "Option3 Value", "Variant SKU", "Variant Inventory Qty", "Variant Price"}
 
-// parseShopifyCSV 将 Shopify 的商品/变体行转为内核通用商品输入；图片与第三变体轴留给后续片。
-func parseShopifyCSV(b []byte) (Preview, []catalog.ProductInput) {
+// parseShopifyCSV 将 Shopify 的商品/变体行转为内核通用商品输入，并收集图片引用。
+func parseShopifyCSV(b []byte) parsedImport {
 	r := csv.NewReader(strings.NewReader(string(b)))
 	r.FieldsPerRecord = -1
 	r.TrimLeadingSpace = true
 	head, err := r.Read()
 	if err != nil {
-		return Preview{Errors: []RowError{{Row: 1, Message: "CSV 缺少表头"}}}, nil
+		return parsedImport{preview: Preview{Errors: []RowError{{Row: 1, Message: "CSV 缺少表头"}}}}
 	}
 	idx := map[string]int{}
 	for i, h := range head {
@@ -296,11 +364,12 @@ func parseShopifyCSV(b []byte) (Preview, []catalog.ProductInput) {
 	}
 	for _, name := range shopifyColumns {
 		if _, ok := idx[name]; !ok {
-			return Preview{Errors: []RowError{{Row: 1, Message: "不是完整的 Shopify 商品 CSV，缺少列 " + name}}}, nil
+			return parsedImport{preview: Preview{Errors: []RowError{{Row: 1, Message: "不是完整的 Shopify 商品 CSV，缺少列 " + name}}}}
 		}
 	}
 	groups := map[string]*grouped{}
 	order := []string{}
+	images := []imageReference{}
 	p := Preview{}
 	for line := 2; ; line++ {
 		row, e := r.Read()
@@ -329,7 +398,18 @@ func parseShopifyCSV(b []byte) (Preview, []catalog.ProductInput) {
 			continue
 		}
 		if imageIndex, ok := idx["Image Src"]; ok && imageIndex < len(row) && strings.TrimSpace(row[imageIndex]) != "" {
-			p.Errors = append(p.Errors, RowError{Row: line, Message: "暂不支持 Shopify 图片下载"})
+			imageURL := strings.TrimSpace(row[imageIndex])
+			if err := validateRemoteImageURL(imageURL); err != nil {
+				p.Errors = append(p.Errors, RowError{Row: line, Message: err.Error()})
+				continue
+			}
+			images = append(images, imageReference{Slug: handle, Row: line, URL: imageURL})
+		}
+		// Shopify 会将额外图片单独输出为只有 Handle 和 Image Src 的行。
+		if get("Variant Price") == "" && get("Variant Inventory Qty") == "" && get("Option1 Name") == "" && get("Option1 Value") == "" {
+			if groups[handle] == nil {
+				p.Errors = append(p.Errors, RowError{Row: line, Message: "图片行必须跟随商品或变体行"})
+			}
 			continue
 		}
 		g := groups[handle]
@@ -381,7 +461,8 @@ func parseShopifyCSV(b []byte) (Preview, []catalog.ProductInput) {
 		g.variants = append(g.variants, catalog.VariantInput{SKU: get("Variant SKU"), PriceCents: price, Quantity: qty, Selections: sels})
 		p.VariantCount++
 	}
-	return buildInputs(p, groups, order)
+	p, inputs := buildInputs(p, groups, order)
+	return parsedImport{preview: p, inputs: inputs, images: images}
 }
 
 func shopifyPriceCents(v string) (int64, error) {
