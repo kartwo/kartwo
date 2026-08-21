@@ -225,6 +225,17 @@ func (s *Service) ProductIDByPublicID(ctx context.Context, publicID string) (int
 	return p.ID, nil
 }
 
+// ProductIDByPublicIDTx 在调用方事务内解析商品内部主键，供需要同事务附加资源的批处理使用。
+func (s *Service) ProductIDByPublicIDTx(ctx context.Context, tx *sql.Tx, publicID string) (int64, error) {
+	p, err := s.q.WithTx(tx).GetProductByPublicID(ctx, publicID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	} else if err != nil {
+		return 0, fmt.Errorf("catalog: 解析商品失败: %w", err)
+	}
+	return p.ID, nil
+}
+
 // ListProducts 列出未删除商品（新建在前）。
 func (s *Service) ListProducts(ctx context.Context) ([]ProductSummary, error) {
 	rows, err := s.q.ListProducts(ctx)
