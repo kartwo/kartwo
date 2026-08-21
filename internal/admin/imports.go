@@ -28,7 +28,7 @@ func (h *HTTP) previewCSVImport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "请选择 CSV 文件")
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	p, err := h.importer.PreviewCSV(r.Context(), f)
 	if err != nil {
 		h.writeImportErr(w, err)
