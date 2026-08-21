@@ -128,3 +128,7 @@ th { color: var(--text-muted); font-weight: 500; }
   border: 1px solid var(--border); font-size: var(--fs-sm);
 }
 .spacer { height: 1rem; }
+.page-title-row { justify-content: space-between; align-items: start; }
+.import-panel { display: grid; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+.import-panel h3, .import-panel p { margin: 0; }
+.import-summary { display: flex; gap: var(--sp-4); color: var(--muted); }

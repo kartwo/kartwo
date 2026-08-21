@@ -144,6 +144,7 @@
 | 2026-08-20 | **PR #1 首轮 CI 的新增事实与修复**：①action v7 已越过 v2 兼容关，但下载的 lint v2.5.0 官方二进制由 Go 1.25 构建，拒绝目标 Go 1.26.5 → CI 先用当前 Go 执行与 Makefile 同源的 `go install ...@v2.5.0`，action 设 `install-mode: none` 只负责运行；②govulncheck 报 7 个真实可达漏洞：GO-2026-6222（`x/image` WebP VP8L 过量内存）升 v0.45.0；GO-2026-6218/6091/6090/6089/5972/5026（标准库 URL/template/TLS/HTTP/ASN.1 等）统一升 Go 1.26.6。release 与 CI Go 版本一并前移，不加忽略项 | CI 真正跑起来后应让真实安全门禁继续暴露问题；同小版本安全补丁按既定机械升级原则直接处理，发布构建必须与 CI 使用同一 Go 版本 | CI/依赖/安全 |
 | 2026-08-20 | **PR #1 第二轮 CI 的 gitleaks 安装路径修正**：v8.30.1 的 `go.mod` 仍声明模块路径 `github.com/zricethezav/gitleaks/v8`；使用组织迁移后的 `github.com/gitleaks/gitleaks/v8` 会在 `go install` 阶段发生 module path conflict，扫描根本未执行。CI 与 Makefile 统一改回声明路径，版本仍固定 v8.30.1 | 这是包发布元数据兼容性修复，不降低或跳过任何扫描；保证本地和 CI 真正执行同一 gitleaks 二进制 | CI/安全门禁 |
 | 2026-08-21 | **PR #1 第三轮 CI（run #17）全绿**：构建与测试、静态检查、漏洞与密钥扫描、Admin 前端构建四项均通过；其中 `govulncheck` 与 `gitleaks` 均已实际执行成功 | CI 修复片已在合并前分支完成验证；仍须保持草稿并待 Derek 授权合并，不可把 PR 绿等同于正式 `v0.4.0` 发布资格 | CI/安全门禁 |
+| 2026-08-21 | **M5 先做通用 CSV 导入地基，Shopify CSV/图片本地化/301 延后下一片**：稳定列协议为 `title,slug,status,description,option1_name,option1_value,option2_name,option2_value,sku,price_cents,quantity`；先干跑预览与行级错误，零错误才确认执行；任务来源 SHA-256 唯一，同一成功任务重试不重复建商品 | 先形成可验收、可重试的最小导入闭环；不在未完成的地基上猜 Shopify 列映射或远程图片与 SSRF 细节 | M5/导入 |
 
 ---
 

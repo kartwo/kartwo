@@ -85,98 +85,133 @@ type CategorySummary struct {
 
 // CreateProduct 在事务内建商品 + 变体轴 + 变体 + 库存 + 分类关联，返回新商品 public_id。
 func (s *Service) CreateProduct(ctx context.Context, in ProductInput) (string, error) {
-	if err := validateProductInput(in); err != nil {
+	ids, err := s.CreateProducts(ctx, []ProductInput{in})
+	if err != nil {
 		return "", err
 	}
-	status := in.Status
-	if status == "" {
-		status = "draft"
-	}
+	return ids[0], nil
+}
 
+// CreateProducts 将一批商品在单个事务内创建；任一商品不合法时整批不落库。
+// 导入器复用此入口，避免逐行提交形成半截导入。
+func (s *Service) CreateProducts(ctx context.Context, inputs []ProductInput) ([]string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return "", fmt.Errorf("catalog: 开启事务失败: %w", err)
+		return nil, fmt.Errorf("catalog: 开启事务失败: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	q := s.q.WithTx(tx)
-
-	publicID := uuid.Must(uuid.NewV7()).String()
-	pid, err := q.CreateProduct(ctx, sqlcgen.CreateProductParams{
-		PublicID: publicID, Title: in.Title, Slug: in.Slug, Description: in.Description, Status: status,
-	})
+	ids, err := s.CreateProductsTx(ctx, tx, inputs)
 	if err != nil {
-		if isUnique(err) {
-			return "", vErr("slug %q 已存在", in.Slug)
-		}
-		return "", fmt.Errorf("catalog: 建商品失败: %w", err)
+		return nil, err
 	}
-
-	// 建轴与轴值，构建 name->optionID、name->value->valueID。
-	optionID := map[string]int64{}
-	valueID := map[string]map[string]int64{}
-	for i, opt := range in.Options {
-		oid, err := q.CreateOption(ctx, sqlcgen.CreateOptionParams{ProductID: pid, Name: opt.Name, Position: int64(i)})
-		if err != nil {
-			return "", fmt.Errorf("catalog: 建轴失败: %w", err)
-		}
-		optionID[opt.Name] = oid
-		valueID[opt.Name] = map[string]int64{}
-		for j, v := range opt.Values {
-			vid, err := q.CreateOptionValue(ctx, sqlcgen.CreateOptionValueParams{OptionID: oid, Value: v, Position: int64(j)})
-			if err != nil {
-				return "", fmt.Errorf("catalog: 建轴值失败: %w", err)
-			}
-			valueID[opt.Name][v] = vid
-		}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("catalog: 提交失败: %w", err)
 	}
+	return ids, nil
+}
 
-	for pos, vin := range in.Variants {
-		valIDs, err := resolveSelections(in.Options, vin.Selections, valueID)
-		if err != nil {
-			return "", err
+// CreateProductsTx 在调用方给定的事务中创建一批商品，供导入任务状态与商品写入原子提交。
+func (s *Service) CreateProductsTx(ctx context.Context, tx *sql.Tx, inputs []ProductInput) ([]string, error) {
+	if len(inputs) == 0 {
+		return nil, vErr("至少需要一个商品")
+	}
+	seen := make(map[string]bool, len(inputs))
+	for _, in := range inputs {
+		if err := validateProductInput(in); err != nil {
+			return nil, err
 		}
-		var sku sql.NullString
-		if strings.TrimSpace(vin.SKU) != "" {
-			sku = sql.NullString{String: vin.SKU, Valid: true}
+		if seen[in.Slug] {
+			return nil, vErr("导入文件中 slug %q 重复", in.Slug)
 		}
-		vid, err := q.CreateVariant(ctx, sqlcgen.CreateVariantParams{
-			PublicID: uuid.Must(uuid.NewV7()).String(), ProductID: pid, Sku: sku,
-			PriceCents: vin.PriceCents, OptionKey: optionKey(valIDs), Position: int64(pos),
+		seen[in.Slug] = true
+	}
+	return createProducts(ctx, s.q.WithTx(tx), inputs)
+}
+
+func createProducts(ctx context.Context, q *sqlcgen.Queries, inputs []ProductInput) ([]string, error) {
+	publicIDs := make([]string, 0, len(inputs))
+	for _, in := range inputs {
+		status := in.Status
+		if status == "" {
+			status = "draft"
+		}
+
+		publicID := uuid.Must(uuid.NewV7()).String()
+		pid, err := q.CreateProduct(ctx, sqlcgen.CreateProductParams{
+			PublicID: publicID, Title: in.Title, Slug: in.Slug, Description: in.Description, Status: status,
 		})
 		if err != nil {
 			if isUnique(err) {
-				return "", vErr("第 %d 个变体的选项组合重复或 SKU 冲突", pos+1)
+				return nil, vErr("slug %q 已存在", in.Slug)
 			}
-			return "", fmt.Errorf("catalog: 建变体失败: %w", err)
+			return nil, fmt.Errorf("catalog: 建商品失败: %w", err)
 		}
-		for opt, vidVal := range selectionMap(vin.Selections) {
-			if err := q.AddVariantOptionValue(ctx, sqlcgen.AddVariantOptionValueParams{
-				VariantID: vid, OptionID: optionID[opt], ValueID: valueID[opt][vidVal],
-			}); err != nil {
-				return "", fmt.Errorf("catalog: 连接变体选项值失败: %w", err)
+
+		// 建轴与轴值，构建 name->optionID、name->value->valueID。
+		optionID := map[string]int64{}
+		valueID := map[string]map[string]int64{}
+		for i, opt := range in.Options {
+			oid, err := q.CreateOption(ctx, sqlcgen.CreateOptionParams{ProductID: pid, Name: opt.Name, Position: int64(i)})
+			if err != nil {
+				return nil, fmt.Errorf("catalog: 建轴失败: %w", err)
+			}
+			optionID[opt.Name] = oid
+			valueID[opt.Name] = map[string]int64{}
+			for j, v := range opt.Values {
+				vid, err := q.CreateOptionValue(ctx, sqlcgen.CreateOptionValueParams{OptionID: oid, Value: v, Position: int64(j)})
+				if err != nil {
+					return nil, fmt.Errorf("catalog: 建轴值失败: %w", err)
+				}
+				valueID[opt.Name][v] = vid
 			}
 		}
-		if err := q.SetInventory(ctx, sqlcgen.SetInventoryParams{VariantID: vid, Quantity: vin.Quantity}); err != nil {
-			return "", fmt.Errorf("catalog: 置库存失败: %w", err)
-		}
-	}
 
-	for _, cpid := range in.CategoryPublicIDs {
-		cat, err := q.GetCategoryByPublicID(ctx, cpid)
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", vErr("分类 %q 不存在", cpid)
-		} else if err != nil {
-			return "", fmt.Errorf("catalog: 取分类失败: %w", err)
+		for pos, vin := range in.Variants {
+			valIDs, err := resolveSelections(in.Options, vin.Selections, valueID)
+			if err != nil {
+				return nil, err
+			}
+			var sku sql.NullString
+			if strings.TrimSpace(vin.SKU) != "" {
+				sku = sql.NullString{String: vin.SKU, Valid: true}
+			}
+			vid, err := q.CreateVariant(ctx, sqlcgen.CreateVariantParams{
+				PublicID: uuid.Must(uuid.NewV7()).String(), ProductID: pid, Sku: sku,
+				PriceCents: vin.PriceCents, OptionKey: optionKey(valIDs), Position: int64(pos),
+			})
+			if err != nil {
+				if isUnique(err) {
+					return nil, vErr("第 %d 个变体的选项组合重复或 SKU 冲突", pos+1)
+				}
+				return nil, fmt.Errorf("catalog: 建变体失败: %w", err)
+			}
+			for opt, vidVal := range selectionMap(vin.Selections) {
+				if err := q.AddVariantOptionValue(ctx, sqlcgen.AddVariantOptionValueParams{
+					VariantID: vid, OptionID: optionID[opt], ValueID: valueID[opt][vidVal],
+				}); err != nil {
+					return nil, fmt.Errorf("catalog: 连接变体选项值失败: %w", err)
+				}
+			}
+			if err := q.SetInventory(ctx, sqlcgen.SetInventoryParams{VariantID: vid, Quantity: vin.Quantity}); err != nil {
+				return nil, fmt.Errorf("catalog: 置库存失败: %w", err)
+			}
 		}
-		if err := q.LinkProductCategory(ctx, sqlcgen.LinkProductCategoryParams{ProductID: pid, CategoryID: cat.ID}); err != nil {
-			return "", fmt.Errorf("catalog: 关联分类失败: %w", err)
-		}
-	}
 
-	if err := tx.Commit(); err != nil {
-		return "", fmt.Errorf("catalog: 提交失败: %w", err)
+		for _, cpid := range in.CategoryPublicIDs {
+			cat, err := q.GetCategoryByPublicID(ctx, cpid)
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, vErr("分类 %q 不存在", cpid)
+			} else if err != nil {
+				return nil, fmt.Errorf("catalog: 取分类失败: %w", err)
+			}
+			if err := q.LinkProductCategory(ctx, sqlcgen.LinkProductCategoryParams{ProductID: pid, CategoryID: cat.ID}); err != nil {
+				return nil, fmt.Errorf("catalog: 关联分类失败: %w", err)
+			}
+		}
+
+		publicIDs = append(publicIDs, publicID)
 	}
-	return publicID, nil
+	return publicIDs, nil
 }
 
 // ProductIDByPublicID 把商品 public_id 解析为内部主键。不存在返回 ErrNotFound。

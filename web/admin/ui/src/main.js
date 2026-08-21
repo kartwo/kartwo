@@ -7,6 +7,7 @@ import App from './App.vue'
 import Dashboard from './views/Dashboard.vue'
 import ProductList from './views/ProductList.vue'
 import ProductEdit from './views/ProductEdit.vue'
+import ImportCSV from './views/ImportCSV.vue'
 import MarketSelect from './views/MarketSelect.vue'
 import PaymentSettings from './views/PaymentSettings.vue'
 import DomainSettings from './views/DomainSettings.vue'
@@ -23,6 +24,7 @@ const router = createRouter({
     { path: '/products', component: ProductList },
     { path: '/products/new', component: ProductEdit },
     { path: '/products/:id', component: ProductEdit, props: true },
+    { path: '/imports/csv', component: ImportCSV },
     { path: '/market', component: MarketSelect },
     { path: '/payment', component: PaymentSettings },
     { path: '/domain', component: DomainSettings },
