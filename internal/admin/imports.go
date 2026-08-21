@@ -29,7 +29,12 @@ func (h *HTTP) previewCSVImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = f.Close() }()
-	p, err := h.importer.PreviewCSV(r.Context(), f)
+	var p importer.Preview
+	if r.FormValue("format") == importer.FormatShopify {
+		p, err = h.importer.PreviewShopifyCSV(r.Context(), f)
+	} else {
+		p, err = h.importer.PreviewCSV(r.Context(), f)
+	}
 	if err != nil {
 		h.writeImportErr(w, err)
 		return

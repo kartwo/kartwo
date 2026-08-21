@@ -82,6 +82,7 @@ type ImportJob struct {
 	ErrorsJson   string         `db:"errors_json" json:"errors_json"`
 	CreatedAt    string         `db:"created_at" json:"created_at"`
 	CompletedAt  sql.NullString `db:"completed_at" json:"completed_at"`
+	SourceFormat string         `db:"source_format" json:"source_format"`
 }
 
 type Inventory struct {
