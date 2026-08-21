@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/kartwo/kartwo/internal/catalog"
+	"github.com/kartwo/kartwo/internal/importer"
 	"github.com/kartwo/kartwo/internal/mail"
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/order"
@@ -32,6 +33,7 @@ const (
 type HTTP struct {
 	svc       *Service
 	cat       *catalog.Service
+	importer  *importer.Service
 	media     *media.Service
 	settings  *settings.Service
 	orders    *order.Service   // 后台订单页（M3.3a 起）
@@ -45,8 +47,8 @@ type HTTP struct {
 // NewHTTP 构建 Admin HTTP 层。secure=true 表示本实例可启用 HTTPS（prod）；
 // 注意 cookie 的 Secure 标记按**每次请求**是否走 TLS 决定（决策 D8-A），与此参数无关。
 // envDomain=KARTWO_DOMAIN，非空时域名由 env 提供、后台只读（决策 C：env 覆盖 DB、不双写）。
-func NewHTTP(svc *Service, cat *catalog.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc *payment.Service, mailCache *mail.Cache, envDomain string, secure bool) *HTTP {
-	return &HTTP{svc: svc, cat: cat, media: md, settings: settingsSvc, orders: orderSvc, pay: paySvc, mailCache: mailCache, envDomain: envDomain, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
+func NewHTTP(svc *Service, cat *catalog.Service, importSvc *importer.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc *payment.Service, mailCache *mail.Cache, envDomain string, secure bool) *HTTP {
+	return &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, orders: orderSvc, pay: paySvc, mailCache: mailCache, envDomain: envDomain, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
 }
 
 // Register 在给定 mux 上注册 /admin/api/* 路由。
@@ -68,6 +70,9 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("PATCH /admin/api/variants/{id}/price", protect(h.setVariantPrice))
 	mux.Handle("GET /admin/api/categories", protect(h.listCategories))
 	mux.Handle("POST /admin/api/categories", protect(h.createCategory))
+	mux.Handle("POST /admin/api/imports/csv/preview", protect(h.previewCSVImport))
+	mux.Handle("POST /admin/api/imports/{id}/execute", protect(h.executeImport))
+	mux.Handle("GET /admin/api/imports/{id}", protect(h.getImport))
 
 	// 媒体上传/列表/删除。
 	mux.Handle("POST /admin/api/products/{id}/media", protect(h.uploadMedia))

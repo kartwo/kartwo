@@ -209,6 +209,7 @@ onMounted(refresh)
       <div class="row" style="gap:1rem; flex: 0;">
         <RouterLink to="/dashboard">概览</RouterLink>
         <RouterLink to="/products">商品</RouterLink>
+        <RouterLink to="/imports/csv">导入</RouterLink>
         <RouterLink to="/orders">订单</RouterLink>
         <RouterLink to="/market">市场</RouterLink>
         <RouterLink to="/payment">收款</RouterLink>

@@ -70,6 +70,20 @@ type EmailOutbox struct {
 	SentAt        sql.NullString `db:"sent_at" json:"sent_at"`
 }
 
+type ImportJob struct {
+	ID           int64          `db:"id" json:"id"`
+	PublicID     string         `db:"public_id" json:"public_id"`
+	SourceSha256 string         `db:"source_sha256" json:"source_sha256"`
+	SourceCsv    string         `db:"source_csv" json:"source_csv"`
+	Status       string         `db:"status" json:"status"`
+	TotalRows    int64          `db:"total_rows" json:"total_rows"`
+	ProductCount int64          `db:"product_count" json:"product_count"`
+	VariantCount int64          `db:"variant_count" json:"variant_count"`
+	ErrorsJson   string         `db:"errors_json" json:"errors_json"`
+	CreatedAt    string         `db:"created_at" json:"created_at"`
+	CompletedAt  sql.NullString `db:"completed_at" json:"completed_at"`
+}
+
 type Inventory struct {
 	VariantID int64  `db:"variant_id" json:"variant_id"`
 	Quantity  int64  `db:"quantity" json:"quantity"`

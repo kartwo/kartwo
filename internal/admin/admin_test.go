@@ -22,6 +22,7 @@ import (
 
 	"github.com/kartwo/kartwo/internal/auth"
 	"github.com/kartwo/kartwo/internal/catalog"
+	"github.com/kartwo/kartwo/internal/importer"
 	"github.com/kartwo/kartwo/internal/mail"
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
@@ -222,7 +223,8 @@ func newHTTPEnvDomain(t *testing.T, envDomain string) (*HTTP, http.Handler) {
 	ord := order.New(svc.db, set)
 	mc := mail.NewCache(set)
 	svc.SetMailKeys(mc)
-	h := NewHTTP(svc, catalog.New(svc.db), md, set, ord, nil, mc, envDomain, false)
+	cat := catalog.New(svc.db)
+	h := NewHTTP(svc, cat, importer.New(svc.db, cat), md, set, ord, nil, mc, envDomain, false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
@@ -422,6 +424,73 @@ func TestHTTPSetupLoginMeLogout(t *testing.T) {
 	// 登出后 me → 401
 	if resp := doJSON(t, mux, "GET", "/admin/api/me", "", []*http.Cookie{sessionC}, ""); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("登出后 me 状态 = %d，期望 401", resp.StatusCode)
+	}
+}
+
+func TestHTTPCSVImport(t *testing.T) {
+	_, mux := newHTTP(t)
+	sess, csrf := loginAndCookies(t, mux)
+	const csvText = "title,slug,status,description,option1_name,option1_value,option2_name,option2_value,sku,price_cents,quantity\n帽子,cap,active,,尺寸,均码,,,CAP-ONE,2900,8\n"
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+	f, err := w.CreateFormFile("file", "products.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write([]byte(csvText)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request := func(csrfValue string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/admin/api/imports/csv/preview", &body)
+		req.Header.Set("Content-Type", w.FormDataContentType())
+		req.AddCookie(sess)
+		if csrfValue != "" {
+			req.Header.Set(csrfHeader, csrfValue)
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec
+	}
+	if rec := request(""); rec.Code != http.StatusForbidden {
+		t.Fatalf("导入预览缺 CSRF = %d", rec.Code)
+	}
+	// multipart body 在前一请求已读完，重建带 CSRF 的请求。
+	var body2 bytes.Buffer
+	w2 := multipart.NewWriter(&body2)
+	f2, _ := w2.CreateFormFile("file", "products.csv")
+	_, _ = f2.Write([]byte(csvText))
+	_ = w2.Close()
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/imports/csv/preview", &body2)
+	req.Header.Set("Content-Type", w2.FormDataContentType())
+	req.AddCookie(sess)
+	req.Header.Set(csrfHeader, csrf)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("导入预览 = %d %s", rec.Code, rec.Body.String())
+	}
+	var preview struct {
+		PublicID     string `json:"public_id"`
+		ProductCount int    `json:"product_count"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &preview)
+	if preview.PublicID == "" || preview.ProductCount != 1 {
+		t.Fatalf("预览异常: %s", rec.Body.String())
+	}
+	if list := doJSON(t, mux, "GET", "/admin/api/products", "", []*http.Cookie{sess}, ""); bytes.Contains(list.Body, []byte("cap")) {
+		t.Fatal("预览不应写商品")
+	}
+	if bad := doJSON(t, mux, "POST", "/admin/api/imports/"+preview.PublicID+"/execute", "", []*http.Cookie{sess}, ""); bad.StatusCode != http.StatusForbidden {
+		t.Fatalf("确认导入缺 CSRF = %d", bad.StatusCode)
+	}
+	if ok := doJSON(t, mux, "POST", "/admin/api/imports/"+preview.PublicID+"/execute", "", []*http.Cookie{sess}, csrf); ok.StatusCode != http.StatusOK {
+		t.Fatalf("确认导入 = %d %s", ok.StatusCode, ok.Body)
+	}
+	if list := doJSON(t, mux, "GET", "/admin/api/products", "", []*http.Cookie{sess}, ""); !bytes.Contains(list.Body, []byte("cap")) {
+		t.Fatal("确认导入后应有商品")
 	}
 }
 

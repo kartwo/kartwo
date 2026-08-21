@@ -52,6 +52,9 @@ export const api = {
   deleteProduct: (id) => request('DELETE', '/products/' + id),
   setInventory: (variantId, quantity) => request('PATCH', '/variants/' + variantId + '/inventory', { quantity }),
   setPrice: (variantId, priceCents) => request('PATCH', '/variants/' + variantId + '/price', { price_cents: priceCents }),
+  previewImportCSV: (file) => { const fd = new FormData(); fd.append('file', file); return request('POST', '/imports/csv/preview', fd, true) },
+  executeImport: (id) => request('POST', '/imports/' + id + '/execute'),
+  getImport: (id) => request('GET', '/imports/' + id),
 
   markets: () => request('GET', '/markets'),
   getMarket: () => request('GET', '/settings/market'),

@@ -28,6 +28,7 @@ import (
 	"github.com/kartwo/kartwo/internal/cart"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/config"
+	"github.com/kartwo/kartwo/internal/importer"
 	"github.com/kartwo/kartwo/internal/mail"
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
@@ -210,7 +211,8 @@ func runServe(logger *slog.Logger) error {
 	logger.Info("SMTP 配置来源", "source", mailStatus.Source, "configured", mailStatus.Configured, "encryption", mailStatus.Encryption)
 
 	orderSvc := order.New(st.DB, settingsSvc)
-	adminHTTP := admin.NewHTTP(adminSvc, catalog.New(st.DB), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, cfg.Domain, cfg.Env == "prod")
+	catalogSvc := catalog.New(st.DB)
+	adminHTTP := admin.NewHTTP(adminSvc, catalogSvc, importer.New(st.DB, catalogSvc), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, cfg.Domain, cfg.Env == "prod")
 	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, cfg.ShopName, cfg.BaseURL)
 	payHTTP := payment.NewHTTP(paySvc)
 	// 解析"当前生效域名"（env 覆盖 DB），决定是否启用 HTTPS（仅 prod）。
