@@ -24,6 +24,11 @@ T恤,tee,active,纯棉,尺码,M,颜色,白,TS-W-M,10900,5
 帽子,cap,draft,,尺寸,均码,,,CAP-ONE,2900,8
 `
 
+const shopifySample = `Handle,Title,Body (HTML),Option1 Name,Option1 Value,Option2 Name,Option2 Value,Option3 Name,Option3 Value,Variant SKU,Variant Inventory Qty,Variant Price,Status,Image Src
+shopify-tee,Shopify T恤,<p>纯棉</p>,颜色,黑色,,, , ,SHOPIFY-BLACK,10,29.99,active,
+shopify-tee,,,颜色,白色,,, , ,SHOPIFY-WHITE,8,29.99,active,
+`
+
 func newService(t *testing.T) (*Service, *catalog.Service) {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+t.TempDir()+"/import.db?_pragma=foreign_keys(ON)")
@@ -86,5 +91,37 @@ func TestPreviewCSVRowError(t *testing.T) {
 	}
 	if got, _ := cat.ListProducts(ctx); len(got) != 0 {
 		t.Fatal("拒绝任务不应写商品")
+	}
+}
+
+func TestPreviewAndExecuteShopifyCSV(t *testing.T) {
+	svc, cat := newService(t)
+	ctx := context.Background()
+	p, err := svc.PreviewShopifyCSV(ctx, strings.NewReader(shopifySample))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Format != FormatShopify || p.Status != "previewed" || p.ProductCount != 1 || p.VariantCount != 2 || len(p.Errors) != 0 {
+		t.Fatalf("Shopify 预览异常: %+v", p)
+	}
+	if _, err := svc.Execute(ctx, p.PublicID); err != nil {
+		t.Fatal(err)
+	}
+	products, err := cat.ListProducts(ctx)
+	if err != nil || len(products) != 1 || products[0].Slug != "shopify-tee" {
+		t.Fatalf("Shopify 执行商品异常: %+v, %v", products, err)
+	}
+}
+
+func TestPreviewShopifyCSVRejectsImage(t *testing.T) {
+	svc, _ := newService(t)
+	ctx := context.Background()
+	withImage := strings.Replace(shopifySample, "SHOPIFY-WHITE,8,29.99,active,", "SHOPIFY-WHITE,8,29.99,active,https://cdn.example.test/tee.jpg", 1)
+	p, err := svc.PreviewShopifyCSV(ctx, strings.NewReader(withImage))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Status != "rejected" || len(p.Errors) != 1 || p.Errors[0].Row != 3 {
+		t.Fatalf("图片应被拒绝: %+v", p)
 	}
 }

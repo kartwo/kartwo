@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"strconv"
 	"strings"
@@ -24,6 +25,11 @@ import (
 
 const maxCSVBytes = 5 << 20
 
+const (
+	FormatGeneric = "generic"
+	FormatShopify = "shopify"
+)
+
 var requiredColumns = []string{"title", "slug", "status", "description", "option1_name", "option1_value", "option2_name", "option2_value", "sku", "price_cents", "quantity"}
 
 type RowError struct {
@@ -32,6 +38,7 @@ type RowError struct {
 }
 type Preview struct {
 	PublicID     string     `json:"public_id"`
+	Format       string     `json:"format"`
 	Status       string     `json:"status"`
 	TotalRows    int        `json:"total_rows"`
 	ProductCount int        `json:"product_count"`
@@ -49,6 +56,15 @@ func New(db *sql.DB, catalogSvc *catalog.Service) *Service {
 
 // PreviewCSV 解析并持久化一次干跑。相同字节内容返回原任务，不会产生第二份任务。
 func (s *Service) PreviewCSV(ctx context.Context, src io.Reader) (Preview, error) {
+	return s.preview(ctx, src, FormatGeneric)
+}
+
+// PreviewShopifyCSV 以 Shopify 商品 CSV 协议干跑预览，尚不下载远程图片。
+func (s *Service) PreviewShopifyCSV(ctx context.Context, src io.Reader) (Preview, error) {
+	return s.preview(ctx, src, FormatShopify)
+}
+
+func (s *Service) preview(ctx context.Context, src io.Reader, format string) (Preview, error) {
 	b, err := io.ReadAll(io.LimitReader(src, maxCSVBytes+1))
 	if err != nil {
 		return Preview{}, fmt.Errorf("import: 读取 CSV: %w", err)
@@ -56,22 +72,23 @@ func (s *Service) PreviewCSV(ctx context.Context, src io.Reader) (Preview, error
 	if len(b) > maxCSVBytes {
 		return Preview{}, &ValidationError{Message: "CSV 不能超过 5MB"}
 	}
-	h := sha256.Sum256(b)
+	h := sha256.Sum256(append([]byte(format+"\x00"), b...))
 	hash := hex.EncodeToString(h[:])
 	if old, err := s.getByHash(ctx, hash); err == nil {
 		return old, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return Preview{}, err
 	}
-	p, inputs := parseCSV(b)
+	p, inputs := parseForFormat(format, b)
 	p.PublicID = uuid.Must(uuid.NewV7()).String()
+	p.Format = format
 	if len(p.Errors) == 0 && len(inputs) > 0 {
 		p.Status = "previewed"
 	} else {
 		p.Status = "rejected"
 	}
 	errs, _ := json.Marshal(p.Errors)
-	_, err = s.db.ExecContext(ctx, `INSERT INTO import_job (public_id, source_sha256, source_csv, status, total_rows, product_count, variant_count, errors_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, p.PublicID, hash, string(b), p.Status, p.TotalRows, p.ProductCount, p.VariantCount, string(errs))
+	_, err = s.db.ExecContext(ctx, `INSERT INTO import_job (public_id, source_sha256, source_csv, source_format, status, total_rows, product_count, variant_count, errors_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, p.PublicID, hash, string(b), format, p.Status, p.TotalRows, p.ProductCount, p.VariantCount, string(errs))
 	if err != nil {
 		return Preview{}, fmt.Errorf("import: 保存预览: %w", err)
 	}
@@ -95,7 +112,7 @@ func (s *Service) Execute(ctx context.Context, publicID string) (Preview, error)
 	if p.Status != "previewed" {
 		return Preview{}, &ValidationError{Message: "该导入任务存在行错误，不能执行"}
 	}
-	check, inputs := parseCSV([]byte(source))
+	check, inputs := parseForFormat(p.Format, []byte(source))
 	if len(check.Errors) != 0 || len(inputs) == 0 {
 		return Preview{}, &ValidationError{Message: "导入源已无效，请重新预览"}
 	}
@@ -133,7 +150,7 @@ func getByID(ctx context.Context, q queryer, id string) (Preview, string, error)
 	var p Preview
 	var raw string
 	var source string
-	err := q.QueryRowContext(ctx, `SELECT public_id,status,total_rows,product_count,variant_count,errors_json,source_csv FROM import_job WHERE public_id=?`, id).Scan(&p.PublicID, &p.Status, &p.TotalRows, &p.ProductCount, &p.VariantCount, &raw, &source)
+	err := q.QueryRowContext(ctx, `SELECT public_id,source_format,status,total_rows,product_count,variant_count,errors_json,source_csv FROM import_job WHERE public_id=?`, id).Scan(&p.PublicID, &p.Format, &p.Status, &p.TotalRows, &p.ProductCount, &p.VariantCount, &raw, &source)
 	if err != nil {
 		return Preview{}, "", err
 	}
@@ -141,6 +158,22 @@ func getByID(ctx context.Context, q queryer, id string) (Preview, string, error)
 		return Preview{}, "", fmt.Errorf("import: 读错误报告: %w", err)
 	}
 	return p, source, nil
+}
+
+func parseForFormat(format string, b []byte) (Preview, []catalog.ProductInput) {
+	switch format {
+	case FormatGeneric:
+		return parseCSV(b)
+	case FormatShopify:
+		return parseShopifyCSV(b)
+	default:
+		return Preview{Errors: []RowError{{Row: 1, Message: "不支持的导入来源"}}}, nil
+	}
+}
+
+type grouped struct {
+	in       catalog.ProductInput
+	variants []catalog.VariantInput
 }
 
 func parseCSV(b []byte) (Preview, []catalog.ProductInput) {
@@ -159,10 +192,6 @@ func parseCSV(b []byte) (Preview, []catalog.ProductInput) {
 		if _, ok := idx[name]; !ok {
 			return Preview{Errors: []RowError{{Row: 1, Message: "缺少列 " + name}}}, nil
 		}
-	}
-	type grouped struct {
-		in       catalog.ProductInput
-		variants []catalog.VariantInput
 	}
 	groups := map[string]*grouped{}
 	order := []string{}
@@ -215,6 +244,10 @@ func parseCSV(b []byte) (Preview, []catalog.ProductInput) {
 		g.variants = append(g.variants, catalog.VariantInput{SKU: get("sku"), PriceCents: price, Quantity: qty, Selections: sels})
 		p.VariantCount++
 	}
+	return buildInputs(p, groups, order)
+}
+
+func buildInputs(p Preview, groups map[string]*grouped, order []string) (Preview, []catalog.ProductInput) {
 	inputs := make([]catalog.ProductInput, 0, len(order))
 	for _, slug := range order {
 		g := groups[slug]
@@ -244,6 +277,156 @@ func parseCSV(b []byte) (Preview, []catalog.ProductInput) {
 	}
 	p.ProductCount = len(inputs)
 	return p, inputs
+}
+
+var shopifyColumns = []string{"Handle", "Title", "Body (HTML)", "Option1 Name", "Option1 Value", "Option2 Name", "Option2 Value", "Option3 Name", "Option3 Value", "Variant SKU", "Variant Inventory Qty", "Variant Price"}
+
+// parseShopifyCSV 将 Shopify 的商品/变体行转为内核通用商品输入；图片与第三变体轴留给后续片。
+func parseShopifyCSV(b []byte) (Preview, []catalog.ProductInput) {
+	r := csv.NewReader(strings.NewReader(string(b)))
+	r.FieldsPerRecord = -1
+	r.TrimLeadingSpace = true
+	head, err := r.Read()
+	if err != nil {
+		return Preview{Errors: []RowError{{Row: 1, Message: "CSV 缺少表头"}}}, nil
+	}
+	idx := map[string]int{}
+	for i, h := range head {
+		idx[strings.TrimSpace(h)] = i
+	}
+	for _, name := range shopifyColumns {
+		if _, ok := idx[name]; !ok {
+			return Preview{Errors: []RowError{{Row: 1, Message: "不是完整的 Shopify 商品 CSV，缺少列 " + name}}}, nil
+		}
+	}
+	groups := map[string]*grouped{}
+	order := []string{}
+	p := Preview{}
+	for line := 2; ; line++ {
+		row, e := r.Read()
+		if e == io.EOF {
+			break
+		}
+		if e != nil {
+			p.Errors = append(p.Errors, RowError{Row: line, Message: "CSV 格式错误"})
+			continue
+		}
+		p.TotalRows++
+		get := func(k string) string {
+			n := idx[k]
+			if n >= len(row) {
+				return ""
+			}
+			return strings.TrimSpace(row[n])
+		}
+		handle := get("Handle")
+		if handle == "" {
+			p.Errors = append(p.Errors, RowError{Row: line, Message: "需提供 Handle"})
+			continue
+		}
+		if get("Option3 Name") != "" || get("Option3 Value") != "" {
+			p.Errors = append(p.Errors, RowError{Row: line, Message: "暂不支持 Shopify 第三变体轴"})
+			continue
+		}
+		if imageIndex, ok := idx["Image Src"]; ok && imageIndex < len(row) && strings.TrimSpace(row[imageIndex]) != "" {
+			p.Errors = append(p.Errors, RowError{Row: line, Message: "暂不支持 Shopify 图片下载"})
+			continue
+		}
+		g := groups[handle]
+		if g == nil {
+			title := get("Title")
+			if title == "" {
+				p.Errors = append(p.Errors, RowError{Row: line, Message: "首行需提供 Title"})
+				continue
+			}
+			status := "draft"
+			if v, ok := idx["Status"]; ok && v < len(row) && strings.TrimSpace(row[v]) != "" {
+				status = strings.TrimSpace(row[v])
+			} else if v, ok := idx["Published"]; ok && v < len(row) && strings.EqualFold(strings.TrimSpace(row[v]), "true") {
+				status = "active"
+			}
+			g = &grouped{in: catalog.ProductInput{Title: title, Slug: handle, Status: status, Description: plainText(get("Body (HTML)"))}}
+			groups[handle] = g
+			order = append(order, handle)
+		}
+		price, pe := shopifyPriceCents(get("Variant Price"))
+		qtyText := get("Variant Inventory Qty")
+		qty := int64(0)
+		var qe error
+		if qtyText != "" {
+			qty, qe = strconv.ParseInt(qtyText, 10, 64)
+		}
+		if pe != nil || qe != nil || price < 0 || qty < 0 {
+			p.Errors = append(p.Errors, RowError{Row: line, Message: "需提供非负的 Variant Price 与 Variant Inventory Qty"})
+			continue
+		}
+		o1n, o1v := get("Option1 Name"), get("Option1 Value")
+		sels := []catalog.Selection{}
+		if o1n == "" && o1v == "" {
+			sels = append(sels, catalog.Selection{Option: "Title", Value: "Default Title"})
+		} else if o1n == "" || o1v == "" {
+			p.Errors = append(p.Errors, RowError{Row: line, Message: "Option1 Name 与 Option1 Value 必须同时提供"})
+			continue
+		} else {
+			sels = append(sels, catalog.Selection{Option: o1n, Value: o1v})
+		}
+		o2n, o2v := get("Option2 Name"), get("Option2 Value")
+		if o2n != "" || o2v != "" {
+			if o2n == "" || o2v == "" {
+				p.Errors = append(p.Errors, RowError{Row: line, Message: "Option2 Name 与 Option2 Value 必须同时提供"})
+				continue
+			}
+			sels = append(sels, catalog.Selection{Option: o2n, Value: o2v})
+		}
+		g.variants = append(g.variants, catalog.VariantInput{SKU: get("Variant SKU"), PriceCents: price, Quantity: qty, Selections: sels})
+		p.VariantCount++
+	}
+	return buildInputs(p, groups, order)
+}
+
+func shopifyPriceCents(v string) (int64, error) {
+	parts := strings.Split(strings.TrimSpace(v), ".")
+	if len(parts) == 0 || len(parts) > 2 || parts[0] == "" {
+		return 0, errors.New("invalid price")
+	}
+	whole, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	fraction := ""
+	if len(parts) == 2 {
+		fraction = parts[1]
+	}
+	if len(fraction) > 2 {
+		return 0, errors.New("too many decimals")
+	}
+	for len(fraction) < 2 {
+		fraction += "0"
+	}
+	frac := int64(0)
+	if fraction != "" {
+		frac, err = strconv.ParseInt(fraction, 10, 64)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return whole*100 + frac, nil
+}
+
+func plainText(v string) string {
+	v = html.UnescapeString(v)
+	for {
+		start := strings.Index(v, "<")
+		if start < 0 {
+			break
+		}
+		end := strings.Index(v[start:], ">")
+		if end < 0 {
+			break
+		}
+		v = v[:start] + v[start+end+1:]
+	}
+	return strings.TrimSpace(v)
 }
 
 // ValidationError 表示可直接展示给商家的导入校验错误。

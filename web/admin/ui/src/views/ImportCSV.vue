@@ -5,6 +5,7 @@ import { api, APIError } from '../api.js'
 import { useToast } from '../toast.js'
 
 const file = ref(null)
+const format = ref('generic')
 const preview = ref(null)
 const busy = ref(false)
 const err = ref('')
@@ -19,7 +20,7 @@ function choose(event) {
 async function dryRun() {
   if (!file.value) { err.value = '请先选择 CSV 文件'; return }
   busy.value = true; err.value = ''
-  try { preview.value = await api.previewImportCSV(file.value) }
+  try { preview.value = await api.previewImportCSV(file.value, format.value) }
   catch (e) { if (e instanceof APIError && e.status === 401) return onUnauthorized(); err.value = e.message }
   finally { busy.value = false }
 }
@@ -40,9 +41,12 @@ async function execute() {
     <RouterLink to="/products">返回商品</RouterLink>
   </div>
   <section class="panel import-panel">
-    <label>通用 CSV 文件</label>
+    <label>导入来源</label>
+    <select v-model="format"><option value="generic">通用 CSV</option><option value="shopify">Shopify 商品 CSV</option></select>
+    <label>CSV 文件</label>
     <input type="file" accept=".csv,text/csv" @change="choose" />
-    <p class="muted">列：title、slug、status、description、option1_name、option1_value、option2_name、option2_value、sku、price_cents、quantity。</p>
+    <p v-if="format === 'generic'" class="muted">列：title、slug、status、description、option1_name、option1_value、option2_name、option2_value、sku、price_cents、quantity。</p>
+    <p v-else class="muted">支持 Shopify 商品、两轴变体、SKU、价格、库存和状态；图片与第三变体轴将在后续导入片支持。</p>
     <button class="primary" :disabled="busy || !file" @click="dryRun">{{ busy ? '处理中…' : '预览导入' }}</button>
     <p v-if="err" class="err">{{ err }}</p>
   </section>
