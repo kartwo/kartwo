@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kartwo/kartwo/internal/backup"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/importer"
 	"github.com/kartwo/kartwo/internal/mail"
@@ -39,6 +40,7 @@ type HTTP struct {
 	orders    *order.Service   // 后台订单页（M3.3a 起）
 	pay       *payment.Service // 退款编排（M3.3a 起），可为 nil
 	mailCache *mail.Cache      // SMTP 凭证缓存（M4.3 设置页/测试发信/向导），可为 nil
+	exporter  *backup.Exporter // 全量数据导出（M5.6），可为 nil
 	envDomain string           // KARTWO_DOMAIN（env 覆盖 DB 的域名来源，M4.2.1 域名步骤展示/只读判定）
 	secure    bool             // 本实例能否签发 HTTPS（prod=true，dev 恒 false），供 domain 页 https_capable
 	limiter   *loginLimiter    // 注：cookie 的 Secure 标记**不再**由此字段决定，改按请求实际是否 TLS（见 secureFor）
@@ -47,8 +49,8 @@ type HTTP struct {
 // NewHTTP 构建 Admin HTTP 层。secure=true 表示本实例可启用 HTTPS（prod）；
 // 注意 cookie 的 Secure 标记按**每次请求**是否走 TLS 决定（决策 D8-A），与此参数无关。
 // envDomain=KARTWO_DOMAIN，非空时域名由 env 提供、后台只读（决策 C：env 覆盖 DB、不双写）。
-func NewHTTP(svc *Service, cat *catalog.Service, importSvc *importer.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc *payment.Service, mailCache *mail.Cache, envDomain string, secure bool) *HTTP {
-	return &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, orders: orderSvc, pay: paySvc, mailCache: mailCache, envDomain: envDomain, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
+func NewHTTP(svc *Service, cat *catalog.Service, importSvc *importer.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc *payment.Service, mailCache *mail.Cache, exporter *backup.Exporter, envDomain string, secure bool) *HTTP {
+	return &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, orders: orderSvc, pay: paySvc, mailCache: mailCache, exporter: exporter, envDomain: envDomain, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
 }
 
 // Register 在给定 mux 上注册 /admin/api/* 路由。
@@ -108,6 +110,7 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	// 概览首页（登录后默认落点，M4.2.2）。
 	mux.Handle("GET /admin/api/dashboard", protect(h.dashboard))
 	mux.Handle("GET /admin/api/diagnostics", protect(h.diagnostics))
+	mux.Handle("GET /admin/api/export", protect(h.exportData))
 
 	// 订单 + 退款（M3.3a）。
 	mux.Handle("GET /admin/api/orders", protect(h.listOrders))

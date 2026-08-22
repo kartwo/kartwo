@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/kartwo/kartwo/internal/admin"
+	"github.com/kartwo/kartwo/internal/backup"
 	"github.com/kartwo/kartwo/internal/cart"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/config"
@@ -214,7 +215,7 @@ func runServe(logger *slog.Logger) error {
 	orderSvc := order.New(st.DB, settingsSvc)
 	catalogSvc := catalog.New(st.DB)
 	redirectSvc := redirect.New(st.DB)
-	adminHTTP := admin.NewHTTP(adminSvc, catalogSvc, importer.New(st.DB, catalogSvc, mediaSvc, redirectSvc), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, cfg.Domain, cfg.Env == "prod")
+	adminHTTP := admin.NewHTTP(adminSvc, catalogSvc, importer.New(st.DB, catalogSvc, mediaSvc, redirectSvc), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, backup.New(st.DB, cfg.DataDir, Version), cfg.Domain, cfg.Env == "prod")
 	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, redirectSvc, cfg.ShopName, cfg.BaseURL)
 	payHTTP := payment.NewHTTP(paySvc)
 	// 解析"当前生效域名"（env 覆盖 DB），决定是否启用 HTTPS（仅 prod）。
