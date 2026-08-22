@@ -27,6 +27,7 @@ import (
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
 	"github.com/kartwo/kartwo/internal/order"
+	"github.com/kartwo/kartwo/internal/redirect"
 	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/migrations"
 
@@ -224,7 +225,7 @@ func newHTTPEnvDomain(t *testing.T, envDomain string) (*HTTP, http.Handler) {
 	mc := mail.NewCache(set)
 	svc.SetMailKeys(mc)
 	cat := catalog.New(svc.db)
-	h := NewHTTP(svc, cat, importer.New(svc.db, cat, md), md, set, ord, nil, mc, envDomain, false)
+	h := NewHTTP(svc, cat, importer.New(svc.db, cat, md, redirect.New(svc.db)), md, set, ord, nil, mc, envDomain, false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux

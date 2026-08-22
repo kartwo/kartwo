@@ -20,6 +20,7 @@ import (
 	"github.com/kartwo/kartwo/internal/migrate"
 	"github.com/kartwo/kartwo/internal/order"
 	"github.com/kartwo/kartwo/internal/payment"
+	"github.com/kartwo/kartwo/internal/redirect"
 	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/migrations"
 
@@ -52,7 +53,7 @@ func TestOrderPayPendingOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db),
-		fakeGateway{methods: []string{"stripe"}, url: "https://gw/pay"}, "Shop", "https://shop")
+		fakeGateway{methods: []string{"stripe"}, url: "https://gw/pay"}, redirect.New(db), "Shop", "https://shop")
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -162,7 +163,7 @@ func newHTTP(t *testing.T) (*HTTP, http.Handler) {
 	if _, err := cat.CreateProduct(context.Background(), activeTee("tee")); err != nil {
 		t.Fatal(err)
 	}
-	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db), nil, "测试店", "https://shop.example")
+	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db), nil, redirect.New(db), "测试店", "https://shop.example")
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
@@ -205,6 +206,48 @@ func TestHTTPHomeAndProduct(t *testing.T) {
 
 	if code, _ := get(t, mux, "/p/missing"); code != http.StatusNotFound {
 		t.Fatalf("缺商品应 404，得 %d", code)
+	}
+}
+
+func TestHTTPShopifyProductRedirect(t *testing.T) {
+	sf, cat, db := setup(t)
+	ctx := context.Background()
+	publicID, err := cat.CreateProduct(ctx, activeTee("new-tee"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	productID, err := cat.ProductIDByPublicID(ctx, publicID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	redirectSvc := redirect.New(db)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := redirectSvc.StoreShopifyTx(ctx, tx, "old-tee", productID); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db), nil, redirectSvc, "测试店", "https://shop.example")
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/products/old-tee?utm_source=shopify", nil))
+	if rec.Code != http.StatusMovedPermanently || rec.Header().Get("Location") != "/p/new-tee?utm_source=shopify" {
+		t.Fatalf("旧链接应 301 到新地址，code=%d location=%q", rec.Code, rec.Header().Get("Location"))
+	}
+	if code, _ := get(t, mux, "/products/missing"); code != http.StatusNotFound {
+		t.Fatalf("未知旧链接应 404，得 %d", code)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE product SET status='draft' WHERE id=?`, productID); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := get(t, mux, "/products/old-tee"); code != http.StatusNotFound {
+		t.Fatalf("草稿商品旧链接应 404，得 %d", code)
 	}
 }
 

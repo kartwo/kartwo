@@ -216,6 +216,13 @@ type Setting struct {
 	UpdatedAt string `db:"updated_at" json:"updated_at"`
 }
 
+type ShopifyRedirect struct {
+	LegacyHandle string `db:"legacy_handle" json:"legacy_handle"`
+	ProductID    int64  `db:"product_id" json:"product_id"`
+	CreatedAt    string `db:"created_at" json:"created_at"`
+	UpdatedAt    string `db:"updated_at" json:"updated_at"`
+}
+
 type Variant struct {
 	ID         int64          `db:"id" json:"id"`
 	PublicID   string         `db:"public_id" json:"public_id"`

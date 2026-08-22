@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/media"
+	"github.com/kartwo/kartwo/internal/redirect"
 )
 
 const maxCSVBytes = 5 << 20
@@ -47,13 +48,14 @@ type Preview struct {
 	Errors       []RowError `json:"errors"`
 }
 type Service struct {
-	db      *sql.DB
-	catalog *catalog.Service
-	media   *media.Service
+	db       *sql.DB
+	catalog  *catalog.Service
+	media    *media.Service
+	redirect *redirect.Service
 }
 
-func New(db *sql.DB, catalogSvc *catalog.Service, mediaSvc *media.Service) *Service {
-	return &Service{db: db, catalog: catalogSvc, media: mediaSvc}
+func New(db *sql.DB, catalogSvc *catalog.Service, mediaSvc *media.Service, redirectSvc *redirect.Service) *Service {
+	return &Service{db: db, catalog: catalogSvc, media: mediaSvc, redirect: redirectSvc}
 }
 
 // PreviewCSV 解析并持久化一次干跑。相同字节内容返回原任务，不会产生第二份任务。
@@ -150,6 +152,11 @@ func (s *Service) Execute(ctx context.Context, publicID string) (Preview, error)
 	if err != nil {
 		return Preview{}, err
 	}
+	if p.Format == FormatShopify {
+		if err := s.storeShopifyRedirects(ctx, tx, ids, parsed.inputs); err != nil {
+			return Preview{}, err
+		}
+	}
 	if err := s.storeImportedImages(ctx, tx, ids, parsed.inputs, prepared); err != nil {
 		return Preview{}, err
 	}
@@ -161,6 +168,22 @@ func (s *Service) Execute(ctx context.Context, publicID string) (Preview, error)
 	}
 	p.Status = "succeeded"
 	return p, nil
+}
+
+func (s *Service) storeShopifyRedirects(ctx context.Context, tx *sql.Tx, ids []string, inputs []catalog.ProductInput) error {
+	if s.redirect == nil {
+		return fmt.Errorf("import: Shopify 重定向服务未配置")
+	}
+	for i, publicID := range ids {
+		productID, err := s.catalog.ProductIDByPublicIDTx(ctx, tx, publicID)
+		if err != nil {
+			return err
+		}
+		if err := s.redirect.StoreShopifyTx(ctx, tx, inputs[i].Slug, productID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) Get(ctx context.Context, publicID string) (Preview, error) {
