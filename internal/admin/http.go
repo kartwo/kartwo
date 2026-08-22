@@ -107,6 +107,7 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 
 	// 概览首页（登录后默认落点，M4.2.2）。
 	mux.Handle("GET /admin/api/dashboard", protect(h.dashboard))
+	mux.Handle("GET /admin/api/diagnostics", protect(h.diagnostics))
 
 	// 订单 + 退款（M3.3a）。
 	mux.Handle("GET /admin/api/orders", protect(h.listOrders))

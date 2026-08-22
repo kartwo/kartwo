@@ -182,6 +182,24 @@ func TestService_UploadListDelete(t *testing.T) {
 	}
 }
 
+func TestDiagnostics(t *testing.T) {
+	svc, _, pid := newMediaSvc(t, 20)
+	ctx := context.Background()
+	if _, err := svc.Upload(ctx, pid, pngBytes(t, 1200, 800)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := svc.Diagnostics(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AssetCount != 1 || got.OriginalBytes <= 0 || got.DerivativeBytes <= 0 || got.TotalBytes != got.OriginalBytes+got.DerivativeBytes {
+		t.Fatalf("媒体统计异常: %+v", got)
+	}
+	if !got.Disk.Available || got.Disk.TotalBytes == 0 || got.Disk.FreeBytes == 0 {
+		t.Fatalf("Unix 磁盘统计应可用: %+v", got.Disk)
+	}
+}
+
 func TestService_MaxPerProduct(t *testing.T) {
 	svc, _, pid := newMediaSvc(t, 1)
 	ctx := context.Background()

@@ -12,6 +12,9 @@ INSERT INTO media_derivative (asset_id, label, path, format, width, height, size
 -- name: CountMediaByProduct :one
 SELECT COUNT(*) FROM media_asset WHERE product_id = ? AND deleted_at IS NULL;
 
+-- name: MediaUsage :one
+SELECT CAST(COUNT(*) AS INTEGER) AS asset_count, CAST(COALESCE(SUM(size_bytes), 0) AS INTEGER) AS original_bytes, CAST(COALESCE((SELECT SUM(d.size_bytes) FROM media_derivative d JOIN media_asset a ON a.id = d.asset_id WHERE a.deleted_at IS NULL), 0) AS INTEGER) AS derivative_bytes FROM media_asset WHERE deleted_at IS NULL;
+
 -- name: ListMediaByProduct :many
 SELECT id, public_id, content_hash, original_path, mime, width, height, size_bytes, position FROM media_asset WHERE product_id = ? AND deleted_at IS NULL ORDER BY position, id;
 
