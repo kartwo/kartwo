@@ -896,6 +896,18 @@ func TestDashboardAuth(t *testing.T) {
 	}
 }
 
+func TestDiagnostics(t *testing.T) {
+	_, mux := newHTTP(t)
+	sess, _ := loginAndCookies(t, mux)
+	r := doJSON(t, mux, "GET", "/admin/api/diagnostics", "", []*http.Cookie{sess}, "")
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("diagnostics 应 200，得 %d %s", r.StatusCode, r.Body)
+	}
+	if !bytes.Contains(r.Body, []byte(`"database":{"status":"ok"}`)) || !bytes.Contains(r.Body, []byte(`"asset_count":0`)) {
+		t.Fatalf("diagnostics 响应异常: %s", r.Body)
+	}
+}
+
 // TestWizardDomainEnvReadonly 覆盖 env 覆盖态：源 env、只读、PUT→409、向导 needed=false（决策 C）。
 func TestWizardDomainEnvReadonly(t *testing.T) {
 	_, mux := newHTTPEnvDomain(t, "env.example.com")

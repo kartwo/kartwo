@@ -271,6 +271,23 @@ func (q *Queries) ListOrphanMedia(ctx context.Context) ([]ListOrphanMediaRow, er
 	return items, nil
 }
 
+const mediaUsage = `-- name: MediaUsage :one
+SELECT CAST(COUNT(*) AS INTEGER) AS asset_count, CAST(COALESCE(SUM(size_bytes), 0) AS INTEGER) AS original_bytes, CAST(COALESCE((SELECT SUM(d.size_bytes) FROM media_derivative d JOIN media_asset a ON a.id = d.asset_id WHERE a.deleted_at IS NULL), 0) AS INTEGER) AS derivative_bytes FROM media_asset WHERE deleted_at IS NULL
+`
+
+type MediaUsageRow struct {
+	AssetCount      int64 `db:"asset_count" json:"asset_count"`
+	OriginalBytes   int64 `db:"original_bytes" json:"original_bytes"`
+	DerivativeBytes int64 `db:"derivative_bytes" json:"derivative_bytes"`
+}
+
+func (q *Queries) MediaUsage(ctx context.Context) (MediaUsageRow, error) {
+	row := q.db.QueryRowContext(ctx, mediaUsage)
+	var i MediaUsageRow
+	err := row.Scan(&i.AssetCount, &i.OriginalBytes, &i.DerivativeBytes)
+	return i, err
+}
+
 const softDeleteMedia = `-- name: SoftDeleteMedia :exec
 UPDATE media_asset SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND deleted_at IS NULL
 `

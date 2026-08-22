@@ -77,6 +77,7 @@ export const api = {
   wizardSmtpSkip: () => request('POST', '/wizard/smtp/skip'),
 
   dashboard: () => request('GET', '/dashboard'),
+  diagnostics: () => request('GET', '/diagnostics'),
 
   listOrders: () => request('GET', '/orders'),
   getOrder: (id) => request('GET', '/orders/' + id),

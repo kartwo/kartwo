@@ -5,6 +5,7 @@ import { createApp } from 'vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import App from './App.vue'
 import Dashboard from './views/Dashboard.vue'
+import Diagnostics from './views/Diagnostics.vue'
 import ProductList from './views/ProductList.vue'
 import ProductEdit from './views/ProductEdit.vue'
 import ImportCSV from './views/ImportCSV.vue'
@@ -21,6 +22,7 @@ const router = createRouter({
   routes: [
     { path: '/', redirect: '/dashboard' },
     { path: '/dashboard', component: Dashboard },
+    { path: '/diagnostics', component: Diagnostics },
     { path: '/products', component: ProductList },
     { path: '/products/new', component: ProductEdit },
     { path: '/products/:id', component: ProductEdit, props: true },
