@@ -7,12 +7,18 @@
 
 package media
 
-import "syscall"
+import (
+	"errors"
+	"syscall"
+)
 
 func diskCapacity(path string) (uint64, uint64, error) {
 	var st syscall.Statfs_t
 	if err := syscall.Statfs(path, &st); err != nil {
 		return 0, 0, err
+	}
+	if st.Bsize <= 0 {
+		return 0, 0, errors.New("文件系统块大小无效")
 	}
 	blockSize := uint64(st.Bsize)
 	return uint64(st.Blocks) * blockSize, uint64(st.Bavail) * blockSize, nil
