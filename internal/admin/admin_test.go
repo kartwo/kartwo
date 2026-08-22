@@ -6,6 +6,7 @@
 package admin
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	cryptotls "crypto/tls"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"github.com/kartwo/kartwo/internal/auth"
+	"github.com/kartwo/kartwo/internal/backup"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/importer"
 	"github.com/kartwo/kartwo/internal/mail"
@@ -218,17 +220,42 @@ func newHTTP(t *testing.T) (*HTTP, http.Handler) { return newHTTPEnvDomain(t, ""
 // newHTTPEnvDomain 构建 Admin HTTP，可注入 envDomain（模拟 KARTWO_DOMAIN 覆盖，测域名步骤只读态）。
 func newHTTPEnvDomain(t *testing.T, envDomain string) (*HTTP, http.Handler) {
 	svc := newSvc(t)
-	root := t.TempDir() + "/media"
+	dataDir := t.TempDir()
+	root := dataDir + "/media"
 	md := media.New(svc.db, media.NewLocalBackend(root), media.NewDefaultPolicy(root, 10<<20, 0), 20)
 	set := settings.New(svc.db)
 	ord := order.New(svc.db, set)
 	mc := mail.NewCache(set)
 	svc.SetMailKeys(mc)
 	cat := catalog.New(svc.db)
-	h := NewHTTP(svc, cat, importer.New(svc.db, cat, md, redirect.New(svc.db)), md, set, ord, nil, mc, envDomain, false)
+	h := NewHTTP(svc, cat, importer.New(svc.db, cat, md, redirect.New(svc.db)), md, set, ord, nil, mc, backup.New(svc.db, dataDir, "test-version"), envDomain, false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
+}
+
+func TestHTTPExportData(t *testing.T) {
+	_, mux := newHTTP(t)
+	if resp := doJSON(t, mux, "GET", "/admin/api/export", "", nil, ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("未登录导出应 401，得 %d", resp.StatusCode)
+	}
+	doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"supersecret"}`, nil, "")
+	login := doJSON(t, mux, "POST", "/admin/api/login", `{"username":"admin","password":"supersecret"}`, nil, "")
+	resp := doJSON(t, mux, "GET", "/admin/api/export", "", login.Cookies, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("导出应 200，得 %d %s", resp.StatusCode, resp.Body)
+	}
+	reader, err := zip.NewReader(bytes.NewReader(resp.Body), int64(len(resp.Body)))
+	if err != nil {
+		t.Fatalf("响应应为 ZIP: %v", err)
+	}
+	entries := map[string]bool{}
+	for _, file := range reader.File {
+		entries[file.Name] = true
+	}
+	if !entries["manifest.json"] || !entries["shop.db"] {
+		t.Fatalf("导出 ZIP 缺少核心文件: %+v", entries)
+	}
 }
 
 type apiResp struct {
