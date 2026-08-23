@@ -17,11 +17,12 @@ type Scheduler struct {
 	interval  time.Duration
 	retention int
 	logger    *slog.Logger
+	uploader  Uploader
 }
 
 // NewScheduler 构造本地备份调度器。配置加载层已保证 interval/retention 合法。
-func NewScheduler(exporter *Exporter, interval time.Duration, retention int, logger *slog.Logger) *Scheduler {
-	return &Scheduler{exporter: exporter, interval: interval, retention: retention, logger: logger}
+func NewScheduler(exporter *Exporter, interval time.Duration, retention int, logger *slog.Logger, uploader Uploader) *Scheduler {
+	return &Scheduler{exporter: exporter, interval: interval, retention: retention, logger: logger, uploader: uploader}
 }
 
 // Run 阻塞运行直至 ctx 取消。启动立即执行一次，确保新部署无需等待首个周期。
@@ -50,6 +51,13 @@ func (s *Scheduler) tick(ctx context.Context) {
 	if err := PrunePersistent(s.exporter.dataDir, s.retention); err != nil {
 		s.logger.Warn("清理旧自动备份失败", "err", err)
 		return
+	}
+	if s.uploader != nil {
+		if err := s.uploader.Upload(ctx, path); err != nil {
+			s.logger.Warn("异地自动备份失败", "err", err)
+			return
+		}
+		s.logger.Info("异地自动备份完成", "path", path)
 	}
 	s.logger.Info("本地自动备份完成", "path", path)
 }

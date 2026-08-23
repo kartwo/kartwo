@@ -33,3 +33,10 @@ func TestLoadRejectsInvalidBackupConfig(t *testing.T) {
 		t.Fatal("保留数为零应被拒绝")
 	}
 }
+
+func TestLoadRejectsUnsafeWebDAVURL(t *testing.T) {
+	t.Setenv("KARTWO_BACKUP_WEBDAV_URL", "http://example.com/backup")
+	if _, err := Load(); err == nil {
+		t.Fatal("明文 WebDAV 地址应被拒绝")
+	}
+}
