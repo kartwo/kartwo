@@ -126,6 +126,9 @@ func PrunePersistent(dataDir string, retention int) error {
 		names = append(names, entry.Name())
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(names)))
+	if len(names) <= retention {
+		return nil
+	}
 	for _, name := range names[retention:] {
 		if err := os.Remove(filepath.Join(dir, name)); err != nil {
 			return fmt.Errorf("backup: 删除旧自动备份失败: %w", err)
