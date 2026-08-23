@@ -42,7 +42,16 @@ type Config struct {
 	BackupInterval time.Duration
 	// BackupRetention 是仅由程序创建的持久备份 ZIP 保留份数，默认 7。
 	BackupRetention int
+	// BackupIntervalEnv / BackupRetentionEnv 标记对应项是否被环境变量显式覆盖。
+	BackupIntervalEnv  bool
+	BackupRetentionEnv bool
 }
+
+const (
+	// BackupIntervalSetting / BackupRetentionSetting 是后台持久化的自部署备份设置键。
+	BackupIntervalSetting  = "backup.interval"
+	BackupRetentionSetting = "backup.retention"
+)
 
 // Load 从环境变量读取配置并填默认值。
 // 双模式纪律：此处只做自部署默认语义，不感知 SaaS。
@@ -73,18 +82,18 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("KARTWO_ADDR 不能为空")
 	}
 	if raw, ok := os.LookupEnv("KARTWO_BACKUP_INTERVAL"); ok && raw != "" {
-		interval, err := time.ParseDuration(raw)
-		if err != nil || interval < time.Minute {
+		interval, err := ParseBackupInterval(raw)
+		if err != nil {
 			return nil, fmt.Errorf("非法 KARTWO_BACKUP_INTERVAL=%q（应为不小于 1m 的 Go duration）", raw)
 		}
-		cfg.BackupInterval = interval
+		cfg.BackupInterval, cfg.BackupIntervalEnv = interval, true
 	}
 	if raw, ok := os.LookupEnv("KARTWO_BACKUP_RETENTION"); ok && raw != "" {
-		retention, err := strconv.Atoi(raw)
-		if err != nil || retention < 1 || retention > 365 {
+		retention, err := ParseBackupRetention(raw)
+		if err != nil {
 			return nil, fmt.Errorf("非法 KARTWO_BACKUP_RETENTION=%q（应为 1 到 365）", raw)
 		}
-		cfg.BackupRetention = retention
+		cfg.BackupRetention, cfg.BackupRetentionEnv = retention, true
 	}
 
 	// M0 仅落地 sqlite 默认实现；postgres 作为升级项接口占位。
@@ -94,6 +103,47 @@ func Load() (*Config, error) {
 
 	cfg.DBPath = filepath.Join(cfg.DataDir, "shop.db")
 	return cfg, nil
+}
+
+// ParseBackupInterval 校验后台与环境变量共同使用的备份周期格式。
+func ParseBackupInterval(raw string) (time.Duration, error) {
+	interval, err := time.ParseDuration(strings.TrimSpace(raw))
+	if err != nil || interval < time.Minute {
+		return 0, fmt.Errorf("备份周期应为不小于 1m 的 Go duration")
+	}
+	return interval, nil
+}
+
+// ParseBackupRetention 校验后台与环境变量共同使用的保留份数。
+func ParseBackupRetention(raw string) (int, error) {
+	retention, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || retention < 1 || retention > 365 {
+		return 0, fmt.Errorf("保留份数应为 1 到 365")
+	}
+	return retention, nil
+}
+
+// ApplyBackupSettings 在未被环境变量覆盖时采用数据库设置；不存在时保留默认值。
+func (c *Config) ApplyBackupSettings(get func(string) (string, error)) error {
+	if !c.BackupIntervalEnv {
+		if raw, err := get(BackupIntervalSetting); err == nil && strings.TrimSpace(raw) != "" {
+			interval, err := ParseBackupInterval(raw)
+			if err != nil {
+				return fmt.Errorf("数据库备份周期无效: %w", err)
+			}
+			c.BackupInterval = interval
+		}
+	}
+	if !c.BackupRetentionEnv {
+		if raw, err := get(BackupRetentionSetting); err == nil && strings.TrimSpace(raw) != "" {
+			retention, err := ParseBackupRetention(raw)
+			if err != nil {
+				return fmt.Errorf("数据库备份保留数无效: %w", err)
+			}
+			c.BackupRetention = retention
+		}
+	}
+	return nil
 }
 
 func getEnv(key, def string) string {
