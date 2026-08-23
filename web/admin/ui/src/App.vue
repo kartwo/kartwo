@@ -210,6 +210,7 @@ onMounted(refresh)
         <RouterLink to="/dashboard">概览</RouterLink>
         <RouterLink to="/diagnostics">诊断</RouterLink>
         <RouterLink to="/export">导出</RouterLink>
+        <RouterLink to="/backup">备份</RouterLink>
         <RouterLink to="/products">商品</RouterLink>
         <RouterLink to="/imports/csv">导入</RouterLink>
         <RouterLink to="/orders">订单</RouterLink>

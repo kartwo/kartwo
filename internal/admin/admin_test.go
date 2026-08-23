@@ -228,7 +228,7 @@ func newHTTPEnvDomain(t *testing.T, envDomain string) (*HTTP, http.Handler) {
 	mc := mail.NewCache(set)
 	svc.SetMailKeys(mc)
 	cat := catalog.New(svc.db)
-	h := NewHTTP(svc, cat, importer.New(svc.db, cat, md, redirect.New(svc.db)), md, set, ord, nil, mc, backup.New(svc.db, dataDir, "test-version"), envDomain, false)
+	h := NewHTTP(svc, cat, importer.New(svc.db, cat, md, redirect.New(svc.db)), md, set, ord, nil, mc, backup.New(svc.db, dataDir, "test-version"), BackupConfig{Interval: 24 * time.Hour, Retention: 7}, envDomain, false)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
@@ -932,6 +932,22 @@ func TestDiagnostics(t *testing.T) {
 	}
 	if !bytes.Contains(r.Body, []byte(`"database":{"status":"ok"}`)) || !bytes.Contains(r.Body, []byte(`"asset_count":0`)) || !bytes.Contains(r.Body, []byte(`"automatic_count":0`)) {
 		t.Fatalf("diagnostics 响应异常: %s", r.Body)
+	}
+}
+
+func TestBackupSettings(t *testing.T) {
+	_, mux := newHTTP(t)
+	sess, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+	if r := doJSON(t, mux, "GET", "/admin/api/settings/backup", "", auth, ""); r.StatusCode != http.StatusOK || !bytes.Contains(r.Body, []byte(`"interval":"24h0m0s"`)) {
+		t.Fatalf("初始备份设置异常: %d %s", r.StatusCode, r.Body)
+	}
+	r := doJSON(t, mux, "PUT", "/admin/api/settings/backup", `{"interval":"90m","retention":"12"}`, auth, csrf)
+	if r.StatusCode != http.StatusOK || !bytes.Contains(r.Body, []byte(`"interval":"90m"`)) || !bytes.Contains(r.Body, []byte(`"retention":12`)) {
+		t.Fatalf("保存备份设置失败: %d %s", r.StatusCode, r.Body)
+	}
+	if r := doJSON(t, mux, "PUT", "/admin/api/settings/backup", `{"interval":"30s","retention":"0"}`, auth, csrf); r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("非法设置应 400: %d %s", r.StatusCode, r.Body)
 	}
 }
 

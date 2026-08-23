@@ -78,6 +78,8 @@ export const api = {
 
   dashboard: () => request('GET', '/dashboard'),
   diagnostics: () => request('GET', '/diagnostics'),
+  getBackupSettings: () => request('GET', '/settings/backup'),
+  setBackupSettings: (payload) => request('PUT', '/settings/backup', payload),
 
   listOrders: () => request('GET', '/orders'),
   getOrder: (id) => request('GET', '/orders/' + id),

@@ -209,6 +209,9 @@ func runServe(logger *slog.Logger) error {
 
 	mediaSvc := newMediaService(cfg, st)
 	settingsSvc := settings.New(st.DB)
+	if err := cfg.ApplyBackupSettings(func(key string) (string, error) { return settingsSvc.Get(context.Background(), key) }); err != nil {
+		return err
+	}
 
 	// 收款密钥内存缓存（绑定 KEK 金库：登录解锁/登出销毁）+ 支付编排服务。
 	payCache := payment.NewKeyCache(settingsSvc)
@@ -243,7 +246,7 @@ func runServe(logger *slog.Logger) error {
 	catalogSvc := catalog.New(st.DB)
 	redirectSvc := redirect.New(st.DB)
 	exporter := backup.New(st.DB, cfg.DataDir, Version)
-	adminHTTP := admin.NewHTTP(adminSvc, catalogSvc, importer.New(st.DB, catalogSvc, mediaSvc, redirectSvc), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, exporter, cfg.Domain, cfg.Env == "prod")
+	adminHTTP := admin.NewHTTP(adminSvc, catalogSvc, importer.New(st.DB, catalogSvc, mediaSvc, redirectSvc), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, exporter, admin.BackupConfig{Interval: cfg.BackupInterval, Retention: cfg.BackupRetention, IntervalEnv: cfg.BackupIntervalEnv, RetentionEnv: cfg.BackupRetentionEnv}, cfg.Domain, cfg.Env == "prod")
 	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, redirectSvc, cfg.ShopName, cfg.BaseURL)
 	payHTTP := payment.NewHTTP(paySvc)
 	// 解析"当前生效域名"（env 覆盖 DB），决定是否启用 HTTPS（仅 prod）。
