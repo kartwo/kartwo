@@ -34,6 +34,12 @@ function bytes(value) {
   do { size /= 1024; unit += 1 } while (size >= 1024 && unit < units.length - 1)
   return size.toFixed(size >= 10 ? 0 : 1) + ' ' + units[unit]
 }
+
+function formatTime(value) {
+  if (!value) return '尚未生成'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '暂不可用' : date.toLocaleString()
+}
 </script>
 
 <template>
@@ -72,6 +78,17 @@ function bytes(value) {
           </dl>
         </template>
         <p v-else class="err">{{ data.disk.message }}</p>
+      </section>
+
+      <section class="panel diagnostics-panel">
+        <h3>本地备份与升级快照</h3>
+        <dl class="diagnostic-grid">
+          <div><dt>自动备份</dt><dd>{{ data.backups.automatic_count }} 份</dd></div>
+          <div><dt>升级快照</dt><dd>{{ data.backups.upgrade_count }} 份</dd></div>
+          <div><dt>保护点占用</dt><dd>{{ bytes(data.backups.total_bytes) }}</dd></div>
+          <div><dt>最近生成</dt><dd>{{ formatTime(data.backups.latest_at) }}</dd></div>
+        </dl>
+        <p v-if="data.backups.message" class="err">{{ data.backups.message }}</p>
       </section>
     </template>
 

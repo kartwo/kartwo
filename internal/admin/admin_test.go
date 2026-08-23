@@ -930,7 +930,7 @@ func TestDiagnostics(t *testing.T) {
 	if r.StatusCode != http.StatusOK {
 		t.Fatalf("diagnostics 应 200，得 %d %s", r.StatusCode, r.Body)
 	}
-	if !bytes.Contains(r.Body, []byte(`"database":{"status":"ok"}`)) || !bytes.Contains(r.Body, []byte(`"asset_count":0`)) {
+	if !bytes.Contains(r.Body, []byte(`"database":{"status":"ok"}`)) || !bytes.Contains(r.Body, []byte(`"asset_count":0`)) || !bytes.Contains(r.Body, []byte(`"automatic_count":0`)) {
 		t.Fatalf("diagnostics 响应异常: %s", r.Body)
 	}
 }
