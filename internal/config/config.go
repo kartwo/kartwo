@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Config 为内核运行所需的最小配置（M0）。
@@ -34,23 +36,31 @@ type Config struct {
 	HTTPSAddr string // KARTWO_HTTPS_ADDR，默认 :443
 	// ACMEDirectory 为 ACME 目录 URL；空=Let's Encrypt 生产。设为 LE Staging 可预跑不烧生产配额。
 	ACMEDirectory string // KARTWO_ACME_DIRECTORY，默认空（LE 生产）
+
+	// —— M5.8 本地自动备份 ——
+	// BackupInterval 控制服务启动后及其后的本地全量 ZIP 备份频率，默认 24h。
+	BackupInterval time.Duration
+	// BackupRetention 是仅由程序创建的持久备份 ZIP 保留份数，默认 7。
+	BackupRetention int
 }
 
 // Load 从环境变量读取配置并填默认值。
 // 双模式纪律：此处只做自部署默认语义，不感知 SaaS。
 func Load() (*Config, error) {
 	cfg := &Config{
-		Env:           getEnv("KARTWO_ENV", "dev"),
-		Addr:          getEnv("KARTWO_ADDR", ":8080"),
-		DataDir:       getEnv("KARTWO_DATA_DIR", "./data"),
-		DBEngine:      getEnv("KARTWO_DB_ENGINE", "sqlite"),
-		ShopName:      getEnv("KARTWO_SHOP_NAME", "Kartwo Store"),
-		Currency:      getEnv("KARTWO_CURRENCY", "CNY"),
-		BaseURL:       getEnv("KARTWO_BASE_URL", ""),
-		Domain:        strings.TrimSpace(getEnv("KARTWO_DOMAIN", "")),
-		HTTPAddr:      getEnv("KARTWO_HTTP_ADDR", ":80"),
-		HTTPSAddr:     getEnv("KARTWO_HTTPS_ADDR", ":443"),
-		ACMEDirectory: strings.TrimSpace(getEnv("KARTWO_ACME_DIRECTORY", "")),
+		Env:             getEnv("KARTWO_ENV", "dev"),
+		Addr:            getEnv("KARTWO_ADDR", ":8080"),
+		DataDir:         getEnv("KARTWO_DATA_DIR", "./data"),
+		DBEngine:        getEnv("KARTWO_DB_ENGINE", "sqlite"),
+		ShopName:        getEnv("KARTWO_SHOP_NAME", "Kartwo Store"),
+		Currency:        getEnv("KARTWO_CURRENCY", "CNY"),
+		BaseURL:         getEnv("KARTWO_BASE_URL", ""),
+		Domain:          strings.TrimSpace(getEnv("KARTWO_DOMAIN", "")),
+		HTTPAddr:        getEnv("KARTWO_HTTP_ADDR", ":80"),
+		HTTPSAddr:       getEnv("KARTWO_HTTPS_ADDR", ":443"),
+		ACMEDirectory:   strings.TrimSpace(getEnv("KARTWO_ACME_DIRECTORY", "")),
+		BackupInterval:  24 * time.Hour,
+		BackupRetention: 7,
 	}
 
 	switch cfg.Env {
@@ -61,6 +71,20 @@ func Load() (*Config, error) {
 
 	if strings.TrimSpace(cfg.Addr) == "" {
 		return nil, fmt.Errorf("KARTWO_ADDR 不能为空")
+	}
+	if raw, ok := os.LookupEnv("KARTWO_BACKUP_INTERVAL"); ok && raw != "" {
+		interval, err := time.ParseDuration(raw)
+		if err != nil || interval < time.Minute {
+			return nil, fmt.Errorf("非法 KARTWO_BACKUP_INTERVAL=%q（应为不小于 1m 的 Go duration）", raw)
+		}
+		cfg.BackupInterval = interval
+	}
+	if raw, ok := os.LookupEnv("KARTWO_BACKUP_RETENTION"); ok && raw != "" {
+		retention, err := strconv.Atoi(raw)
+		if err != nil || retention < 1 || retention > 365 {
+			return nil, fmt.Errorf("非法 KARTWO_BACKUP_RETENTION=%q（应为 1 到 365）", raw)
+		}
+		cfg.BackupRetention = retention
 	}
 
 	// M0 仅落地 sqlite 默认实现；postgres 作为升级项接口占位。

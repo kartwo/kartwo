@@ -235,7 +235,8 @@ func runServe(logger *slog.Logger) error {
 	orderSvc := order.New(st.DB, settingsSvc)
 	catalogSvc := catalog.New(st.DB)
 	redirectSvc := redirect.New(st.DB)
-	adminHTTP := admin.NewHTTP(adminSvc, catalogSvc, importer.New(st.DB, catalogSvc, mediaSvc, redirectSvc), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, backup.New(st.DB, cfg.DataDir, Version), cfg.Domain, cfg.Env == "prod")
+	exporter := backup.New(st.DB, cfg.DataDir, Version)
+	adminHTTP := admin.NewHTTP(adminSvc, catalogSvc, importer.New(st.DB, catalogSvc, mediaSvc, redirectSvc), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, exporter, cfg.Domain, cfg.Env == "prod")
 	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, redirectSvc, cfg.ShopName, cfg.BaseURL)
 	payHTTP := payment.NewHTTP(paySvc)
 	// 解析"当前生效域名"（env 覆盖 DB），决定是否启用 HTTPS（仅 prod）。
@@ -255,6 +256,8 @@ func runServe(logger *slog.Logger) error {
 
 	// 邮件发送 worker：后台轮询 outbox 异步发信（不阻塞下单），随 ctx 取消停止。
 	go mail.NewWorker(st.DB, mailCache, logger, 0).Run(ctx)
+	// 本地全量备份走独立 goroutine，不阻塞 HTTP 服务启动；首次启动即生成一份。
+	go backup.NewScheduler(exporter, cfg.BackupInterval, cfg.BackupRetention, logger).Run(ctx)
 
 	var servers []*http.Server
 	errCh := make(chan error, 1)
