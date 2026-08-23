@@ -7,6 +7,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -42,25 +43,32 @@ type Config struct {
 	BackupInterval time.Duration
 	// BackupRetention 是仅由程序创建的持久备份 ZIP 保留份数，默认 7。
 	BackupRetention int
+	// BackupWebDAVURL 为可选异地备份 WebDAV 根目录，仅接受 HTTPS；凭证不写日志。
+	BackupWebDAVURL      string
+	BackupWebDAVUsername string
+	BackupWebDAVPassword string
 }
 
 // Load 从环境变量读取配置并填默认值。
 // 双模式纪律：此处只做自部署默认语义，不感知 SaaS。
 func Load() (*Config, error) {
 	cfg := &Config{
-		Env:             getEnv("KARTWO_ENV", "dev"),
-		Addr:            getEnv("KARTWO_ADDR", ":8080"),
-		DataDir:         getEnv("KARTWO_DATA_DIR", "./data"),
-		DBEngine:        getEnv("KARTWO_DB_ENGINE", "sqlite"),
-		ShopName:        getEnv("KARTWO_SHOP_NAME", "Kartwo Store"),
-		Currency:        getEnv("KARTWO_CURRENCY", "CNY"),
-		BaseURL:         getEnv("KARTWO_BASE_URL", ""),
-		Domain:          strings.TrimSpace(getEnv("KARTWO_DOMAIN", "")),
-		HTTPAddr:        getEnv("KARTWO_HTTP_ADDR", ":80"),
-		HTTPSAddr:       getEnv("KARTWO_HTTPS_ADDR", ":443"),
-		ACMEDirectory:   strings.TrimSpace(getEnv("KARTWO_ACME_DIRECTORY", "")),
-		BackupInterval:  24 * time.Hour,
-		BackupRetention: 7,
+		Env:                  getEnv("KARTWO_ENV", "dev"),
+		Addr:                 getEnv("KARTWO_ADDR", ":8080"),
+		DataDir:              getEnv("KARTWO_DATA_DIR", "./data"),
+		DBEngine:             getEnv("KARTWO_DB_ENGINE", "sqlite"),
+		ShopName:             getEnv("KARTWO_SHOP_NAME", "Kartwo Store"),
+		Currency:             getEnv("KARTWO_CURRENCY", "CNY"),
+		BaseURL:              getEnv("KARTWO_BASE_URL", ""),
+		Domain:               strings.TrimSpace(getEnv("KARTWO_DOMAIN", "")),
+		HTTPAddr:             getEnv("KARTWO_HTTP_ADDR", ":80"),
+		HTTPSAddr:            getEnv("KARTWO_HTTPS_ADDR", ":443"),
+		ACMEDirectory:        strings.TrimSpace(getEnv("KARTWO_ACME_DIRECTORY", "")),
+		BackupInterval:       24 * time.Hour,
+		BackupRetention:      7,
+		BackupWebDAVURL:      strings.TrimSpace(getEnv("KARTWO_BACKUP_WEBDAV_URL", "")),
+		BackupWebDAVUsername: strings.TrimSpace(getEnv("KARTWO_BACKUP_WEBDAV_USERNAME", "")),
+		BackupWebDAVPassword: os.Getenv("KARTWO_BACKUP_WEBDAV_PASSWORD"),
 	}
 
 	switch cfg.Env {
@@ -85,6 +93,12 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("非法 KARTWO_BACKUP_RETENTION=%q（应为 1 到 365）", raw)
 		}
 		cfg.BackupRetention = retention
+	}
+	if cfg.BackupWebDAVURL != "" {
+		u, err := url.Parse(cfg.BackupWebDAVURL)
+		if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil {
+			return nil, fmt.Errorf("非法 KARTWO_BACKUP_WEBDAV_URL（应为不含凭证的 HTTPS URL）")
+		}
 	}
 
 	// M0 仅落地 sqlite 默认实现；postgres 作为升级项接口占位。
