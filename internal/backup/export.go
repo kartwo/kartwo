@@ -42,6 +42,9 @@ func New(db *sql.DB, dataDir, version string) *Exporter {
 	return &Exporter{db: db, dataDir: dataDir, version: version, now: time.Now}
 }
 
+// DataDir 返回只读诊断使用的数据目录；写操作仍由 Exporter 自身统一编排。
+func (e *Exporter) DataDir() string { return e.dataDir }
+
 // Create 生成 ZIP 到 dataDir/backups 下的临时文件。调用方完成传输后必须 Remove 返回路径。
 func (e *Exporter) Create(ctx context.Context) (string, Manifest, error) {
 	workDir := filepath.Join(e.dataDir, "backups")

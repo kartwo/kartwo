@@ -5,7 +5,11 @@
 // 时间：2026-08-22 09:10:00
 package admin
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/kartwo/kartwo/internal/backup"
+)
 
 // diagnostics 返回本机可即时探测的健康项；外部服务探测将在各自能力到位后追加。
 func (h *HTTP) diagnostics(w http.ResponseWriter, r *http.Request) {
@@ -18,6 +22,10 @@ func (h *HTTP) diagnostics(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "媒体统计暂不可用")
 		return
 	}
+	backupUsage := backup.Usage{Message: "备份服务未装配"}
+	if h.exporter != nil {
+		backupUsage = backup.Diagnostics(h.exporter.DataDir())
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"database": map[string]any{"status": "ok"},
 		"media": map[string]any{
@@ -29,5 +37,6 @@ func (h *HTTP) diagnostics(w http.ResponseWriter, r *http.Request) {
 			"free_bytes": usage.Disk.FreeBytes, "used_bytes": usage.Disk.UsedBytes,
 			"message": usage.Disk.Message,
 		},
+		"backups": backupUsage,
 	})
 }
