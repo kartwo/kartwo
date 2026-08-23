@@ -74,7 +74,7 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	// 子命令分发：默认 serve；seed-demo 装演示数据后退出；version 打印版本后退出。
+	// 子命令分发：默认 serve；seed-demo 装演示数据后退出；restore 将导出包恢复到新数据目录。
 	sub := "serve"
 	if len(os.Args) > 1 {
 		sub = os.Args[1]
@@ -86,16 +86,36 @@ func main() {
 		err = runServe(logger)
 	case "seed-demo":
 		err = runSeedDemo(logger)
+	case "restore":
+		err = runRestore(logger, os.Args[2:])
 	case "version", "--version", "-v":
 		// 纯文本单行输出（不走 slog）：商家反馈问题时的第一手信息，也供 release 流水线自检。
 		fmt.Println(Version)
 	default:
-		err = fmt.Errorf("未知子命令 %q（可用：serve | seed-demo | version）", sub)
+		err = fmt.Errorf("未知子命令 %q（可用：serve | seed-demo | restore | version）", sub)
 	}
 	if err != nil {
 		logger.Error("执行失败", "subcommand", sub, "err", err)
 		os.Exit(1)
 	}
+}
+
+// runRestore 将导出 ZIP 恢复到 KARTWO_DATA_DIR 指向的新目录。它不打开目标数据库、
+// 不执行迁移，也不覆盖既存数据；恢复完成后由下一次 serve 在启动期执行兼容迁移。
+func runRestore(logger *slog.Logger, args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("用法: kartwo restore <export.zip>（KARTWO_DATA_DIR 必须指向不存在的新目录）")
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	result, err := backup.Restore(args[0], cfg.DataDir)
+	if err != nil {
+		return err
+	}
+	logger.Info("恢复完成", "data_dir", cfg.DataDir, "source_version", result.Manifest.AppVersion, "media_files", result.MediaFiles)
+	return nil
 }
 
 // setup 完成"配置→数据层→迁移"的公共装配，serve 与 seed-demo 共用。
