@@ -83,8 +83,26 @@ func (e *Exporter) CreatePersistent(ctx context.Context) (string, Manifest, erro
 	return target, manifest, nil
 }
 
+// CreateUpgradeSnapshot 创建升级前完整快照。该文件不属于周期自动备份，绝不被保留策略清理。
+func (e *Exporter) CreateUpgradeSnapshot(ctx context.Context) (string, Manifest, error) {
+	temporary, manifest, err := e.Create(ctx)
+	if err != nil {
+		return "", Manifest{}, err
+	}
+	target := filepath.Join(e.dataDir, "backups", upgradeName(manifest.CreatedAt))
+	if err := os.Rename(temporary, target); err != nil {
+		_ = os.Remove(temporary)
+		return "", Manifest{}, fmt.Errorf("backup: 落位升级快照失败: %w", err)
+	}
+	return target, manifest, nil
+}
+
 func persistentName(createdAt time.Time) string {
 	return "kartwo-backup-" + createdAt.UTC().Format("20060102T150405Z") + ".zip"
+}
+
+func upgradeName(createdAt time.Time) string {
+	return "kartwo-upgrade-" + createdAt.UTC().Format("20060102T150405Z") + ".zip"
 }
 
 // PrunePersistent 仅删除本程序命名的旧自动备份，绝不触碰手工导出或其他文件。

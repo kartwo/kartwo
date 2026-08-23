@@ -32,7 +32,6 @@ import (
 	"github.com/kartwo/kartwo/internal/importer"
 	"github.com/kartwo/kartwo/internal/mail"
 	"github.com/kartwo/kartwo/internal/media"
-	"github.com/kartwo/kartwo/internal/migrate"
 	"github.com/kartwo/kartwo/internal/order"
 	"github.com/kartwo/kartwo/internal/payment"
 	"github.com/kartwo/kartwo/internal/redirect"
@@ -40,6 +39,7 @@ import (
 	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/internal/store"
 	"github.com/kartwo/kartwo/internal/storefront"
+	"github.com/kartwo/kartwo/internal/upgrade"
 	"github.com/kartwo/kartwo/migrations"
 )
 
@@ -125,19 +125,26 @@ func setup(logger *slog.Logger) (*config.Config, *store.Store, error) {
 		return nil, nil, err
 	}
 	logger.Info("配置已加载", "env", cfg.Env, "addr", cfg.Addr, "data_dir", cfg.DataDir, "engine", cfg.DBEngine)
+	existingDatabase, err := upgrade.ExistingDatabase(cfg.DBPath)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	st, err := store.Open(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// 启动即跑迁移：幂等可重入，未应用的才执行。
-	applied, err := migrate.Run(context.Background(), st.DB, migrations.FS)
+	// 既有数据目录遇到待执行迁移时，先落完整快照，再原子应用整批迁移。
+	result, err := upgrade.Apply(context.Background(), st.DB, cfg.DataDir, Version, existingDatabase, migrations.FS)
 	if err != nil {
 		_ = st.Close()
 		return nil, nil, err
 	}
-	logger.Info("数据库迁移完成", "newly_applied", applied)
+	if result.SnapshotPath != "" {
+		logger.Info("升级前备份完成", "path", result.SnapshotPath, "pending_migrations", result.Pending)
+	}
+	logger.Info("数据库迁移完成", "newly_applied", result.Applied)
 	return cfg, st, nil
 }
 
