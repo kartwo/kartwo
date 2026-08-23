@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -33,11 +34,12 @@ type Exporter struct {
 	db      *sql.DB
 	dataDir string
 	version string
+	now     func() time.Time
 }
 
 // New 构造导出服务。dataDir 是当前实例的持久数据目录。
 func New(db *sql.DB, dataDir, version string) *Exporter {
-	return &Exporter{db: db, dataDir: dataDir, version: version}
+	return &Exporter{db: db, dataDir: dataDir, version: version, now: time.Now}
 }
 
 // Create 生成 ZIP 到 dataDir/backups 下的临时文件。调用方完成传输后必须 Remove 返回路径。
@@ -59,12 +61,59 @@ func (e *Exporter) Create(ctx context.Context) (string, Manifest, error) {
 	if err != nil {
 		return "", Manifest{}, err
 	}
-	manifest := Manifest{FormatVersion: exportFormatVersion, CreatedAt: time.Now().UTC(), AppVersion: e.version}
+	manifest := Manifest{FormatVersion: exportFormatVersion, CreatedAt: e.now().UTC(), AppVersion: e.version}
 	if err := e.writeZIP(zipPath, dbSnapshot, manifest); err != nil {
 		_ = os.Remove(zipPath)
 		return "", Manifest{}, err
 	}
 	return zipPath, manifest, nil
+}
+
+// CreatePersistent 创建一个保留在数据目录中的自动备份。仅在 ZIP 已完整生成后原子落位。
+func (e *Exporter) CreatePersistent(ctx context.Context) (string, Manifest, error) {
+	temporary, manifest, err := e.Create(ctx)
+	if err != nil {
+		return "", Manifest{}, err
+	}
+	target := filepath.Join(e.dataDir, "backups", persistentName(manifest.CreatedAt))
+	if err := os.Rename(temporary, target); err != nil {
+		_ = os.Remove(temporary)
+		return "", Manifest{}, fmt.Errorf("backup: 落位自动备份失败: %w", err)
+	}
+	return target, manifest, nil
+}
+
+func persistentName(createdAt time.Time) string {
+	return "kartwo-backup-" + createdAt.UTC().Format("20060102T150405Z") + ".zip"
+}
+
+// PrunePersistent 仅删除本程序命名的旧自动备份，绝不触碰手工导出或其他文件。
+func PrunePersistent(dataDir string, retention int) error {
+	if retention < 1 {
+		return fmt.Errorf("backup: 自动备份保留数必须至少为 1")
+	}
+	dir := filepath.Join(dataDir, "backups")
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("backup: 读取自动备份目录失败: %w", err)
+	}
+	var names []string
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() || !strings.HasPrefix(entry.Name(), "kartwo-backup-") || !strings.HasSuffix(entry.Name(), ".zip") {
+			continue
+		}
+		names = append(names, entry.Name())
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(names)))
+	for _, name := range names[retention:] {
+		if err := os.Remove(filepath.Join(dir, name)); err != nil {
+			return fmt.Errorf("backup: 删除旧自动备份失败: %w", err)
+		}
+	}
+	return nil
 }
 
 func temporaryPath(dir, pattern string) (string, error) {
