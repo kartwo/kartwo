@@ -98,9 +98,11 @@ func (s *Service) PaymentStatus() (payment.CacheStatus, bool) {
 
 // Session 为一次登录产生的会话凭据。
 type Session struct {
-	Token     string
-	CSRFToken string
-	ExpiresAt time.Time
+	Token         string
+	CSRFToken     string
+	ExpiresAt     time.Time
+	AdminID       int64
+	AdminPublicID string
 }
 
 // AuthContext 为已鉴权请求的身份。
@@ -208,7 +210,7 @@ func (s *Service) Login(ctx context.Context, username, password string) (*Sessio
 	if s.mailKeys != nil {
 		_ = s.mailKeys.Unlock(ctx, kek)
 	}
-	return &Session{Token: token, CSRFToken: csrf, ExpiresAt: expires}, nil
+	return &Session{Token: token, CSRFToken: csrf, ExpiresAt: expires, AdminID: user.ID, AdminPublicID: user.PublicID}, nil
 }
 
 // Authenticate 校验会话 token（未过期），返回身份。

@@ -351,6 +351,19 @@ func TestHTTPVariantPriceRequiredAndUpdate(t *testing.T) {
 	}
 }
 
+func TestHTTPAuditEvents(t *testing.T) {
+	_, mux := newHTTP(t)
+	doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"supersecret"}`, nil, "")
+	login := doJSON(t, mux, "POST", "/admin/api/login", `{"username":"admin","password":"supersecret"}`, nil, "")
+	resp := doJSON(t, mux, "GET", "/admin/api/audit-events", "", login.Cookies, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("审计列表应 200，得 %d %s", resp.StatusCode, resp.Body)
+	}
+	if !bytes.Contains(resp.Body, []byte(`"action":"admin.login"`)) || bytes.Contains(resp.Body, []byte("supersecret")) {
+		t.Fatalf("应记录登录且绝不泄露口令: %s", resp.Body)
+	}
+}
+
 func TestWizardPayment(t *testing.T) {
 	_, mux := newHTTP(t)
 	doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"supersecret"}`, nil, "")
