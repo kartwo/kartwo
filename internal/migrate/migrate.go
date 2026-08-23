@@ -21,58 +21,65 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );`
 
-// Run 应用 fsys 中所有 *.sql 迁移（按文件名升序），仅执行未记录的版本。
-// 每个迁移在独立事务内执行：要么整条成功并记录，要么回滚。返回本次新应用的数量。
-func Run(ctx context.Context, db *sql.DB, fsys fs.FS) (int, error) {
+// Pending 返回 fsys 中尚未记录的迁移文件名（按文件名升序）。
+// 它确保版本记录表存在，供启动期决定是否需要先创建升级快照。
+func Pending(ctx context.Context, db *sql.DB, fsys fs.FS) ([]string, error) {
 	if _, err := db.ExecContext(ctx, createSchemaMigrations); err != nil {
-		return 0, fmt.Errorf("migrate: 创建 schema_migrations 失败: %w", err)
+		return nil, fmt.Errorf("migrate: 创建 schema_migrations 失败: %w", err)
 	}
 
 	applied, err := appliedVersions(ctx, db)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	files, err := sqlFiles(fsys)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-
-	count := 0
+	var pending []string
 	for _, name := range files {
-		version := strings.TrimSuffix(name, ".sql")
-		if applied[version] {
-			continue
+		if !applied[strings.TrimSuffix(name, ".sql")] {
+			pending = append(pending, name)
 		}
-		body, err := fs.ReadFile(fsys, name)
-		if err != nil {
-			return count, fmt.Errorf("migrate: 读取 %s 失败: %w", name, err)
-		}
-		if err := applyOne(ctx, db, version, string(body)); err != nil {
-			return count, err
-		}
-		count++
 	}
-	return count, nil
+	return pending, nil
 }
 
-func applyOne(ctx context.Context, db *sql.DB, version, body string) error {
+// Run 应用 fsys 中所有 *.sql 迁移（按文件名升序），仅执行未记录的版本。
+// 同一次启动的待执行迁移在一个事务内完成：任一迁移失败即整批回滚，避免留下半升级状态。
+// 返回本次新应用的数量。
+func Run(ctx context.Context, db *sql.DB, fsys fs.FS) (int, error) {
+	files, err := Pending(ctx, db, fsys)
+	if err != nil {
+		return 0, err
+	}
+	if len(files) == 0 {
+		return 0, nil
+	}
+
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("migrate: 开启事务失败(%s): %w", version, err)
+		return 0, fmt.Errorf("migrate: 开启迁移事务失败: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }() // 已提交后 Rollback 为 no-op
-
-	if _, err := tx.ExecContext(ctx, body); err != nil {
-		return fmt.Errorf("migrate: 执行迁移 %s 失败: %w", version, err)
-	}
-	if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (version) VALUES (?)", version); err != nil {
-		return fmt.Errorf("migrate: 记录迁移 %s 失败: %w", version, err)
+	for _, name := range files {
+		version := strings.TrimSuffix(name, ".sql")
+		body, err := fs.ReadFile(fsys, name)
+		if err != nil {
+			return 0, fmt.Errorf("migrate: 读取 %s 失败: %w", name, err)
+		}
+		if _, err := tx.ExecContext(ctx, string(body)); err != nil {
+			return 0, fmt.Errorf("migrate: 执行迁移 %s 失败: %w", version, err)
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (version) VALUES (?)", version); err != nil {
+			return 0, fmt.Errorf("migrate: 记录迁移 %s 失败: %w", version, err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("migrate: 提交迁移 %s 失败: %w", version, err)
+		return 0, fmt.Errorf("migrate: 提交迁移失败: %w", err)
 	}
-	return nil
+	return len(files), nil
 }
 
 func appliedVersions(ctx context.Context, db *sql.DB) (map[string]bool, error) {

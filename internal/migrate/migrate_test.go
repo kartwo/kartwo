@@ -85,11 +85,11 @@ func TestRun_AppliesNewlyAddedMigration(t *testing.T) {
 	}
 }
 
-func TestRun_FailedMigrationRollsBack(t *testing.T) {
+func TestRun_FailedMigrationRollsBackWholeBatch(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
 
-	// 第二条迁移含非法 SQL：应整体失败，且不记录版本。
+	// 第二条迁移含非法 SQL：应整体失败，第一条也不得留下。
 	fsys := fstest.MapFS{
 		"0001_ok.sql":  {Data: []byte(`CREATE TABLE ok (id INTEGER PRIMARY KEY);`)},
 		"0002_bad.sql": {Data: []byte(`THIS IS NOT VALID SQL;`)},
@@ -98,16 +98,20 @@ func TestRun_FailedMigrationRollsBack(t *testing.T) {
 	if err == nil {
 		t.Fatalf("期望失败，却成功（应用 %d 条）", n)
 	}
-	if n != 1 {
-		t.Fatalf("失败前应用数量 = %d，期望 1（0001 成功，0002 失败）", n)
+	if n != 0 {
+		t.Fatalf("失败批次的应用数量 = %d，期望 0", n)
 	}
 
-	// 0002 未被记录，修正后可重试。
+	// 任一版本都不应被记录，修正后可整批重试。
 	var cnt int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version='0002_bad'`).Scan(&cnt); err != nil {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version IN ('0001_ok', '0002_bad')`).Scan(&cnt); err != nil {
 		t.Fatalf("查询迁移记录失败: %v", err)
 	}
 	if cnt != 0 {
-		t.Fatalf("失败迁移不应被记录，count = %d", cnt)
+		t.Fatalf("失败批次不应记录版本，count = %d", cnt)
+	}
+	var name string
+	if err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='ok'`).Scan(&name); err != sql.ErrNoRows {
+		t.Fatalf("失败批次不应留下表 ok: %v", err)
 	}
 }

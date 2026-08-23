@@ -72,3 +72,21 @@ func TestPrunePersistentRejectsZeroRetention(t *testing.T) {
 		t.Fatal("保留数为零应被拒绝")
 	}
 }
+
+func TestPrunePersistentAllowsFewerFilesThanRetention(t *testing.T) {
+	dataDir := t.TempDir()
+	backupDir := filepath.Join(dataDir, "backups")
+	if err := os.MkdirAll(backupDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(backupDir, "kartwo-backup-20260823T010000Z.zip")
+	if err := os.WriteFile(path, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := PrunePersistent(dataDir, 7); err != nil {
+		t.Fatalf("备份数少于保留数不应失败: %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("现有备份不应被删除: %v", err)
+	}
+}

@@ -83,8 +83,26 @@ func (e *Exporter) CreatePersistent(ctx context.Context) (string, Manifest, erro
 	return target, manifest, nil
 }
 
+// CreateUpgradeSnapshot 创建升级前完整快照。该文件不属于周期自动备份，绝不被保留策略清理。
+func (e *Exporter) CreateUpgradeSnapshot(ctx context.Context) (string, Manifest, error) {
+	temporary, manifest, err := e.Create(ctx)
+	if err != nil {
+		return "", Manifest{}, err
+	}
+	target := filepath.Join(e.dataDir, "backups", upgradeName(manifest.CreatedAt))
+	if err := os.Rename(temporary, target); err != nil {
+		_ = os.Remove(temporary)
+		return "", Manifest{}, fmt.Errorf("backup: 落位升级快照失败: %w", err)
+	}
+	return target, manifest, nil
+}
+
 func persistentName(createdAt time.Time) string {
 	return "kartwo-backup-" + createdAt.UTC().Format("20060102T150405Z") + ".zip"
+}
+
+func upgradeName(createdAt time.Time) string {
+	return "kartwo-upgrade-" + createdAt.UTC().Format("20060102T150405Z") + ".zip"
 }
 
 // PrunePersistent 仅删除本程序命名的旧自动备份，绝不触碰手工导出或其他文件。
@@ -108,6 +126,9 @@ func PrunePersistent(dataDir string, retention int) error {
 		names = append(names, entry.Name())
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(names)))
+	if len(names) <= retention {
+		return nil
+	}
 	for _, name := range names[retention:] {
 		if err := os.Remove(filepath.Join(dir, name)); err != nil {
 			return fmt.Errorf("backup: 删除旧自动备份失败: %w", err)
