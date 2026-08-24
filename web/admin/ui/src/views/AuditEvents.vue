@@ -22,6 +22,9 @@ function describe(event) {
     'import.execute': '确认导入商品',
     'backup.settings_update': '更新自动备份设置',
     'payment.settings_update': '更新收款设置',
+    'domain.settings_update': '更新域名设置',
+    'market.settings_update': '更新市场设置',
+    'smtp.settings_update': '更新邮件设置',
   }
   return labels[event.action] || event.action
 }

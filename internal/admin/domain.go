@@ -63,6 +63,7 @@ func (h *HTTP) setDomain(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "保存失败")
 		return
 	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "domain.settings_update", "settings", "domain")
 	h.getDomain(w, r)
 }
 

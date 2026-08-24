@@ -94,6 +94,7 @@ func (h *HTTP) setSMTP(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "重载 SMTP 配置失败")
 		return
 	}
+	h.recordAudit(r, ac.AdminID, "smtp.settings_update", "settings", "smtp")
 	h.getSMTP(w, r)
 }
 

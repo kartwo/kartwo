@@ -760,6 +760,9 @@ func TestHTTPMarkets(t *testing.T) {
 	if !cur.Configured {
 		t.Fatal("选定后应为已配置")
 	}
+	if audit := doJSON(t, mux, "GET", "/admin/api/audit-events", "", auth, ""); !bytes.Contains(audit.Body, []byte(`"action":"market.settings_update"`)) {
+		t.Fatalf("保存市场设置应留审计事件: %s", audit.Body)
+	}
 }
 
 func TestHTTPLoginRateLimited(t *testing.T) {
@@ -821,6 +824,9 @@ func TestWizardDomain(t *testing.T) {
 	// 存合法域名 → 200、来源 db。
 	if r := doJSON(t, mux, "PUT", "/admin/api/settings/domain", `{"domain":"shop.example.com"}`, auth, csrf); r.StatusCode != http.StatusOK || !bytes.Contains(r.Body, []byte(`"source":"db"`)) || !bytes.Contains(r.Body, []byte(`"shop.example.com"`)) {
 		t.Fatalf("存合法域名应 200 且 source=db: %d %s", r.StatusCode, r.Body)
+	}
+	if audit := doJSON(t, mux, "GET", "/admin/api/audit-events", "", auth, ""); !bytes.Contains(audit.Body, []byte(`"action":"domain.settings_update"`)) {
+		t.Fatalf("保存域名应留审计事件: %s", audit.Body)
 	}
 	// 已配 → needed=false。
 	if r := doJSON(t, mux, "GET", "/admin/api/wizard/domain", "", auth, ""); !bytes.Contains(r.Body, []byte(`"needed":false`)) {
@@ -1052,6 +1058,9 @@ func TestSMTPSettingsAndWizard(t *testing.T) {
 	}
 	if enc != 1 || bytes.Contains([]byte(val), []byte(pw)) {
 		t.Fatalf("密码应加密存储：encrypted=%d 含明文=%v", enc, bytes.Contains([]byte(val), []byte(pw)))
+	}
+	if audit := doJSON(t, mux, "GET", "/admin/api/audit-events", "", auth, ""); !bytes.Contains(audit.Body, []byte(`"action":"smtp.settings_update"`)) || bytes.Contains(audit.Body, []byte(pw)) {
+		t.Fatalf("保存 SMTP 应留审计且绝不泄露密码: %s", audit.Body)
 	}
 
 	// 配置后 → 向导 needed=false。
