@@ -77,5 +77,6 @@ func (h *HTTP) setBackupSettings(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, "自动备份设置由环境变量提供（只读）。请修改 KARTWO_BACKUP_INTERVAL / KARTWO_BACKUP_RETENTION 后重启。")
 		return
 	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "backup.settings_update", "settings", "backup")
 	h.getBackupSettings(w, r)
 }

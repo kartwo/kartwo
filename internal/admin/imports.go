@@ -48,6 +48,7 @@ func (h *HTTP) executeImport(w http.ResponseWriter, r *http.Request) {
 		h.writeImportErr(w, err)
 		return
 	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "import.execute", "import", p.PublicID)
 	writeJSON(w, http.StatusOK, p)
 }
 func (h *HTTP) getImport(w http.ResponseWriter, r *http.Request) {

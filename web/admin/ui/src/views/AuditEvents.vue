@@ -19,6 +19,9 @@ function describe(event) {
     'product.delete': '删除商品',
     'variant.inventory_update': '更新库存',
     'variant.price_update': '更新价格',
+    'import.execute': '确认导入商品',
+    'backup.settings_update': '更新自动备份设置',
+    'payment.settings_update': '更新收款设置',
   }
   return labels[event.action] || event.action
 }
