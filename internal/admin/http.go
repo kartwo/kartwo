@@ -8,11 +8,13 @@ package admin
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/kartwo/kartwo/internal/audit"
 	"github.com/kartwo/kartwo/internal/backup"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/importer"
@@ -41,6 +43,7 @@ type HTTP struct {
 	pay       *payment.Service // 退款编排（M3.3a 起），可为 nil
 	mailCache *mail.Cache      // SMTP 凭证缓存（M4.3 设置页/测试发信/向导），可为 nil
 	exporter  *backup.Exporter // 全量数据导出（M5.6），可为 nil
+	audit     *audit.Service   // 关键后台动作的只追加审计记录（M6.1）
 	backupCfg BackupConfig     // 本地自动备份的有效配置与 env 覆盖状态（M5.12）
 	envDomain string           // KARTWO_DOMAIN（env 覆盖 DB 的域名来源，M4.2.1 域名步骤展示/只读判定）
 	secure    bool             // 本实例能否签发 HTTPS（prod=true，dev 恒 false），供 domain 页 https_capable
@@ -51,7 +54,7 @@ type HTTP struct {
 // 注意 cookie 的 Secure 标记按**每次请求**是否走 TLS 决定（决策 D8-A），与此参数无关。
 // envDomain=KARTWO_DOMAIN，非空时域名由 env 提供、后台只读（决策 C：env 覆盖 DB、不双写）。
 func NewHTTP(svc *Service, cat *catalog.Service, importSvc *importer.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc *payment.Service, mailCache *mail.Cache, exporter *backup.Exporter, backupCfg BackupConfig, envDomain string, secure bool) *HTTP {
-	return &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, orders: orderSvc, pay: paySvc, mailCache: mailCache, exporter: exporter, backupCfg: backupCfg, envDomain: envDomain, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
+	return &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, orders: orderSvc, pay: paySvc, mailCache: mailCache, exporter: exporter, audit: audit.New(svc.db), backupCfg: backupCfg, envDomain: envDomain, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
 }
 
 // Register 在给定 mux 上注册 /admin/api/* 路由。
@@ -114,6 +117,7 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("GET /admin/api/settings/backup", protect(h.getBackupSettings))
 	mux.Handle("PUT /admin/api/settings/backup", protect(h.setBackupSettings))
 	mux.Handle("GET /admin/api/export", protect(h.exportData))
+	mux.Handle("GET /admin/api/audit-events", protect(h.listAuditEvents))
 
 	// 订单 + 退款（M3.3a）。
 	mux.Handle("GET /admin/api/orders", protect(h.listOrders))
@@ -175,6 +179,7 @@ func (h *HTTP) login(w http.ResponseWriter, r *http.Request) {
 
 	h.setCookie(w, r, sessionCookie, sess.Token, sess.ExpiresAt, true)
 	h.setCookie(w, r, csrfCookie, sess.CSRFToken, sess.ExpiresAt, false) // 非 HttpOnly，供 SPA 读取回传
+	h.recordAudit(r, sess.AdminID, "admin.login", "admin", sess.AdminPublicID)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -186,7 +191,18 @@ func (h *HTTP) logout(w http.ResponseWriter, r *http.Request) {
 	}
 	h.clearCookie(w, r, sessionCookie, true)
 	h.clearCookie(w, r, csrfCookie, false)
+	h.recordAudit(r, ac.AdminID, "admin.logout", "admin", ac.AdminPublicID)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// recordAudit 以最小字段记录成功动作。审计存储不可用不应把已经完成的业务操作伪装成失败，故仅记服务端错误日志。
+func (h *HTTP) recordAudit(r *http.Request, adminID int64, action, targetType, targetPublicID string) {
+	if h.audit == nil {
+		return
+	}
+	if err := h.audit.Record(r.Context(), adminID, action, targetType, targetPublicID); err != nil {
+		slog.Error("审计事件写入失败", "action", action, "error", err)
+	}
 }
 
 func (h *HTTP) me(w http.ResponseWriter, r *http.Request) {

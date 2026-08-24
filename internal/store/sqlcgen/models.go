@@ -17,6 +17,16 @@ type AdminUser struct {
 	UpdatedAt    string `db:"updated_at" json:"updated_at"`
 }
 
+type AuditEvent struct {
+	ID             int64  `db:"id" json:"id"`
+	PublicID       string `db:"public_id" json:"public_id"`
+	AdminID        int64  `db:"admin_id" json:"admin_id"`
+	Action         string `db:"action" json:"action"`
+	TargetType     string `db:"target_type" json:"target_type"`
+	TargetPublicID string `db:"target_public_id" json:"target_public_id"`
+	CreatedAt      string `db:"created_at" json:"created_at"`
+}
+
 type Cart struct {
 	ID        int64  `db:"id" json:"id"`
 	Token     string `db:"token" json:"token"`

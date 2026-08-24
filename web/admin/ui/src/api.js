@@ -80,6 +80,7 @@ export const api = {
   diagnostics: () => request('GET', '/diagnostics'),
   getBackupSettings: () => request('GET', '/settings/backup'),
   setBackupSettings: (payload) => request('PUT', '/settings/backup', payload),
+  auditEvents: () => request('GET', '/audit-events'),
 
   listOrders: () => request('GET', '/orders'),
   getOrder: (id) => request('GET', '/orders/' + id),

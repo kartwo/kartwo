@@ -74,6 +74,7 @@ func (h *HTTP) createProduct(w http.ResponseWriter, r *http.Request) {
 		h.writeCatalogErr(w, err)
 		return
 	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "product.create", "product", publicID)
 	writeJSON(w, http.StatusCreated, map[string]any{"public_id": publicID})
 }
 
@@ -127,6 +128,7 @@ func (h *HTTP) updateProduct(w http.ResponseWriter, r *http.Request) {
 		h.writeCatalogErr(w, err)
 		return
 	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "product.update", "product", r.PathValue("id"))
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -135,6 +137,7 @@ func (h *HTTP) deleteProduct(w http.ResponseWriter, r *http.Request) {
 		h.writeCatalogErr(w, err)
 		return
 	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "product.delete", "product", r.PathValue("id"))
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -149,6 +152,7 @@ func (h *HTTP) setVariantInventory(w http.ResponseWriter, r *http.Request) {
 		h.writeCatalogErr(w, err)
 		return
 	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "variant.inventory_update", "variant", r.PathValue("id"))
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -169,6 +173,7 @@ func (h *HTTP) setVariantPrice(w http.ResponseWriter, r *http.Request) {
 		h.writeCatalogErr(w, err)
 		return
 	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "variant.price_update", "variant", r.PathValue("id"))
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

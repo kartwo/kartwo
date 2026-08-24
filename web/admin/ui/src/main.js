@@ -8,6 +8,7 @@ import Dashboard from './views/Dashboard.vue'
 import Diagnostics from './views/Diagnostics.vue'
 import ExportData from './views/ExportData.vue'
 import BackupSettings from './views/BackupSettings.vue'
+import AuditEvents from './views/AuditEvents.vue'
 import ProductList from './views/ProductList.vue'
 import ProductEdit from './views/ProductEdit.vue'
 import ImportCSV from './views/ImportCSV.vue'
@@ -27,6 +28,7 @@ const router = createRouter({
     { path: '/diagnostics', component: Diagnostics },
     { path: '/export', component: ExportData },
     { path: '/backup', component: BackupSettings },
+    { path: '/audit', component: AuditEvents },
     { path: '/products', component: ProductList },
     { path: '/products/new', component: ProductEdit },
     { path: '/products/:id', component: ProductEdit, props: true },
