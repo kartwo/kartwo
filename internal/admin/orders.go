@@ -70,6 +70,7 @@ func (h *HTTP) refundOrder(w http.ResponseWriter, r *http.Request) {
 	err := h.pay.Refund(r.Context(), r.PathValue("id"))
 	switch {
 	case err == nil:
+		h.recordAudit(r, authFrom(r.Context()).AdminID, "order.refund", "order", r.PathValue("id"))
 		o, _ := h.orders.AdminGet(r.Context(), r.PathValue("id"))
 		status := "refunded"
 		if o != nil {

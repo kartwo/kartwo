@@ -29,6 +29,7 @@ import (
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/migrate"
 	"github.com/kartwo/kartwo/internal/order"
+	"github.com/kartwo/kartwo/internal/payment"
 	"github.com/kartwo/kartwo/internal/redirect"
 	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/migrations"
@@ -361,6 +362,48 @@ func TestHTTPAuditEvents(t *testing.T) {
 	}
 	if !bytes.Contains(resp.Body, []byte(`"action":"admin.login"`)) || bytes.Contains(resp.Body, []byte("supersecret")) {
 		t.Fatalf("应记录登录且绝不泄露口令: %s", resp.Body)
+	}
+}
+
+type fakeRefundService struct{ calls int }
+
+func (s *fakeRefundService) Refund(_ context.Context, _ string) error {
+	s.calls++
+	if s.calls > 1 {
+		return payment.ErrNotRefundable
+	}
+	return nil
+}
+
+// TestHTTPRefundAuditOnlyAfterSuccess 确保退款审计只记录已成功完成的退款，重复退款不追加伪成功事件。
+func TestHTTPRefundAuditOnlyAfterSuccess(t *testing.T) {
+	h, mux := newHTTP(t)
+	fakePay := &fakeRefundService{}
+	h.pay = fakePay
+	sess, csrf := loginAndCookies(t, mux)
+
+	const orderID = "ord-refund-audit-001"
+	if ok := doJSON(t, mux, http.MethodPost, "/admin/api/orders/"+orderID+"/refund", "", []*http.Cookie{sess}, csrf); ok.StatusCode != http.StatusOK {
+		t.Fatalf("首次退款应 200，得 %d %s", ok.StatusCode, ok.Body)
+	}
+	if fakePay.calls != 1 {
+		t.Fatalf("退款服务调用次数 = %d，期望 1", fakePay.calls)
+	}
+
+	audit := doJSON(t, mux, http.MethodGet, "/admin/api/audit-events", "", []*http.Cookie{sess}, "")
+	if audit.StatusCode != http.StatusOK || !bytes.Contains(audit.Body, []byte(`"action":"order.refund"`)) || !bytes.Contains(audit.Body, []byte(orderID)) {
+		t.Fatalf("成功退款应留审计事件: %d %s", audit.StatusCode, audit.Body)
+	}
+	if n := bytes.Count(audit.Body, []byte(`"action":"order.refund"`)); n != 1 {
+		t.Fatalf("成功退款审计事件数 = %d，期望 1: %s", n, audit.Body)
+	}
+
+	if repeated := doJSON(t, mux, http.MethodPost, "/admin/api/orders/"+orderID+"/refund", "", []*http.Cookie{sess}, csrf); repeated.StatusCode != http.StatusConflict {
+		t.Fatalf("重复退款应 409，得 %d %s", repeated.StatusCode, repeated.Body)
+	}
+	audit = doJSON(t, mux, http.MethodGet, "/admin/api/audit-events", "", []*http.Cookie{sess}, "")
+	if n := bytes.Count(audit.Body, []byte(`"action":"order.refund"`)); n != 1 {
+		t.Fatalf("失败重复退款不应追加审计事件，得 %d: %s", n, audit.Body)
 	}
 }
 
