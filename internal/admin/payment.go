@@ -124,6 +124,7 @@ func (h *HTTP) setPayment(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "重载收款密钥失败")
 		return
 	}
+	h.recordAudit(r, ac.AdminID, "payment.settings_update", "settings", "payment")
 	h.getPayment(w, r)
 }
 

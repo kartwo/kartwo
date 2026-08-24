@@ -533,6 +533,29 @@ func TestHTTPCSVImport(t *testing.T) {
 	if list := doJSON(t, mux, "GET", "/admin/api/products", "", []*http.Cookie{sess}, ""); !bytes.Contains(list.Body, []byte("cap")) {
 		t.Fatal("确认导入后应有商品")
 	}
+	if audit := doJSON(t, mux, "GET", "/admin/api/audit-events", "", []*http.Cookie{sess}, ""); !bytes.Contains(audit.Body, []byte(`"action":"import.execute"`)) || !bytes.Contains(audit.Body, []byte(preview.PublicID)) {
+		t.Fatalf("确认导入应留审计事件: %s", audit.Body)
+	}
+}
+
+func TestHTTPAuditKeySettings(t *testing.T) {
+	_, mux := newHTTP(t)
+	sess, csrf := loginAndCookies(t, mux)
+	backup := doJSON(t, mux, http.MethodPut, "/admin/api/settings/backup", `{"interval":"90m","retention":"12"}`, []*http.Cookie{sess}, csrf)
+	if backup.StatusCode != http.StatusOK {
+		t.Fatalf("保存备份设置应 200，得 %d %s", backup.StatusCode, backup.Body)
+	}
+	payment := doJSON(t, mux, http.MethodPut, "/admin/api/settings/payment", `{"stripe":{"mode":"test","publishable":"pk_test_public","secret":"sk_test_secret","webhook_secret":"whsec_test_secret"}}`, []*http.Cookie{sess}, csrf)
+	if payment.StatusCode != http.StatusOK {
+		t.Fatalf("保存收款设置应 200，得 %d %s", payment.StatusCode, payment.Body)
+	}
+	audit := doJSON(t, mux, http.MethodGet, "/admin/api/audit-events", "", []*http.Cookie{sess}, "")
+	if audit.StatusCode != http.StatusOK || !bytes.Contains(audit.Body, []byte(`"action":"backup.settings_update"`)) || !bytes.Contains(audit.Body, []byte(`"action":"payment.settings_update"`)) {
+		t.Fatalf("关键设置应留审计事件: %d %s", audit.StatusCode, audit.Body)
+	}
+	if bytes.Contains(audit.Body, []byte("sk_test_secret")) || bytes.Contains(audit.Body, []byte("whsec_test_secret")) {
+		t.Fatalf("审计事件绝不能泄露收款密钥: %s", audit.Body)
+	}
 }
 
 func TestHTTPSetupWeakPasswordRejected(t *testing.T) {
