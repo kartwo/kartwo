@@ -52,5 +52,6 @@ func (h *HTTP) setMarket(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "无效的市场")
 		return
 	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "market.settings_update", "settings", "market")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "current": marketJSON(h.settings.Market(r.Context()))})
 }
