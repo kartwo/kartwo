@@ -70,17 +70,13 @@ $env:KARTWO_ENV="prod"; $env:KARTWO_HTTP_ADDR=":8080"; $env:KARTWO_DATA_DIR="./d
 
 <!-- TODO(M4.1 段二后)：Derek 在 macOS 亲验 darwin 构建后回填校正本层实际命令与预期输出 -->
 
-### 第 2 层 · 生产部署（Linux 服务器 / VPS）—— 待补全
+### 第 2 层 · 生产部署（Linux 服务器 / VPS）
 
-> 🚧 **待 M4.1 段二真机验证通过后，据实提炼真实跑通的流程 + 真实北极星计时写入。** 本轮先占位，不写未经真机验证的具体步骤。
+Kartwo 在生产模式自行监听 `:80` 与 `:443`，内嵌 Let's Encrypt 自动签发和续期证书；单机部署不需要 Nginx 或 Certbot。请按[生产部署图文手册](docs/production-deployment.md)操作，其中包含端口/DNS 检查、systemd 后台服务、HTTPS 验证、故障定位和可直接录制的视频分镜。
 
-将覆盖的结构（北极星路径：下载运行 → 配好收款 → 发布首个商品 → 店面带 HTTPS 可访问）：
-
-- 下载 Linux 二进制 → 在 VPS 运行（数据即文件夹，`KARTWO_DATA_DIR` 指向持久目录）。
-- 授权绑定 `:80` / `:443`（`setcap 'cap_net_bind_service=+ep'`，免全程 root）。
-- 开机向导填域名 → **内嵌 autocert 自动签发 / 续期 HTTPS**（无需手动折腾证书）。
-- 环境变量：`KARTWO_ENV=prod`、`KARTWO_DOMAIN`、`KARTWO_HTTP_ADDR` / `KARTWO_HTTPS_ADDR`、`KARTWO_ACME_DIRECTORY`（可指 Let's Encrypt Staging 预跑）。
-- 最低配置：1C1G VPS；需在**云厂商安全组**放行 80 / 443 入站。
+- 生产环境要求 Linux VPS、持久化数据目录与云安全组放行 TCP `80`/`443`。
+- 生产服务由 systemd 守护，可开机自启、异常重启和查看日志。
+- `KARTWO_DOMAIN` 填精确域名，不含 `https://`、路径或端口；`KARTWO_DATA_DIR` 必须指向已有店铺数据目录。
 
 ### 第 3 层 · 进阶（可选）
 
