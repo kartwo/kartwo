@@ -6,6 +6,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -21,9 +22,13 @@ import (
 	"github.com/kartwo/kartwo/internal/mail"
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/order"
-	"github.com/kartwo/kartwo/internal/payment"
 	"github.com/kartwo/kartwo/internal/settings"
 )
+
+// refundService 约束后台退款所需的最小能力，便于隔离 HTTP 审计边界与支付网关实现。
+type refundService interface {
+	Refund(ctx context.Context, orderPublicID string) error
+}
 
 const (
 	sessionCookie  = "kartwo_session"
@@ -40,7 +45,7 @@ type HTTP struct {
 	media     *media.Service
 	settings  *settings.Service
 	orders    *order.Service   // 后台订单页（M3.3a 起）
-	pay       *payment.Service // 退款编排（M3.3a 起），可为 nil
+	pay       refundService    // 退款编排（M3.3a 起），可为 nil
 	mailCache *mail.Cache      // SMTP 凭证缓存（M4.3 设置页/测试发信/向导），可为 nil
 	exporter  *backup.Exporter // 全量数据导出（M5.6），可为 nil
 	audit     *audit.Service   // 关键后台动作的只追加审计记录（M6.1）
@@ -53,7 +58,7 @@ type HTTP struct {
 // NewHTTP 构建 Admin HTTP 层。secure=true 表示本实例可启用 HTTPS（prod）；
 // 注意 cookie 的 Secure 标记按**每次请求**是否走 TLS 决定（决策 D8-A），与此参数无关。
 // envDomain=KARTWO_DOMAIN，非空时域名由 env 提供、后台只读（决策 C：env 覆盖 DB、不双写）。
-func NewHTTP(svc *Service, cat *catalog.Service, importSvc *importer.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc *payment.Service, mailCache *mail.Cache, exporter *backup.Exporter, backupCfg BackupConfig, envDomain string, secure bool) *HTTP {
+func NewHTTP(svc *Service, cat *catalog.Service, importSvc *importer.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc refundService, mailCache *mail.Cache, exporter *backup.Exporter, backupCfg BackupConfig, envDomain string, secure bool) *HTTP {
 	return &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, orders: orderSvc, pay: paySvc, mailCache: mailCache, exporter: exporter, audit: audit.New(svc.db), backupCfg: backupCfg, envDomain: envDomain, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
 }
 

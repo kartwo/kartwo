@@ -25,6 +25,7 @@ function describe(event) {
     'domain.settings_update': '更新域名设置',
     'market.settings_update': '更新市场设置',
     'smtp.settings_update': '更新邮件设置',
+    'order.refund': '退款订单',
   }
   return labels[event.action] || event.action
 }
