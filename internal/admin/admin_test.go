@@ -229,7 +229,7 @@ func newHTTPEnvDomain(t *testing.T, envDomain string) (*HTTP, http.Handler) {
 	mc := mail.NewCache(set)
 	svc.SetMailKeys(mc)
 	cat := catalog.New(svc.db)
-	h := NewHTTP(svc, cat, importer.New(svc.db, cat, md, redirect.New(svc.db)), md, set, ord, nil, mc, backup.New(svc.db, dataDir, "test-version"), BackupConfig{Interval: 24 * time.Hour, Retention: 7}, envDomain, false)
+	h := NewHTTP(svc, cat, importer.New(svc.db, cat, md, redirect.New(svc.db)), md, set, ord, nil, mc, backup.New(svc.db, dataDir, "test-version"), BackupConfig{Interval: 24 * time.Hour, Retention: 7}, envDomain, false, nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
@@ -1033,6 +1033,17 @@ func TestBackupSettings(t *testing.T) {
 	}
 	if r := doJSON(t, mux, "PUT", "/admin/api/settings/backup", `{"interval":"30s","retention":"0"}`, auth, csrf); r.StatusCode != http.StatusBadRequest {
 		t.Fatalf("非法设置应 400: %d %s", r.StatusCode, r.Body)
+	}
+}
+
+func TestBackupRemoteTestNotConfigured(t *testing.T) {
+	_, mux := newHTTP(t)
+	sess, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+
+	r := doJSON(t, mux, http.MethodPost, "/admin/api/settings/backup/test", "", auth, csrf)
+	if r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("未启用 WebDAV 时远端测试应 400，得 %d %s", r.StatusCode, r.Body)
 	}
 }
 
