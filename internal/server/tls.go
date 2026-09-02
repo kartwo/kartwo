@@ -9,6 +9,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -80,6 +82,30 @@ func TLSConfig(m *autocert.Manager) *tls.Config {
 	cfg := m.TLSConfig()
 	cfg.MinVersion = tls.VersionTLS12
 	return cfg
+}
+
+const tlsHandshakeErrorPrefix = "http: TLS handshake error from "
+
+// tlsErrorLogWriter 将公网扫描造成的 TLS 握手未完成降为 Debug；其他 HTTPS 服务错误仍按 Error 记录。
+type tlsErrorLogWriter struct{ logger *slog.Logger }
+
+func (w tlsErrorLogWriter) Write(p []byte) (int, error) {
+	message := strings.TrimSpace(string(p))
+	if strings.Contains(message, tlsHandshakeErrorPrefix) {
+		w.logger.Debug("TLS 握手未完成", "detail", message)
+	} else {
+		w.logger.Error("HTTPS 服务错误", "detail", message)
+	}
+	return len(p), nil
+}
+
+// TLSHandshakeErrorLogger 返回供 HTTPS http.Server 使用的错误日志器。
+// 未完成握手通常来自公网扫描器，避免其淹没正常 INFO 日志；并不改变 TLS 拒绝、HostPolicy 或证书安全策略。
+func TLSHandshakeErrorLogger(logger *slog.Logger) *log.Logger {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return log.New(tlsErrorLogWriter{logger: logger}, "", 0)
 }
 
 // normalizeHost 把请求 Host 规范化后用于与配置域名比较：去端口、去尾点、去大小写差异。

@@ -1,21 +1,41 @@
 // 自动 HTTPS 单元测试 / Automatic HTTPS Tests
-// 功能：域名来源优先级(env 覆盖 DB)、HostPolicy 白名单、HSTS 门控、证书目录权限
+// 功能：域名来源优先级(env 覆盖 DB)、HostPolicy 白名单、HSTS 门控、证书目录权限、TLS 噪声分级
 // 作者：仗键天涯(daxing)
 // 邮箱：3442535897@qq.com
 // 时间：2026-07-06 10:49:17
 package server
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/crypto/acme/autocert"
 )
+
+func TestTLSHandshakeErrorLogger(t *testing.T) {
+	var out bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&out, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	errorLog := TLSHandshakeErrorLogger(logger)
+
+	errorLog.Print("http: TLS handshake error from 203.0.113.9:443: client sent an HTTP request to an HTTPS server")
+	if got := out.String(); !strings.Contains(got, "level=DEBUG") || !strings.Contains(got, "TLS 握手未完成") {
+		t.Fatalf("握手噪声应降为 Debug，得 %q", got)
+	}
+
+	out.Reset()
+	errorLog.Print("http: unexpected Serve error")
+	if got := out.String(); !strings.Contains(got, "level=ERROR") || !strings.Contains(got, "HTTPS 服务错误") {
+		t.Fatalf("非握手错误必须保留 Error，得 %q", got)
+	}
+}
 
 // fakeDomainDB 是 DomainReader 的测试替身。
 type fakeDomainDB struct {

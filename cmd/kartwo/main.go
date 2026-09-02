@@ -345,7 +345,7 @@ func runServe(logger *slog.Logger) error {
 		if err != nil {
 			return listenHint(cfg.HTTPSAddr, err)
 		}
-		s := &http.Server{Handler: srv, ReadHeaderTimeout: 10 * time.Second}
+		s := &http.Server{Handler: srv, ReadHeaderTimeout: 10 * time.Second, ErrorLog: server.TLSHandshakeErrorLogger(logger)}
 		servers = append(servers, s)
 		go func() {
 			logger.Info("HTTPS 服务启动", "addr", cfg.HTTPSAddr, "role", "prod-https")

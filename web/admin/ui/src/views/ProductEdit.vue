@@ -19,6 +19,7 @@ const busy = ref(false)
 // 公共字段
 const title = ref('')
 const slug = ref('')
+const slugCustomized = ref(false)
 const description = ref('')
 const status = ref('draft')
 
@@ -45,6 +46,22 @@ function yuanToCents(y) {
   const n = Number(y)
   if (!Number.isFinite(n) || n < 0) return null
   return Math.round(n * 100)
+}
+
+// slugFromTitle 保留各语言的字母与数字，并将空格、标点等折为连字符。
+// Unicode 路径由浏览器按 URL 标准转义，中文商品名不会因自动建议而变成空 slug。
+function slugFromTitle(value) {
+  return value.normalize('NFKC').trim().toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function suggestSlug() {
+  if (!slugCustomized.value) slug.value = slugFromTitle(title.value)
+}
+
+function markSlugCustomized() {
+  slugCustomized.value = true
 }
 
 function generateMatrix() {
@@ -170,8 +187,8 @@ onMounted(() => { if (!isNew.value) load() })
 
   <div class="panel">
     <div class="row">
-      <div><label>标题</label><input v-model="title" /></div>
-      <div v-if="isNew"><label>slug（URL 标识，唯一）</label><input v-model="slug" /></div>
+      <div><label>标题</label><input v-model="title" @input="suggestSlug" /></div>
+      <div v-if="isNew"><label>slug（URL 标识，唯一；按标题自动生成，可手动修改）</label><input v-model="slug" @input="markSlugCustomized" /></div>
     </div>
     <label>描述</label>
     <textarea v-model="description" rows="2"></textarea>

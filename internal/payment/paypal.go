@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -269,7 +270,13 @@ func (p *PayPalProvider) VerifyWebhookPayPal(ctx context.Context, payload []byte
 	if err := json.Unmarshal(raw, &vr); err != nil || vr.VerificationStatus != "SUCCESS" {
 		return WebhookEvent{}, ErrSigMismatch
 	}
-	return parsePayPalEvent(payload)
+	parsedEvent, err := parsePayPalEvent(payload)
+	if err != nil {
+		return WebhookEvent{}, err
+	}
+	// 只记录验签结果与事件类型；不写入签名头、webhook_id、请求正文或订单/付款引用。
+	slog.Info("PayPal webhook 验签通过", "event_type", parsedEvent.Type)
+	return parsedEvent, nil
 }
 
 // parsePayPalEvent 规范化 PayPal 事件（capture 完成/退款）。
