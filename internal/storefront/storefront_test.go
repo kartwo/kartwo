@@ -53,7 +53,7 @@ func TestOrderPayPendingOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db),
-		fakeGateway{methods: []string{"stripe"}, url: "https://gw/pay"}, redirect.New(db), "Shop", "https://shop")
+		fakeGateway{methods: []string{"stripe"}, url: "https://gw/pay"}, redirect.New(db), "Shop", "https://shop", nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 
@@ -163,7 +163,7 @@ func newHTTP(t *testing.T) (*HTTP, http.Handler) {
 	if _, err := cat.CreateProduct(context.Background(), activeTee("tee")); err != nil {
 		t.Fatal(err)
 	}
-	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db), nil, redirect.New(db), "测试店", "https://shop.example")
+	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db), nil, redirect.New(db), "测试店", "https://shop.example", nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
@@ -231,7 +231,7 @@ func TestHTTPShopifyProductRedirect(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db), nil, redirectSvc, "测试店", "https://shop.example")
+	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db), nil, redirectSvc, "测试店", "https://shop.example", nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
 

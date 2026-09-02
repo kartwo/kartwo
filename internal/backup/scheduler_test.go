@@ -8,6 +8,8 @@ package backup
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -64,6 +66,81 @@ func TestCreatePersistentAndPrune(t *testing.T) {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("不应删除 %s: %v", filepath.Base(path), err)
 		}
+	}
+}
+
+type fakeUploader struct {
+	paths []string
+	err   error
+
+	tested bool
+}
+
+func (u *fakeUploader) Upload(_ context.Context, sourcePath string) error {
+	u.paths = append(u.paths, sourcePath)
+	return u.err
+}
+
+func (u *fakeUploader) Test(context.Context, string) error {
+	u.tested = true
+	return u.err
+}
+
+func TestSchedulerUploadFailureRecords(t *testing.T) {
+	dataDir := t.TempDir()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "shop.db"))
+	if err != nil {
+		t.Fatalf("打开数据库失败: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := migrate.Run(context.Background(), db, migrations.FS); err != nil {
+		t.Fatalf("迁移失败: %v", err)
+	}
+
+	exporter := New(db, dataDir, "test-version")
+	exporter.now = func() time.Time { return time.Date(2026, 8, 25, 1, 0, 0, 0, time.UTC) }
+	uploader := &fakeUploader{err: errors.New("broken")}
+	s := NewScheduler(exporter, time.Minute, 7, slog.Default(), uploader)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s.tick(ctx)
+
+	if len(uploader.paths) != 1 {
+		t.Fatalf("应尝试上传 1 次，得 %d", len(uploader.paths))
+	}
+	if uploader.paths[0] == "" {
+		t.Fatal("上传源路径不能为空")
+	}
+	if _, _, msg := s.RemoteStatus(); msg != "broken" {
+		t.Fatalf("错误上报应保留原文，得 %q", msg)
+	}
+}
+
+func TestSchedulerUploadSuccess(t *testing.T) {
+	dataDir := t.TempDir()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(dataDir, "shop.db"))
+	if err != nil {
+		t.Fatalf("打开数据库失败: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := migrate.Run(context.Background(), db, migrations.FS); err != nil {
+		t.Fatalf("迁移失败: %v", err)
+	}
+
+	exporter := New(db, dataDir, "test-version")
+	exporter.now = func() time.Time { return time.Date(2026, 8, 25, 1, 0, 0, 0, time.UTC) }
+	uploader := &fakeUploader{}
+	s := NewScheduler(exporter, time.Minute, 7, slog.Default(), uploader)
+	s.tick(context.Background())
+
+	if len(uploader.paths) != 1 {
+		t.Fatalf("应尝试上传 1 次，得 %d", len(uploader.paths))
+	}
+	if _, _, msg := s.RemoteStatus(); msg != "" {
+		t.Fatalf("成功应不保留错误消息: %q", msg)
 	}
 }
 

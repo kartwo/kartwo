@@ -34,6 +34,7 @@ func (h *HTTP) exportData(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "读取导出包失败")
 		return
 	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "export.create", "export", "shop-data")
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=kartwo-export-%s.zip", time.Now().UTC().Format("20060102T150405Z")))
 	http.ServeContent(w, r, "export.zip", info.ModTime(), f)

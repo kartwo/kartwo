@@ -7,6 +7,8 @@ package config
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -25,6 +27,8 @@ type Config struct {
 	ShopName string // 店铺名（店面展示/SEO），默认占位，向导完整化于 M4
 	Currency string // 币种代码（CNY/USD/EUR…），默认 CNY
 	BaseURL  string // 站点基址（用于 canonical/sitemap 绝对 URL）；空则按请求推导
+	// TrustedProxies 为可采信 X-Forwarded-Proto 的上游代理 CIDR/IP 白名单。
+	TrustedProxies []*net.IPNet
 
 	// —— M4.1 自动 HTTPS（仅 prod 生效）——
 	// Domain 为 env 覆盖来源的"当前生效域名"：非空即用且视为 locked（env>DB、覆盖非双写，
@@ -45,12 +49,36 @@ type Config struct {
 	// BackupIntervalEnv / BackupRetentionEnv 标记对应项是否被环境变量显式覆盖。
 	BackupIntervalEnv  bool
 	BackupRetentionEnv bool
+
+	// —— M5.9 备份到 WebDAV ——
+	// BackupWebDAVEnabled 控制是否启用异地 WebDAV 上传；默认 false。
+	BackupWebDAVEnabled bool
+	// BackupWebDAVURL 为异地 WebDAV 接入点（必须是 https://）。空即未配置。
+	BackupWebDAVURL string
+	// BackupWebDAVPath 为 WebDAV 中备份上传目录，默认 /.
+	BackupWebDAVPath string
+	// BackupWebDAVUsername 用于 Basic 认证；空则不带认证头。
+	BackupWebDAVUsername string
+	// BackupWebDAVPassword 优先使用环境变量；若未配置则为空。
+	BackupWebDAVPassword string
+	// BackupWebDAVEnabledEnv/BackupWebDAVURLEnv/BackupWebDAVPathEnv/BackupWebDAVUsernameEnv
+	// / BackupWebDAVPasswordEnv 标记对应项是否被环境变量显式覆盖。
+	BackupWebDAVEnabledEnv bool
+	BackupWebDAVURLEnv      bool
+	BackupWebDAVPathEnv     bool
+	BackupWebDAVUsernameEnv bool
+	BackupWebDAVPasswordEnv bool
 }
 
 const (
 	// BackupIntervalSetting / BackupRetentionSetting 是后台持久化的自部署备份设置键。
-	BackupIntervalSetting  = "backup.interval"
-	BackupRetentionSetting = "backup.retention"
+	BackupIntervalSetting       = "backup.interval"
+	BackupRetentionSetting      = "backup.retention"
+	BackupWebDAVEnabledSetting  = "backup.webdav.enabled" // #nosec G101 -- 持久化设置键名，不含凭证值。
+	BackupWebDAVURLSetting      = "backup.webdav.url" // #nosec G101 -- 持久化设置键名，不含凭证值。
+	BackupWebDAVPathSetting     = "backup.webdav.path" // #nosec G101 -- 持久化设置键名，不含凭证值。
+	BackupWebDAVUsernameSetting = "backup.webdav.username" // #nosec G101 -- 持久化设置键名，不含凭证值。
+	BackupWebDAVPasswordSetting = "backup.webdav.password" // #nosec G101 -- 持久化设置键名，不含凭证值。
 )
 
 // Load 从环境变量读取配置并填默认值。
@@ -68,8 +96,16 @@ func Load() (*Config, error) {
 		HTTPAddr:        getEnv("KARTWO_HTTP_ADDR", ":80"),
 		HTTPSAddr:       getEnv("KARTWO_HTTPS_ADDR", ":443"),
 		ACMEDirectory:   strings.TrimSpace(getEnv("KARTWO_ACME_DIRECTORY", "")),
-		BackupInterval:  24 * time.Hour,
-		BackupRetention: 7,
+		BackupInterval:   24 * time.Hour,
+		BackupRetention:  7,
+		BackupWebDAVPath: "/",
+	}
+	if raw, ok := os.LookupEnv("KARTWO_TRUSTED_PROXIES"); ok {
+		parsed, err := ParseTrustedProxies(raw)
+		if err != nil {
+			return nil, fmt.Errorf("非法 KARTWO_TRUSTED_PROXIES=%q（%v）", raw, err)
+		}
+		cfg.TrustedProxies = parsed
 	}
 
 	switch cfg.Env {
@@ -95,6 +131,37 @@ func Load() (*Config, error) {
 		}
 		cfg.BackupRetention, cfg.BackupRetentionEnv = retention, true
 	}
+	if raw, ok := os.LookupEnv("KARTWO_BACKUP_WEBDAV_ENABLED"); ok && raw != "" {
+		enabled, err := ParseBackupWebDAVEnabled(raw)
+		if err != nil {
+			return nil, fmt.Errorf("非法 KARTWO_BACKUP_WEBDAV_ENABLED=%q（应为 true / false）", raw)
+		}
+		cfg.BackupWebDAVEnabled, cfg.BackupWebDAVEnabledEnv = enabled, true
+	}
+	if raw, ok := os.LookupEnv("KARTWO_BACKUP_WEBDAV_URL"); ok && raw != "" {
+		parsed, err := ParseBackupWebDAVURL(raw)
+		if err != nil {
+			return nil, fmt.Errorf("非法 KARTWO_BACKUP_WEBDAV_URL=%q（%v）", raw, err)
+		}
+		cfg.BackupWebDAVURL = parsed
+		cfg.BackupWebDAVURLEnv = true
+	}
+	if raw, ok := os.LookupEnv("KARTWO_BACKUP_WEBDAV_PATH"); ok && raw != "" {
+		if parsed, err := ParseBackupWebDAVPath(raw); err != nil {
+			return nil, fmt.Errorf("非法 KARTWO_BACKUP_WEBDAV_PATH=%q（%v）", raw, err)
+		} else {
+			cfg.BackupWebDAVPath = parsed
+			cfg.BackupWebDAVPathEnv = true
+		}
+	}
+	if raw, ok := os.LookupEnv("KARTWO_BACKUP_WEBDAV_USERNAME"); ok {
+		cfg.BackupWebDAVUsername = strings.TrimSpace(raw)
+		cfg.BackupWebDAVUsernameEnv = true
+	}
+	if raw, ok := os.LookupEnv("KARTWO_BACKUP_WEBDAV_PASSWORD"); ok {
+		cfg.BackupWebDAVPassword = raw
+		cfg.BackupWebDAVPasswordEnv = true
+	}
 
 	// M0 仅落地 sqlite 默认实现；postgres 作为升级项接口占位。
 	if cfg.DBEngine != "sqlite" {
@@ -112,6 +179,82 @@ func ParseBackupInterval(raw string) (time.Duration, error) {
 		return 0, fmt.Errorf("备份周期应为不小于 1m 的 Go duration")
 	}
 	return interval, nil
+}
+
+// ParseTrustedProxies 解析可信代理白名单。
+// 支持 CIDR（如 203.0.113.0/24）和单 IP（如 198.51.100.10）。
+func ParseTrustedProxies(raw string) ([]*net.IPNet, error) {
+	parts := strings.Split(raw, ",")
+	out := make([]*net.IPNet, 0, len(parts))
+	for _, item := range parts {
+		v := strings.TrimSpace(item)
+		if v == "" {
+			continue
+		}
+		if strings.Contains(v, "/") {
+			_, c, err := net.ParseCIDR(v)
+			if err != nil {
+				return nil, fmt.Errorf("代理白名单项 %q 不是合法 CIDR", v)
+			}
+			out = append(out, c)
+			continue
+		}
+
+		ip := net.ParseIP(v)
+		if ip == nil {
+			return nil, fmt.Errorf("代理白名单项 %q 不是合法 IP", v)
+		}
+		bits := 128
+		if ip4 := ip.To4(); ip4 != nil {
+			ip = ip4
+			bits = 32
+		}
+		out = append(out, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+	}
+	return out, nil
+}
+
+// ParseBackupWebDAVEnabled 校验布尔表达式。
+func ParseBackupWebDAVEnabled(raw string) (bool, error) {
+	value, err := strconv.ParseBool(strings.TrimSpace(raw))
+	if err != nil {
+		return false, fmt.Errorf("WebDAV 开关应为 true / false")
+	}
+	return value, nil
+}
+
+// ParseBackupWebDAVURL 校验 WebDAV URL（必须是 https URL）。
+func ParseBackupWebDAVURL(raw string) (string, error) {
+	u := strings.TrimSpace(raw)
+	parsed, err := url.Parse(u)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("WebDAV 地址需为合法 URL")
+	}
+	if parsed.Scheme != "https" {
+		return "", fmt.Errorf("WebDAV 地址仅支持 https")
+	}
+	if parsed.User != nil {
+		return "", fmt.Errorf("WebDAV 地址不能包含用户名或密码")
+	}
+	return parsed.String(), nil
+}
+
+// ParseBackupWebDAVPath 校验远端目录路径。空则转成根目录。
+func ParseBackupWebDAVPath(raw string) (string, error) {
+	path := strings.TrimSpace(raw)
+	if path == "" {
+		return "/", nil
+	}
+	if strings.Contains(path, " ") {
+		return "", fmt.Errorf("WebDAV 路径不能包含空白字符")
+	}
+	if path[0] != '/' {
+		return "", fmt.Errorf("WebDAV 路径必须以 / 开头")
+	}
+	if path != "/" && strings.HasSuffix(path, "/") {
+		path = strings.TrimSuffix(path, "/")
+	}
+	return path, nil
 }
 
 // ParseBackupRetention 校验后台与环境变量共同使用的保留份数。
@@ -141,6 +284,38 @@ func (c *Config) ApplyBackupSettings(get func(string) (string, error)) error {
 				return fmt.Errorf("数据库备份保留数无效: %w", err)
 			}
 			c.BackupRetention = retention
+		}
+	}
+	if !c.BackupWebDAVEnabledEnv {
+		if raw, err := get(BackupWebDAVEnabledSetting); err == nil && strings.TrimSpace(raw) != "" {
+			enabled, err := ParseBackupWebDAVEnabled(raw)
+			if err != nil {
+				return fmt.Errorf("数据库备份 WebDAV 开关无效: %w", err)
+			}
+			c.BackupWebDAVEnabled = enabled
+		}
+	}
+	if !c.BackupWebDAVURLEnv {
+		if raw, err := get(BackupWebDAVURLSetting); err == nil && strings.TrimSpace(raw) != "" {
+			u, err := ParseBackupWebDAVURL(raw)
+			if err != nil {
+				return fmt.Errorf("数据库备份 WebDAV 地址无效: %w", err)
+			}
+			c.BackupWebDAVURL = u
+		}
+	}
+	if !c.BackupWebDAVPathEnv {
+		if raw, err := get(BackupWebDAVPathSetting); err == nil && strings.TrimSpace(raw) != "" {
+			p, err := ParseBackupWebDAVPath(raw)
+			if err != nil {
+				return fmt.Errorf("数据库备份 WebDAV 路径无效: %w", err)
+			}
+			c.BackupWebDAVPath = p
+		}
+	}
+	if !c.BackupWebDAVUsernameEnv {
+		if raw, err := get(BackupWebDAVUsernameSetting); err == nil {
+			c.BackupWebDAVUsername = strings.TrimSpace(raw)
 		}
 	}
 	return nil

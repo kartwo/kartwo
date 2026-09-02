@@ -124,6 +124,18 @@ func TestDefaultPolicy(t *testing.T) {
 	}
 }
 
+func TestDiskHealth(t *testing.T) {
+	if health, _ := diskHealth(10<<30, DefaultMinFreeBytes); health != "critical" {
+		t.Fatalf("保护线应为 critical，得 %q", health)
+	}
+	if health, _ := diskHealth(10<<30, 500<<20); health != "warning" {
+		t.Fatalf("低于 10%% 应为 warning，得 %q", health)
+	}
+	if health, _ := diskHealth(10<<30, 2<<30); health != "normal" {
+		t.Fatalf("容量充足应为 normal，得 %q", health)
+	}
+}
+
 // ---- service ----
 
 func newMediaSvc(t *testing.T, maxPer int) (*Service, *sql.DB, int64) {

@@ -7,6 +7,8 @@ package media
 
 import "errors"
 
+const DefaultMinFreeBytes uint64 = 200 << 20
+
 var (
 	// ErrFileTooLarge 单文件超过上限。
 	ErrFileTooLarge = errors.New("media: 文件超过大小上限")

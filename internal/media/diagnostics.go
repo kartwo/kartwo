@@ -16,6 +16,8 @@ type DiskUsage struct {
 	TotalBytes uint64
 	FreeBytes  uint64
 	UsedBytes  uint64
+	Health     string
+	Hint       string
 	Message    string
 }
 
@@ -45,6 +47,19 @@ func (s *Service) Diagnostics(ctx context.Context) (Usage, error) {
 		out.Disk.Message = "暂时无法读取媒体磁盘容量"
 		return out, nil
 	}
-	out.Disk = DiskUsage{Available: true, TotalBytes: total, FreeBytes: free, UsedBytes: total - free}
+	health, hint := diskHealth(total, free)
+	out.Disk = DiskUsage{Available: true, TotalBytes: total, FreeBytes: free, UsedBytes: total - free, Health: health, Hint: hint}
 	return out, nil
+}
+
+// diskHealth 将容量读数转成不改变策略的商家提示。紧急线与默认上传护栏一致；
+// 注意线仅用于提前提醒，避免容量告急才发现问题。
+func diskHealth(total, free uint64) (string, string) {
+	if free <= DefaultMinFreeBytes {
+		return "critical", "可用空间已接近上传保护线（200 MB）；请立即清理磁盘或扩容，新图片上传可能已暂停。"
+	}
+	if total > 0 && free*10 < total {
+		return "warning", "可用空间低于磁盘总量的 10%；建议尽快下载导出并清理磁盘或扩容。"
+	}
+	return "normal", "容量充足。"
 }

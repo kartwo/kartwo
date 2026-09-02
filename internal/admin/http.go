@@ -19,6 +19,7 @@ import (
 	"github.com/kartwo/kartwo/internal/backup"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/importer"
+	"github.com/kartwo/kartwo/internal/httpx"
 	"github.com/kartwo/kartwo/internal/mail"
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/order"
@@ -52,14 +53,15 @@ type HTTP struct {
 	backupCfg BackupConfig     // 本地自动备份的有效配置与 env 覆盖状态（M5.12）
 	envDomain string           // KARTWO_DOMAIN（env 覆盖 DB 的域名来源，M4.2.1 域名步骤展示/只读判定）
 	secure    bool             // 本实例能否签发 HTTPS（prod=true，dev 恒 false），供 domain 页 https_capable
-	limiter   *loginLimiter    // 注：cookie 的 Secure 标记**不再**由此字段决定，改按请求实际是否 TLS（见 secureFor）
+	limiter   *loginLimiter
+	trusted   []*net.IPNet
 }
 
 // NewHTTP 构建 Admin HTTP 层。secure=true 表示本实例可启用 HTTPS（prod）；
 // 注意 cookie 的 Secure 标记按**每次请求**是否走 TLS 决定（决策 D8-A），与此参数无关。
 // envDomain=KARTWO_DOMAIN，非空时域名由 env 提供、后台只读（决策 C：env 覆盖 DB、不双写）。
-func NewHTTP(svc *Service, cat *catalog.Service, importSvc *importer.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc refundService, mailCache *mail.Cache, exporter *backup.Exporter, backupCfg BackupConfig, envDomain string, secure bool) *HTTP {
-	return &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, orders: orderSvc, pay: paySvc, mailCache: mailCache, exporter: exporter, audit: audit.New(svc.db), backupCfg: backupCfg, envDomain: envDomain, secure: secure, limiter: newLoginLimiter(5, time.Minute)}
+func NewHTTP(svc *Service, cat *catalog.Service, importSvc *importer.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc refundService, mailCache *mail.Cache, exporter *backup.Exporter, backupCfg BackupConfig, envDomain string, secure bool, trusted []*net.IPNet) *HTTP {
+	return &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, orders: orderSvc, pay: paySvc, mailCache: mailCache, exporter: exporter, audit: audit.New(svc.db), backupCfg: backupCfg, envDomain: envDomain, secure: secure, trusted: trusted, limiter: newLoginLimiter(5, time.Minute)}
 }
 
 // Register 在给定 mux 上注册 /admin/api/* 路由。
@@ -121,6 +123,7 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("GET /admin/api/diagnostics", protect(h.diagnostics))
 	mux.Handle("GET /admin/api/settings/backup", protect(h.getBackupSettings))
 	mux.Handle("PUT /admin/api/settings/backup", protect(h.setBackupSettings))
+	mux.Handle("POST /admin/api/settings/backup/test", protect(h.testBackupRemote))
 	mux.Handle("GET /admin/api/export", protect(h.exportData))
 	mux.Handle("GET /admin/api/audit-events", protect(h.listAuditEvents))
 
@@ -215,30 +218,23 @@ func (h *HTTP) me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"username": ac.Username, "public_id": ac.AdminPublicID})
 }
 
-// secureFor 判定本次响应的 cookie 是否该带 Secure：**按请求实际是否走 TLS**，
-// 而非静态的 Env=="prod"（决策 D8-A）。
-//
-// 为什么必须按请求判：prod 明文态（HTTP-only 评估态、或域名已配但 DNS/证书未就绪时
-// 走裸 IP 的逃生路）下，浏览器会**整条丢弃**明文来源发来的 `Set-Cookie; Secure`
-// （RFC 6265bis §5.5），表现为「login 返 200、随后 me 返 401」——商家永远登不进后台。
-// 真机实证：Chrome + 192.168.0.132:8080 + KARTWO_ENV=prod，session 与 csrf 两条均被丢弃。
-//
-// 已知限制（本轮不做）：反代终止 TLS 时 r.TLS==nil，HTTPS 站点会发出非 Secure cookie
-// （功能不坏但是降级）。正解需「可信代理白名单 + 仅在白名单内采信 X-Forwarded-Proto」，
-// 盲信该头可被伪造，属超范围。详见 DECISIONS。
-func secureFor(r *http.Request) bool { return r.TLS != nil }
+// secureFor 判定当前请求是否该发 Secure Cookie。
+// 先按请求 TLS 判定；若无 TLS，仅当来源 IP 在可信代理白名单且 X-Forwarded-Proto 为 https 时采信。
+func (h *HTTP) secureFor(r *http.Request) bool {
+	return httpx.IsSecureRequest(r, h.trusted)
+}
 
 func (h *HTTP) setCookie(w http.ResponseWriter, r *http.Request, name, value string, expires time.Time, httpOnly bool) {
 	http.SetCookie(w, &http.Cookie{
 		Name: name, Value: value, Path: "/", Expires: expires,
-		HttpOnly: httpOnly, Secure: secureFor(r), SameSite: http.SameSiteLaxMode,
+		HttpOnly: httpOnly, Secure: h.secureFor(r), SameSite: http.SameSiteLaxMode,
 	})
 }
 
 func (h *HTTP) clearCookie(w http.ResponseWriter, r *http.Request, name string, httpOnly bool) {
 	http.SetCookie(w, &http.Cookie{
 		Name: name, Value: "", Path: "/", MaxAge: -1,
-		HttpOnly: httpOnly, Secure: secureFor(r), SameSite: http.SameSiteLaxMode,
+		HttpOnly: httpOnly, Secure: h.secureFor(r), SameSite: http.SameSiteLaxMode,
 	})
 }
 

@@ -73,9 +73,10 @@ function formatTime(value) {
         <template v-if="data.disk.available">
           <dl class="diagnostic-grid">
             <div><dt>总容量</dt><dd>{{ bytes(data.disk.total_bytes) }}</dd></div>
-            <div><dt>可用空间</dt><dd class="ok">{{ bytes(data.disk.free_bytes) }}</dd></div>
+            <div><dt>可用空间</dt><dd :class="{ ok: data.disk.health === 'normal', err: data.disk.health === 'critical' }">{{ bytes(data.disk.free_bytes) }}</dd></div>
             <div><dt>已用空间</dt><dd>{{ bytes(data.disk.used_bytes) }}</dd></div>
           </dl>
+          <p class="disk-hint" :class="{ err: data.disk.health === 'critical', muted: data.disk.health !== 'critical' }">{{ data.disk.hint }}</p>
         </template>
         <p v-else class="err">{{ data.disk.message }}</p>
       </section>
@@ -107,4 +108,5 @@ function formatTime(value) {
 .diagnostic-grid div { padding-top: var(--sp-2); border-top: 1px solid var(--border); }
 dt { color: var(--text-muted); font-size: var(--fs-sm); }
 dd { margin: var(--sp-1) 0 0; font-size: var(--fs-lg); font-weight: 600; }
+.disk-hint { margin: 0; font-size: var(--fs-sm); }
 </style>

@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/kartwo/kartwo/internal/backup"
+	"github.com/kartwo/kartwo/internal/media"
 )
 
 // diagnostics 返回本机可即时探测的健康项；外部服务探测将在各自能力到位后追加。
@@ -35,7 +36,8 @@ func (h *HTTP) diagnostics(w http.ResponseWriter, r *http.Request) {
 		"disk": map[string]any{
 			"available": usage.Disk.Available, "total_bytes": usage.Disk.TotalBytes,
 			"free_bytes": usage.Disk.FreeBytes, "used_bytes": usage.Disk.UsedBytes,
-			"message": usage.Disk.Message,
+			"health": usage.Disk.Health, "hint": usage.Disk.Hint,
+			"upload_guard_free_bytes": media.DefaultMinFreeBytes, "message": usage.Disk.Message,
 		},
 		"backups": backupUsage,
 	})

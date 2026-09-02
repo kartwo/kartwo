@@ -246,6 +246,10 @@ func TestHTTPExportData(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("导出应 200，得 %d %s", resp.StatusCode, resp.Body)
 	}
+	audit := doJSON(t, mux, "GET", "/admin/api/audit-events", "", login.Cookies, "")
+	if audit.StatusCode != http.StatusOK || !bytes.Contains(audit.Body, []byte(`"action":"export.create"`)) || !bytes.Contains(audit.Body, []byte(`"target_public_id":"shop-data"`)) {
+		t.Fatalf("成功生成导出包应留审计事件: %d %s", audit.StatusCode, audit.Body)
+	}
 	reader, err := zip.NewReader(bytes.NewReader(resp.Body), int64(len(resp.Body)))
 	if err != nil {
 		t.Fatalf("响应应为 ZIP: %v", err)
@@ -750,10 +754,26 @@ func TestHTTPMediaUpload(t *testing.T) {
 	if len(lst.Media) != 1 || len(lst.Media[0].Derivatives) == 0 {
 		t.Fatalf("媒体列表异常: %+v", lst)
 	}
+	mediaID := lst.Media[0].PublicID
+	audit := doJSON(t, mux, "GET", "/admin/api/audit-events", "", auth, "")
+	if audit.StatusCode != http.StatusOK || !bytes.Contains(audit.Body, []byte(`"action":"media.upload"`)) || !bytes.Contains(audit.Body, []byte(mediaID)) {
+		t.Fatalf("上传成功应留媒体审计事件: %d %s", audit.StatusCode, audit.Body)
+	}
 
 	// 删除
-	if dr := doJSON(t, mux, "DELETE", "/admin/api/media/"+lst.Media[0].PublicID, "", auth, csrf); dr.StatusCode != http.StatusOK {
+	if dr := doJSON(t, mux, "DELETE", "/admin/api/media/"+mediaID, "", auth, csrf); dr.StatusCode != http.StatusOK {
 		t.Fatalf("删图 = %d，期望 200", dr.StatusCode)
+	}
+	audit = doJSON(t, mux, "GET", "/admin/api/audit-events", "", auth, "")
+	if audit.StatusCode != http.StatusOK || !bytes.Contains(audit.Body, []byte(`"action":"media.delete"`)) || !bytes.Contains(audit.Body, []byte(mediaID)) {
+		t.Fatalf("删除成功应留媒体审计事件: %d %s", audit.StatusCode, audit.Body)
+	}
+	if dr := doJSON(t, mux, "DELETE", "/admin/api/media/"+mediaID, "", auth, csrf); dr.StatusCode != http.StatusNotFound {
+		t.Fatalf("重复删图应 404，得 %d", dr.StatusCode)
+	}
+	audit = doJSON(t, mux, "GET", "/admin/api/audit-events", "", auth, "")
+	if n := bytes.Count(audit.Body, []byte(`"action":"media.delete"`)); n != 1 {
+		t.Fatalf("失败重复删除不应追加审计事件，得 %d: %s", n, audit.Body)
 	}
 }
 

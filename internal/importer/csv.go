@@ -102,10 +102,12 @@ func (s *Service) preview(ctx context.Context, src io.Reader, format string) (Pr
 
 // formatHashKey 随解析语义变化升级，避免历史被拒绝预览阻止修复后的同一文件重试。
 func formatHashKey(format string) string {
-	if format == FormatShopify {
+	switch format {
+	case FormatShopify:
 		return "shopify-v2-images"
+	default:
+		return format
 	}
-	return format
 }
 
 // Execute 将一个无错误预览一次性写入；成功任务重复执行只返回原结果。

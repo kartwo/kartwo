@@ -46,6 +46,7 @@ func (h *HTTP) uploadMedia(w http.ResponseWriter, r *http.Request) {
 		h.writeMediaErr(w, err)
 		return
 	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "media.upload", "media", asset.PublicID)
 	writeJSON(w, http.StatusCreated, mediaAssetJSON(asset))
 }
 
@@ -68,10 +69,12 @@ func (h *HTTP) listMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTP) deleteMedia(w http.ResponseWriter, r *http.Request) {
-	if err := h.media.Delete(r.Context(), r.PathValue("id")); err != nil {
+	mediaID := r.PathValue("id")
+	if err := h.media.Delete(r.Context(), mediaID); err != nil {
 		h.writeMediaErr(w, err)
 		return
 	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "media.delete", "media", mediaID)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

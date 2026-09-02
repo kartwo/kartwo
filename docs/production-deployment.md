@@ -9,6 +9,8 @@
 
 > 安全提醒：不要把 `sk_`、`pk_`、`whsec_`、后台口令、SSH 私钥或数据库文件发到聊天记录、截图、Git 仓库或视频中。
 
+> 默认部署是 Kartwo 直接监听公网 `80`、`443`。只有已经使用 Nginx、Caddy、Cloudflare Tunnel 等可信反向代理时，才需要阅读第 1.1 节；不要为了使用反代而额外引入它。
+
 ## 0. 先理解整体结构
 
 ```mermaid
@@ -91,6 +93,40 @@ ufw status
 ```
 
 若使用 Cloudflare，第一次签发证书时建议将记录切到“仅 DNS/灰云”。不要使用 Cloudflare 的 `Flexible SSL`；证书正常后如需代理，使用 `Full (strict)`。
+
+### 1.1 可选：已有可信反向代理时的安全配置
+
+Kartwo 默认不信任 `X-Forwarded-Proto`，因此即使外层反代伪造或客户端直接伪造这个请求头，也不会让 Cookie 误带 `Secure` 标记或让 canonical URL 误报 HTTPS。只有当请求的直接来源地址列入 `KARTWO_TRUSTED_PROXIES` 时，Kartwo 才会采信 `X-Forwarded-Proto: https`。
+
+适用场景是反代在外层终止 TLS、再以 HTTP 转发到 Kartwo。例如反代与 Kartwo 都在同一台机器时，可以在 systemd 服务中加入：
+
+```ini
+Environment=KARTWO_TRUSTED_PROXIES=127.0.0.1,::1
+```
+
+反代在另一台私网机器时，填写那台反代机器的精确 IP 或私网 CIDR，例如：
+
+```ini
+Environment=KARTWO_TRUSTED_PROXIES=10.0.20.15,10.0.30.0/24
+```
+
+不要填写 `0.0.0.0/0`、`::/0` 或公网网段；这等于允许任意客户端伪造 HTTPS 状态。修改 systemd 文件后执行：
+
+```bash
+systemctl daemon-reload
+systemctl restart kartwo
+```
+
+反代必须覆盖或设置 `X-Forwarded-Proto`，不能把客户端自带的同名头直接透传。以 Nginx 为例：
+
+```nginx
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_pass http://127.0.0.1:8080;
+```
+
+配置后通过外部 HTTPS 地址打开 `/admin/` 并登录。浏览器开发者工具中，响应的 `Set-Cookie` 应带有 `Secure`；访问店面并加入购物车后，购物车 Cookie 也应带有 `Secure`。未配置可信代理时，这两类 Cookie 不会因伪造的请求头被标记为 `Secure`。
 
 ## 2. 放置正式二进制和数据目录
 

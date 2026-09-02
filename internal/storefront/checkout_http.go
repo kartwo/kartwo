@@ -162,7 +162,7 @@ func (h *HTTP) paypalReturn(w http.ResponseWriter, r *http.Request) {
 // clearCartCookie 清空购物车 cookie。需要 r：清除指令的 Secure 同样按请求实际是否 TLS 判定
 // （明文来源发出的带 Secure 的 Set-Cookie 会被浏览器整条丢弃，清除指令根本不会被处理）。
 func (h *HTTP) clearCartCookie(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{Name: cartCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: secureFor(r), SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: cartCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: h.secureFor(r), SameSite: http.SameSiteLaxMode})
 }
 
 func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {

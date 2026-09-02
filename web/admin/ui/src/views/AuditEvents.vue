@@ -26,6 +26,9 @@ function describe(event) {
     'market.settings_update': '更新市场设置',
     'smtp.settings_update': '更新邮件设置',
     'order.refund': '退款订单',
+    'media.upload': '上传商品图片',
+    'media.delete': '删除商品图片',
+    'export.create': '生成数据导出包',
   }
   return labels[event.action] || event.action
 }

@@ -30,6 +30,7 @@ const newVariants = ref([])
 const variants = ref([])
 const media = ref([])
 const fileInput = ref(null)
+const uploading = ref(false)
 
 function parseAxes() {
   return axes.value
@@ -134,13 +135,15 @@ async function saveVariant(v) {
 
 async function onUpload(ev) {
   const file = ev.target.files && ev.target.files[0]
-  if (!file) return
+  if (!file || uploading.value) return
+  uploading.value = true
   busy.value = true
   try {
     await api.uploadMedia(props.id, file)
     await loadMedia()
     toast.success('图片已上传')
   } catch (e) { toast.error(e.message) } finally {
+    uploading.value = false
     busy.value = false
     if (fileInput.value) fileInput.value.value = ''
   }
@@ -251,14 +254,16 @@ onMounted(() => { if (!isNew.value) load() })
     <div class="spacer"></div>
     <div class="panel">
       <h3>图片</h3>
-      <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp" @change="onUpload" />
+      <p class="upload-note">建议选择 100KB–8MB 的 JPG、PNG 或 WebP 图片；系统最大支持 10MB。</p>
+      <input ref="fileInput" type="file" :disabled="uploading" accept="image/png,image/jpeg,image/webp" @change="onUpload" />
+      <p v-if="uploading" class="upload-hint" role="status">正在上传并生成图片，请勿关闭页面。</p>
       <div class="thumbs">
         <figure v-for="m in media" :key="m.public_id">
           <img :src="thumb(m)" :alt="m.public_id" />
           <button class="danger" style="margin-top:.3rem; width:96px" @click="removeMedia(m)">删除</button>
         </figure>
       </div>
-      <p v-if="!media.length" class="muted">还没有图片，选一张上传。</p>
+      <p v-if="!media.length && !uploading" class="muted">还没有图片，选一张上传。</p>
     </div>
   </template>
 </template>
@@ -272,4 +277,10 @@ onMounted(() => { if (!isNew.value) load() })
   line-height: 1.55; max-width: 64ch;
 }
 .status-hint.warn { color: var(--warn); background: var(--warn-bg); border-color: var(--warn); }
+.upload-hint {
+  margin: var(--sp-2) 0 0; color: var(--accent); font-size: var(--fs-sm);
+}
+.upload-note {
+  margin: 0 0 var(--sp-2); color: var(--text-muted); font-size: var(--fs-sm);
+}
 </style>

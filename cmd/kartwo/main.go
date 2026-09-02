@@ -152,7 +152,7 @@ func setup(logger *slog.Logger) (*config.Config, *store.Store, error) {
 func newMediaService(cfg *config.Config, st *store.Store) *media.Service {
 	mediaRoot := filepath.Join(cfg.DataDir, "media")
 	// 默认存储策略：不限总量，单文件 ≤10MiB，磁盘可用 <200MiB 时停新上传。
-	return media.New(st.DB, media.NewLocalBackend(mediaRoot), media.NewDefaultPolicy(mediaRoot, 10<<20, 200<<20), 20)
+	return media.New(st.DB, media.NewLocalBackend(mediaRoot), media.NewDefaultPolicy(mediaRoot, 10<<20, media.DefaultMinFreeBytes), 20)
 }
 
 // runSeedDemo 装入演示商品（含一张演示封面图）并打印变体矩阵，完成后退出。
@@ -246,8 +246,34 @@ func runServe(logger *slog.Logger) error {
 	catalogSvc := catalog.New(st.DB)
 	redirectSvc := redirect.New(st.DB)
 	exporter := backup.New(st.DB, cfg.DataDir, Version)
-	adminHTTP := admin.NewHTTP(adminSvc, catalogSvc, importer.New(st.DB, catalogSvc, mediaSvc, redirectSvc), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, exporter, admin.BackupConfig{Interval: cfg.BackupInterval, Retention: cfg.BackupRetention, IntervalEnv: cfg.BackupIntervalEnv, RetentionEnv: cfg.BackupRetentionEnv}, cfg.Domain, cfg.Env == "prod")
-	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, redirectSvc, cfg.ShopName, cfg.BaseURL)
+	var remoteUploader backup.Uploader
+	if cfg.BackupWebDAVEnabled {
+		if cfg.BackupWebDAVURL == "" {
+			logger.Warn("未配置 WebDAV 地址，异地备份已跳过", "backup_webdav", "disabled")
+		} else if cfg.BackupWebDAVPassword == "" {
+			logger.Warn("未配置 WebDAV 密码，异地备份已跳过", "backup_webdav", "disabled")
+		} else {
+			if uploader, err := backup.NewWebDAVUploader(cfg.BackupWebDAVURL, cfg.BackupWebDAVUsername, cfg.BackupWebDAVPassword, cfg.BackupWebDAVPath); err == nil {
+				remoteUploader = uploader
+				logger.Info("WebDAV 异地备份已启用", "url", cfg.BackupWebDAVURL, "path", cfg.BackupWebDAVPath)
+			} else {
+				logger.Warn("WebDAV 配置无效，异地备份已跳过", "err", err)
+			}
+		}
+	}
+	backupCfg := admin.BackupConfig{Interval: cfg.BackupInterval, Retention: cfg.BackupRetention, IntervalEnv: cfg.BackupIntervalEnv, RetentionEnv: cfg.BackupRetentionEnv}
+	backupCfg.WebDAVEnabled = cfg.BackupWebDAVEnabled
+	backupCfg.WebDAVEnabledEnv = cfg.BackupWebDAVEnabledEnv
+	backupCfg.WebDAVURLEnv = cfg.BackupWebDAVURLEnv
+	backupCfg.WebDAVPasswordEnv = cfg.BackupWebDAVPasswordEnv
+	backupCfg.WebDAVPassword = cfg.BackupWebDAVPassword
+	backupCfg.WebDAVURL = cfg.BackupWebDAVURL
+	backupCfg.WebDAVPath = cfg.BackupWebDAVPath
+	backupCfg.WebDAVUsername = cfg.BackupWebDAVUsername
+	backupCfg.WebDAVUsernameEnv = cfg.BackupWebDAVUsernameEnv
+	backupCfg.WebDAVPathEnv = cfg.BackupWebDAVPathEnv
+	adminHTTP := admin.NewHTTP(adminSvc, catalogSvc, importer.New(st.DB, catalogSvc, mediaSvc, redirectSvc), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, exporter, backupCfg, cfg.Domain, cfg.Env == "prod", cfg.TrustedProxies)
+	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, redirectSvc, cfg.ShopName, cfg.BaseURL, cfg.TrustedProxies)
 	payHTTP := payment.NewHTTP(paySvc)
 	// 解析"当前生效域名"（env 覆盖 DB），决定是否启用 HTTPS（仅 prod）。
 	baseCtx := context.Background()
@@ -267,7 +293,7 @@ func runServe(logger *slog.Logger) error {
 	// 邮件发送 worker：后台轮询 outbox 异步发信（不阻塞下单），随 ctx 取消停止。
 	go mail.NewWorker(st.DB, mailCache, logger, 0).Run(ctx)
 	// 本地全量备份走独立 goroutine，不阻塞 HTTP 服务启动；首次启动即生成一份。
-	go backup.NewScheduler(exporter, cfg.BackupInterval, cfg.BackupRetention, logger).Run(ctx)
+	go backup.NewScheduler(exporter, cfg.BackupInterval, cfg.BackupRetention, logger, remoteUploader).Run(ctx)
 
 	var servers []*http.Server
 	errCh := make(chan error, 1)

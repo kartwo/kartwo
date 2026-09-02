@@ -173,6 +173,8 @@ func (s *Service) HandlePayPalWebhook(ctx context.Context, payload []byte, heade
 	if err != nil {
 		return err
 	}
+	slog.Info("PayPal webhook 签名已验签通过", "provider", "paypal", "event_id", ev.ID,
+		"event_type", ev.Type, "transmission_id", headers.Get("Paypal-Transmission-Id"))
 	switch ev.Type {
 	case "PAYMENT.CAPTURE.COMPLETED":
 		if ev.OrderRef == "" {

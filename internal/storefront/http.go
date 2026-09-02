@@ -6,17 +6,18 @@
 package storefront
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
+	"net"
 	"net/http"
 	"strings"
 
-	"context"
-
 	"github.com/kartwo/kartwo/internal/cart"
+	"github.com/kartwo/kartwo/internal/httpx"
 	"github.com/kartwo/kartwo/internal/order"
 	"github.com/kartwo/kartwo/internal/payment"
 	"github.com/kartwo/kartwo/internal/redirect"
@@ -35,6 +36,7 @@ var tmplFS embed.FS
 
 // HTTP 承载店面页面与 SEO 端点。
 type HTTP struct {
+	trusted   []*net.IPNet
 	svc       *Service
 	cart      *cart.Service
 	order     *order.Service
@@ -50,26 +52,25 @@ type HTTP struct {
 	orderTmpl *template.Template
 }
 
-// secureFor 判定本次响应的 cookie 是否该带 Secure：**按请求实际是否走 TLS**，
-// 而非静态的 Env=="prod"（决策 D8-A 同口径；admin 包内有同名同义实现，
-// 两包互不依赖故各留一份，与 effectiveDomain 在 admin 内复刻 server 口径同例）。
+// secureFor 判定本次响应的 Cookie 是否该带 Secure：直连 TLS 始终安全；
+// 反向代理终止 TLS 时，仅可信代理白名单内的 X-Forwarded-Proto=https 可被采信。
 //
 // 明文来源发出的带 Secure 的 Set-Cookie 会被浏览器整条丢弃（RFC 6265bis §5.5）——
 // 对购物车 cookie 意味着 prod 明文态（HTTP-only 评估态 / 裸 IP 逃生路）下
 // 顾客每次请求都拿到新的空车，**加购不生效**。
-//
-// 已知限制（同 D8-A，本轮不做）：反代终止 TLS 时 r.TLS==nil，会发出非 Secure cookie。
-// 正解需可信代理白名单 + 仅在白名单内采信 X-Forwarded-Proto，盲信该头可被伪造。
-func secureFor(r *http.Request) bool { return r.TLS != nil }
+func (h *HTTP) secureFor(r *http.Request) bool {
+	return httpx.IsSecureRequest(r, h.trusted)
+}
 
 // NewHTTP 构建店面 HTTP 层。货币按当前主攻市场逐请求解析（向导切市场即时生效）。
 // 注：cookie 的 Secure 标记按**每次请求**是否走 TLS 决定（见 secureFor），故不再需要 secure 参数。
-func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, settingsSvc *settings.Service, pay PaymentGateway, redirectSvc *redirect.Service, shopName, baseURL string) *HTTP {
+func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, settingsSvc *settings.Service, pay PaymentGateway, redirectSvc *redirect.Service, shopName, baseURL string, trusted []*net.IPNet) *HTTP {
 	parse := func(page string) *template.Template {
 		return template.Must(template.New("").ParseFS(tmplFS, "templates/base.html", page))
 	}
 	return &HTTP{
-		svc: svc, cart: cartSvc, order: orderSvc, settings: settingsSvc, pay: pay, redirect: redirectSvc, shopName: shopName,
+		trusted: trusted,
+		svc:     svc, cart: cartSvc, order: orderSvc, settings: settingsSvc, pay: pay, redirect: redirectSvc, shopName: shopName,
 		baseURL:   strings.TrimRight(baseURL, "/"),
 		homeTmpl:  parse("templates/home.html"),
 		prodTmpl:  parse("templates/product.html"),
@@ -143,7 +144,7 @@ func (h *HTTP) base(r *http.Request) string {
 		return h.baseURL
 	}
 	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+	if h.secureFor(r) {
 		scheme = "https"
 	}
 	return scheme + "://" + r.Host
