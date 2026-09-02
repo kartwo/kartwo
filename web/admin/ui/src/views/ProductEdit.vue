@@ -2,6 +2,7 @@
 <script setup>
 import { ref, computed, onMounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { pinyin } from 'pinyin-pro'
 import { api, APIError } from '../api.js'
 import { useToast } from '../toast.js'
 import ErrorState from '../components/ErrorState.vue'
@@ -20,6 +21,8 @@ const busy = ref(false)
 const title = ref('')
 const slug = ref('')
 const slugCustomized = ref(false)
+const translationConfigured = ref(false)
+let translationTimer
 const description = ref('')
 const status = ref('draft')
 
@@ -48,16 +51,22 @@ function yuanToCents(y) {
   return Math.round(n * 100)
 }
 
-// slugFromTitle 保留各语言的字母与数字，并将空格、标点等折为连字符。
-// Unicode 路径由浏览器按 URL 标准转义，中文商品名不会因自动建议而变成空 slug。
+// slugFromTitle 在浏览器本地将中文标题转为无声调英文拼音，空格和标点折为连字符。
+// 不调用在线翻译或转写服务，商品标题不会离开浏览器。
 function slugFromTitle(value) {
-  return value.normalize('NFKC').trim().toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
+  return pinyin(value, { toneType: 'none', type: 'array' }).join('-').toLowerCase()
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
 }
 
 function suggestSlug() {
-  if (!slugCustomized.value) slug.value = slugFromTitle(title.value)
+  if (slugCustomized.value) return
+  slug.value = slugFromTitle(title.value)
+  clearTimeout(translationTimer)
+  if (translationConfigured.value && title.value.trim()) translationTimer = setTimeout(async () => {
+    try { const r = await api.translateSlug(title.value); if (!slugCustomized.value) slug.value = slugFromTitle(r.text) } catch (_) { /* 保留拼音回退 */ }
+  }, 900)
 }
 
 function markSlugCustomized() {
@@ -175,7 +184,7 @@ function thumb(m) {
   return d ? d.url : m.original_url
 }
 
-onMounted(() => { if (!isNew.value) load() })
+onMounted(async () => { if (!isNew.value) return load(); try { translationConfigured.value = !!(await api.getTranslation()).configured } catch (_) {} })
 </script>
 
 <template>
@@ -188,7 +197,7 @@ onMounted(() => { if (!isNew.value) load() })
   <div class="panel">
     <div class="row">
       <div><label>标题</label><input v-model="title" @input="suggestSlug" /></div>
-      <div v-if="isNew"><label>slug（URL 标识，唯一；按标题自动生成，可手动修改）</label><input v-model="slug" @input="markSlugCustomized" /></div>
+      <div v-if="isNew"><label>slug（英文 URL 标识，唯一；中文标题自动转拼音，可手动修改）</label><input v-model="slug" @input="markSlugCustomized" /></div>
     </div>
     <label>描述</label>
     <textarea v-model="description" rows="2"></textarea>

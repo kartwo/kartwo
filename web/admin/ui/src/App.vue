@@ -219,6 +219,7 @@ onMounted(refresh)
         <RouterLink to="/payment">收款</RouterLink>
         <RouterLink to="/domain">域名</RouterLink>
         <RouterLink to="/smtp">邮件</RouterLink>
+        <RouterLink to="/translation">翻译</RouterLink>
         <span class="muted">{{ username }}</span>
         <button @click="doLogout">登出</button>
       </div>

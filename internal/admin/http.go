@@ -18,8 +18,8 @@ import (
 	"github.com/kartwo/kartwo/internal/audit"
 	"github.com/kartwo/kartwo/internal/backup"
 	"github.com/kartwo/kartwo/internal/catalog"
-	"github.com/kartwo/kartwo/internal/importer"
 	"github.com/kartwo/kartwo/internal/httpx"
+	"github.com/kartwo/kartwo/internal/importer"
 	"github.com/kartwo/kartwo/internal/mail"
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/order"
@@ -100,6 +100,9 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	// 收款设置（Stripe 密钥；sk/whsec 加密存）。
 	mux.Handle("GET /admin/api/settings/payment", protect(h.getPayment))
 	mux.Handle("PUT /admin/api/settings/payment", protect(h.setPayment))
+	mux.Handle("GET /admin/api/settings/translation", protect(h.getTranslationSettings))
+	mux.Handle("PUT /admin/api/settings/translation", protect(h.setTranslationSettings))
+	mux.Handle("POST /admin/api/translation/slug", protect(h.translateSlug))
 
 	// 向导：收款步骤状态 / 跳过。
 	mux.Handle("GET /admin/api/wizard/payment", protect(h.wizardPaymentStatus))

@@ -62,6 +62,9 @@ export const api = {
 
   getPayment: () => request('GET', '/settings/payment'),
   setPayment: (payload) => request('PUT', '/settings/payment', payload),
+  getTranslation: () => request('GET', '/settings/translation'),
+  setTranslation: (payload) => request('PUT', '/settings/translation', payload),
+  translateSlug: (title) => request('POST', '/translation/slug', { title }),
   wizardPayment: () => request('GET', '/wizard/payment'),
   wizardPaymentSkip: () => request('POST', '/wizard/payment/skip'),
 

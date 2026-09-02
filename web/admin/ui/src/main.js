@@ -16,6 +16,7 @@ import MarketSelect from './views/MarketSelect.vue'
 import PaymentSettings from './views/PaymentSettings.vue'
 import DomainSettings from './views/DomainSettings.vue'
 import SmtpSettings from './views/SmtpSettings.vue'
+import TranslationSettings from './views/TranslationSettings.vue'
 import OrderList from './views/OrderList.vue'
 import OrderDetail from './views/OrderDetail.vue'
 import './style.css'
@@ -37,6 +38,7 @@ const router = createRouter({
     { path: '/payment', component: PaymentSettings },
     { path: '/domain', component: DomainSettings },
     { path: '/smtp', component: SmtpSettings },
+    { path: '/translation', component: TranslationSettings },
     { path: '/orders', component: OrderList },
     { path: '/orders/:id', component: OrderDetail, props: true },
   ],
