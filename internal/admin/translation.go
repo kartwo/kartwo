@@ -1,5 +1,5 @@
 // 翻译服务设置 / Translation Service Settings
-// 功能：加密保存 DeepL API Key，提供 Developer/Growth 配置、连通测试与中文标题英文 slug 翻译
+// 功能：加密保存 DeepL API Key，按商家点击将中文辅助文本翻译为英文
 // 作者：仗键天涯(daxing)
 // 邮箱：3442535897@qq.com
 // 时间：2026-09-02 18:10:00
@@ -64,16 +64,20 @@ func (h *HTTP) setTranslationSettings(w http.ResponseWriter, r *http.Request) {
 	h.getTranslationSettings(w, r)
 }
 
-func (h *HTTP) translateSlug(w http.ResponseWriter, r *http.Request) {
+func (h *HTTP) translateText(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Title string `json:"title"`
+		Text string `json:"text"`
 	}
 	if !readJSON(w, r, &req) {
 		return
 	}
-	title := strings.TrimSpace(req.Title)
-	if title == "" || len([]rune(title)) > 200 {
-		writeErr(w, http.StatusBadRequest, "标题长度应为 1–200 字")
+	text := strings.TrimSpace(req.Text)
+	if text == "" || len([]rune(text)) > 2000 {
+		writeErr(w, http.StatusBadRequest, "翻译内容长度应为 1–2000 字")
+		return
+	}
+	if _, err := h.settings.Get(r.Context(), translationKeyKey); err != nil {
+		writeErr(w, http.StatusServiceUnavailable, "尚未设置翻译 API，请先前往翻译服务设置")
 		return
 	}
 	ac := authFrom(r.Context())
@@ -88,9 +92,9 @@ func (h *HTTP) translateSlug(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	plan, _ := h.settings.Get(r.Context(), translationPlanKey)
-	translated, err := deepLTranslate(r.Context(), plan, string(key), title)
+	translated, err := deepLTranslate(r.Context(), plan, string(key), text)
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, "英文翻译暂不可用，已保留拼音 slug")
+		writeErr(w, http.StatusBadGateway, "英文翻译暂不可用，请稍后重试或手工填写")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"text": translated})

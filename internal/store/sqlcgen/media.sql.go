@@ -49,7 +49,7 @@ func (q *Queries) CountMediaByProduct(ctx context.Context, productID int64) (int
 
 const createMediaAsset = `-- name: CreateMediaAsset :execlastid
 
-INSERT INTO media_asset (public_id, product_id, content_hash, original_path, mime, width, height, size_bytes, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO media_asset (public_id, product_id, content_hash, original_path, mime, width, height, size_bytes, position, alt_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateMediaAssetParams struct {
@@ -62,6 +62,7 @@ type CreateMediaAssetParams struct {
 	Height       int64  `db:"height" json:"height"`
 	SizeBytes    int64  `db:"size_bytes" json:"size_bytes"`
 	Position     int64  `db:"position" json:"position"`
+	AltText      string `db:"alt_text" json:"alt_text"`
 }
 
 // Media Queries
@@ -79,6 +80,7 @@ func (q *Queries) CreateMediaAsset(ctx context.Context, arg CreateMediaAssetPara
 		arg.Height,
 		arg.SizeBytes,
 		arg.Position,
+		arg.AltText,
 	)
 	if err != nil {
 		return 0, err
@@ -191,7 +193,7 @@ func (q *Queries) ListDerivativesByAsset(ctx context.Context, assetID int64) ([]
 }
 
 const listMediaByProduct = `-- name: ListMediaByProduct :many
-SELECT id, public_id, content_hash, original_path, mime, width, height, size_bytes, position FROM media_asset WHERE product_id = ? AND deleted_at IS NULL ORDER BY position, id
+SELECT id, public_id, content_hash, original_path, mime, width, height, size_bytes, position, alt_text FROM media_asset WHERE product_id = ? AND deleted_at IS NULL ORDER BY position, id
 `
 
 type ListMediaByProductRow struct {
@@ -204,6 +206,7 @@ type ListMediaByProductRow struct {
 	Height       int64  `db:"height" json:"height"`
 	SizeBytes    int64  `db:"size_bytes" json:"size_bytes"`
 	Position     int64  `db:"position" json:"position"`
+	AltText      string `db:"alt_text" json:"alt_text"`
 }
 
 func (q *Queries) ListMediaByProduct(ctx context.Context, productID int64) ([]ListMediaByProductRow, error) {
@@ -225,6 +228,7 @@ func (q *Queries) ListMediaByProduct(ctx context.Context, productID int64) ([]Li
 			&i.Height,
 			&i.SizeBytes,
 			&i.Position,
+			&i.AltText,
 		); err != nil {
 			return nil, err
 		}
@@ -294,5 +298,19 @@ UPDATE media_asset SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE i
 
 func (q *Queries) SoftDeleteMedia(ctx context.Context, id int64) error {
 	_, err := q.db.ExecContext(ctx, softDeleteMedia, id)
+	return err
+}
+
+const updateMediaAlt = `-- name: UpdateMediaAlt :exec
+UPDATE media_asset SET alt_text = ? WHERE public_id = ? AND deleted_at IS NULL
+`
+
+type UpdateMediaAltParams struct {
+	AltText  string `db:"alt_text" json:"alt_text"`
+	PublicID string `db:"public_id" json:"public_id"`
+}
+
+func (q *Queries) UpdateMediaAlt(ctx context.Context, arg UpdateMediaAltParams) error {
+	_, err := q.db.ExecContext(ctx, updateMediaAlt, arg.AltText, arg.PublicID)
 	return err
 }

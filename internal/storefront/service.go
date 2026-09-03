@@ -32,6 +32,7 @@ type CatalogItem struct {
 	Description   string
 	FromCents     int64
 	ThumbURL      string
+	ThumbAlt      string
 	UpdatedAt     string
 }
 
@@ -40,6 +41,7 @@ type Image struct {
 	Thumb  string
 	Medium string
 	Large  string
+	Alt    string
 	W, H   int
 }
 
@@ -59,6 +61,7 @@ type ProductPage struct {
 	Title       string
 	Slug        string
 	Description string
+	SEODescription string
 	PublicID    string
 	UpdatedAt   string
 	MinCents    int64
@@ -82,10 +85,10 @@ func (s *Service) ListCatalog(ctx context.Context) ([]CatalogItem, error) {
 		} else if ok {
 			item.FromCents = cents
 		}
-		if thumb, err := s.firstThumb(ctx, r.ID); err != nil {
+		if thumb, err := s.firstThumb(ctx, r.ID, r.Title); err != nil {
 			return nil, err
 		} else {
-			item.ThumbURL = thumb
+			item.ThumbURL, item.ThumbAlt = thumb.Medium, thumb.Alt
 		}
 		out = append(out, item)
 	}
@@ -101,7 +104,7 @@ func (s *Service) GetProduct(ctx context.Context, slug string) (*ProductPage, er
 		return nil, fmt.Errorf("storefront: 取商品失败: %w", err)
 	}
 	page := &ProductPage{
-		Title: p.Title, Slug: p.Slug, Description: p.Description, PublicID: p.PublicID, UpdatedAt: p.UpdatedAt,
+		Title: p.Title, Slug: p.Slug, Description: p.Description, SEODescription: p.SeoDescription, PublicID: p.PublicID, UpdatedAt: p.UpdatedAt,
 	}
 
 	// 变体 + 选项 + 库存。
@@ -149,7 +152,7 @@ func (s *Service) GetProduct(ctx context.Context, slug string) (*ProductPage, er
 	}
 
 	// 图片（多尺寸）。
-	imgs, err := s.images(ctx, p.ID)
+	imgs, err := s.images(ctx, p.ID, p.Title)
 	if err != nil {
 		return nil, err
 	}
@@ -174,21 +177,18 @@ func (s *Service) minPrice(ctx context.Context, productID int64) (int64, bool, e
 	return min, true, nil
 }
 
-func (s *Service) firstThumb(ctx context.Context, productID int64) (string, error) {
-	imgs, err := s.images(ctx, productID)
+func (s *Service) firstThumb(ctx context.Context, productID int64, fallbackAlt string) (Image, error) {
+	imgs, err := s.images(ctx, productID, fallbackAlt)
 	if err != nil {
-		return "", err
+		return Image{}, err
 	}
 	if len(imgs) == 0 {
-		return "", nil
+		return Image{}, nil
 	}
-	if imgs[0].Thumb != "" {
-		return imgs[0].Thumb, nil
-	}
-	return imgs[0].Medium, nil
+	return imgs[0], nil
 }
 
-func (s *Service) images(ctx context.Context, productID int64) ([]Image, error) {
+func (s *Service) images(ctx context.Context, productID int64, fallbackAlt string) ([]Image, error) {
 	assets, err := s.q.ListMediaByProduct(ctx, productID)
 	if err != nil {
 		return nil, fmt.Errorf("storefront: 列图片失败: %w", err)
@@ -199,7 +199,7 @@ func (s *Service) images(ctx context.Context, productID int64) ([]Image, error) 
 		if err != nil {
 			return nil, fmt.Errorf("storefront: 列派生失败: %w", err)
 		}
-		img := Image{}
+		img := Image{Alt: firstNonEmpty(a.AltText, fallbackAlt)}
 		for _, d := range ds {
 			url := "/media/" + d.Path
 			switch d.Label {

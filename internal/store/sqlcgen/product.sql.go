@@ -47,15 +47,19 @@ func (q *Queries) CreateOptionValue(ctx context.Context, arg CreateOptionValuePa
 
 const createProduct = `-- name: CreateProduct :execlastid
 
-INSERT INTO product (public_id, title, slug, description, status) VALUES (?, ?, ?, ?, ?)
+INSERT INTO product (public_id, title, title_zh, slug, slug_zh, description, seo_description, seo_description_zh, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateProductParams struct {
-	PublicID    string `db:"public_id" json:"public_id"`
-	Title       string `db:"title" json:"title"`
-	Slug        string `db:"slug" json:"slug"`
-	Description string `db:"description" json:"description"`
-	Status      string `db:"status" json:"status"`
+	PublicID         string `db:"public_id" json:"public_id"`
+	Title            string `db:"title" json:"title"`
+	TitleZh          string `db:"title_zh" json:"title_zh"`
+	Slug             string `db:"slug" json:"slug"`
+	SlugZh           string `db:"slug_zh" json:"slug_zh"`
+	Description      string `db:"description" json:"description"`
+	SeoDescription   string `db:"seo_description" json:"seo_description"`
+	SeoDescriptionZh string `db:"seo_description_zh" json:"seo_description_zh"`
+	Status           string `db:"status" json:"status"`
 }
 
 // Product & Option Queries
@@ -66,8 +70,12 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (i
 	result, err := q.db.ExecContext(ctx, createProduct,
 		arg.PublicID,
 		arg.Title,
+		arg.TitleZh,
 		arg.Slug,
+		arg.SlugZh,
 		arg.Description,
+		arg.SeoDescription,
+		arg.SeoDescriptionZh,
 		arg.Status,
 	)
 	if err != nil {
@@ -77,18 +85,22 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (i
 }
 
 const getProductByPublicID = `-- name: GetProductByPublicID :one
-SELECT id, public_id, title, slug, description, status, created_at, updated_at FROM product WHERE public_id = ? AND deleted_at IS NULL
+SELECT id, public_id, title, title_zh, slug, slug_zh, description, seo_description, seo_description_zh, status, created_at, updated_at FROM product WHERE public_id = ? AND deleted_at IS NULL
 `
 
 type GetProductByPublicIDRow struct {
-	ID          int64  `db:"id" json:"id"`
-	PublicID    string `db:"public_id" json:"public_id"`
-	Title       string `db:"title" json:"title"`
-	Slug        string `db:"slug" json:"slug"`
-	Description string `db:"description" json:"description"`
-	Status      string `db:"status" json:"status"`
-	CreatedAt   string `db:"created_at" json:"created_at"`
-	UpdatedAt   string `db:"updated_at" json:"updated_at"`
+	ID               int64  `db:"id" json:"id"`
+	PublicID         string `db:"public_id" json:"public_id"`
+	Title            string `db:"title" json:"title"`
+	TitleZh          string `db:"title_zh" json:"title_zh"`
+	Slug             string `db:"slug" json:"slug"`
+	SlugZh           string `db:"slug_zh" json:"slug_zh"`
+	Description      string `db:"description" json:"description"`
+	SeoDescription   string `db:"seo_description" json:"seo_description"`
+	SeoDescriptionZh string `db:"seo_description_zh" json:"seo_description_zh"`
+	Status           string `db:"status" json:"status"`
+	CreatedAt        string `db:"created_at" json:"created_at"`
+	UpdatedAt        string `db:"updated_at" json:"updated_at"`
 }
 
 func (q *Queries) GetProductByPublicID(ctx context.Context, publicID string) (GetProductByPublicIDRow, error) {
@@ -98,8 +110,12 @@ func (q *Queries) GetProductByPublicID(ctx context.Context, publicID string) (Ge
 		&i.ID,
 		&i.PublicID,
 		&i.Title,
+		&i.TitleZh,
 		&i.Slug,
+		&i.SlugZh,
 		&i.Description,
+		&i.SeoDescription,
+		&i.SeoDescriptionZh,
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -108,18 +124,22 @@ func (q *Queries) GetProductByPublicID(ctx context.Context, publicID string) (Ge
 }
 
 const getProductBySlug = `-- name: GetProductBySlug :one
-SELECT id, public_id, title, slug, description, status, created_at, updated_at FROM product WHERE slug = ? AND deleted_at IS NULL
+SELECT id, public_id, title, title_zh, slug, slug_zh, description, seo_description, seo_description_zh, status, created_at, updated_at FROM product WHERE slug = ? AND deleted_at IS NULL
 `
 
 type GetProductBySlugRow struct {
-	ID          int64  `db:"id" json:"id"`
-	PublicID    string `db:"public_id" json:"public_id"`
-	Title       string `db:"title" json:"title"`
-	Slug        string `db:"slug" json:"slug"`
-	Description string `db:"description" json:"description"`
-	Status      string `db:"status" json:"status"`
-	CreatedAt   string `db:"created_at" json:"created_at"`
-	UpdatedAt   string `db:"updated_at" json:"updated_at"`
+	ID               int64  `db:"id" json:"id"`
+	PublicID         string `db:"public_id" json:"public_id"`
+	Title            string `db:"title" json:"title"`
+	TitleZh          string `db:"title_zh" json:"title_zh"`
+	Slug             string `db:"slug" json:"slug"`
+	SlugZh           string `db:"slug_zh" json:"slug_zh"`
+	Description      string `db:"description" json:"description"`
+	SeoDescription   string `db:"seo_description" json:"seo_description"`
+	SeoDescriptionZh string `db:"seo_description_zh" json:"seo_description_zh"`
+	Status           string `db:"status" json:"status"`
+	CreatedAt        string `db:"created_at" json:"created_at"`
+	UpdatedAt        string `db:"updated_at" json:"updated_at"`
 }
 
 func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (GetProductBySlugRow, error) {
@@ -129,8 +149,12 @@ func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (GetProduct
 		&i.ID,
 		&i.PublicID,
 		&i.Title,
+		&i.TitleZh,
 		&i.Slug,
+		&i.SlugZh,
 		&i.Description,
+		&i.SeoDescription,
+		&i.SeoDescriptionZh,
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -193,20 +217,26 @@ func (q *Queries) SoftDeleteProduct(ctx context.Context, id int64) error {
 }
 
 const updateProduct = `-- name: UpdateProduct :exec
-UPDATE product SET title = ?, description = ?, status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND deleted_at IS NULL
+UPDATE product SET title = ?, title_zh = ?, description = ?, seo_description = ?, seo_description_zh = ?, status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND deleted_at IS NULL
 `
 
 type UpdateProductParams struct {
-	Title       string `db:"title" json:"title"`
-	Description string `db:"description" json:"description"`
-	Status      string `db:"status" json:"status"`
-	ID          int64  `db:"id" json:"id"`
+	Title            string `db:"title" json:"title"`
+	TitleZh          string `db:"title_zh" json:"title_zh"`
+	Description      string `db:"description" json:"description"`
+	SeoDescription   string `db:"seo_description" json:"seo_description"`
+	SeoDescriptionZh string `db:"seo_description_zh" json:"seo_description_zh"`
+	Status           string `db:"status" json:"status"`
+	ID               int64  `db:"id" json:"id"`
 }
 
 func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) error {
 	_, err := q.db.ExecContext(ctx, updateProduct,
 		arg.Title,
+		arg.TitleZh,
 		arg.Description,
+		arg.SeoDescription,
+		arg.SeoDescriptionZh,
 		arg.Status,
 		arg.ID,
 	)

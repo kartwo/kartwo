@@ -4,7 +4,7 @@
 <div class="grid">
   {{range .Items}}
   <a class="card" href="/p/{{.Slug}}">
-    {{if .ThumbURL}}<img class="ph" src="{{.ThumbURL}}" alt="{{.Title}}" loading="lazy" width="300" height="300" />{{else}}<span class="ph"></span>{{end}}
+    {{if .ThumbURL}}<img class="ph" src="{{.ThumbURL}}" alt="{{.ThumbAlt}}" loading="lazy" width="300" height="300" />{{else}}<span class="ph"></span>{{end}}
     <div class="body">
       <div class="t">{{.Title}}</div>
       <div class="price">From {{call $.Money .FromCents}}</div>

@@ -193,7 +193,7 @@ func (h *HTTP) product(w http.ResponseWriter, r *http.Request) {
 		"Money":    h.money(r.Context()),
 		"SEO": seo{
 			Title:       p.Title + " — " + h.shopName,
-			Description: seoDescription(p.Description, p.Title),
+			Description: seoDescription(firstNonEmpty(p.SEODescription, p.Description), p.Title),
 			Canonical:   canonical, OGType: "product", OGImage: ogImage,
 			JSONLD: jsonLD(h.productLD(r.Context(), p, canonical, ogImage)),
 		},
@@ -214,7 +214,7 @@ func (h *HTTP) productLD(ctx context.Context, p *ProductPage, canonical, image s
 	}
 	ld := map[string]any{
 		"@context": "https://schema.org", "@type": "Product",
-		"name": p.Title, "description": seoDescription(p.Description, p.Title),
+		"name": p.Title, "description": seoDescription(firstNonEmpty(p.SEODescription, p.Description), p.Title),
 		"sku": p.PublicID, "offers": offers,
 	}
 	if image != "" {

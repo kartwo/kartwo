@@ -64,7 +64,7 @@ export const api = {
   setPayment: (payload) => request('PUT', '/settings/payment', payload),
   getTranslation: () => request('GET', '/settings/translation'),
   setTranslation: (payload) => request('PUT', '/settings/translation', payload),
-  translateSlug: (title) => request('POST', '/translation/slug', { title }),
+  translateText: (text) => request('POST', '/translation/text', { text }),
   wizardPayment: () => request('GET', '/wizard/payment'),
   wizardPaymentSkip: () => request('POST', '/wizard/payment/skip'),
 
@@ -92,6 +92,7 @@ export const api = {
 
   listMedia: (productId) => request('GET', '/products/' + productId + '/media'),
   deleteMedia: (mediaId) => request('DELETE', '/media/' + mediaId),
+  updateMediaAlt: (mediaId, altText) => request('PATCH', '/media/' + mediaId, { alt_text: altText }),
   uploadMedia: (productId, file) => {
     const fd = new FormData()
     fd.append('file', file)

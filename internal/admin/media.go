@@ -78,6 +78,20 @@ func (h *HTTP) deleteMedia(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+func (h *HTTP) updateMediaAlt(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		AltText string `json:"alt_text"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if err := h.media.UpdateAlt(r.Context(), r.PathValue("id"), req.AltText); err != nil {
+		h.writeMediaErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 func mediaAssetJSON(a *media.Asset) map[string]any {
 	derivs := make([]map[string]any, 0, len(a.Derivatives))
 	for _, d := range a.Derivatives {
@@ -85,7 +99,7 @@ func mediaAssetJSON(a *media.Asset) map[string]any {
 	}
 	return map[string]any{
 		"public_id": a.PublicID, "mime": a.Mime, "width": a.Width, "height": a.Height,
-		"size_bytes": a.SizeBytes, "original_url": a.OriginalURL, "derivatives": derivs,
+		"size_bytes": a.SizeBytes, "alt_text": a.AltText, "original_url": a.OriginalURL, "derivatives": derivs,
 	}
 }
 
@@ -102,6 +116,8 @@ func (h *HTTP) writeMediaErr(w http.ResponseWriter, err error) {
 		writeErr(w, http.StatusInsufficientStorage, "磁盘空间不足，暂停新上传")
 	case errors.Is(err, media.ErrNotFound):
 		writeErr(w, http.StatusNotFound, "资源不存在")
+	case errors.Is(err, media.ErrAltTooLong):
+		writeErr(w, http.StatusBadRequest, "图片 alt 文本最多 250 个字符")
 	case errors.Is(err, catalog.ErrNotFound):
 		writeErr(w, http.StatusNotFound, "商品不存在")
 	default:

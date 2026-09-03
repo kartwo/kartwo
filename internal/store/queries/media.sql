@@ -4,7 +4,7 @@
 -- NOTE: ASCII-only comments here (sqlc v1.30 multibyte-span bug; see DECISIONS.md).
 
 -- name: CreateMediaAsset :execlastid
-INSERT INTO media_asset (public_id, product_id, content_hash, original_path, mime, width, height, size_bytes, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO media_asset (public_id, product_id, content_hash, original_path, mime, width, height, size_bytes, position, alt_text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: AddDerivative :exec
 INSERT INTO media_derivative (asset_id, label, path, format, width, height, size_bytes) VALUES (?, ?, ?, ?, ?, ?, ?);
@@ -16,7 +16,10 @@ SELECT COUNT(*) FROM media_asset WHERE product_id = ? AND deleted_at IS NULL;
 SELECT CAST(COUNT(*) AS INTEGER) AS asset_count, CAST(COALESCE(SUM(size_bytes), 0) AS INTEGER) AS original_bytes, CAST(COALESCE((SELECT SUM(d.size_bytes) FROM media_derivative d JOIN media_asset a ON a.id = d.asset_id WHERE a.deleted_at IS NULL), 0) AS INTEGER) AS derivative_bytes FROM media_asset WHERE deleted_at IS NULL;
 
 -- name: ListMediaByProduct :many
-SELECT id, public_id, content_hash, original_path, mime, width, height, size_bytes, position FROM media_asset WHERE product_id = ? AND deleted_at IS NULL ORDER BY position, id;
+SELECT id, public_id, content_hash, original_path, mime, width, height, size_bytes, position, alt_text FROM media_asset WHERE product_id = ? AND deleted_at IS NULL ORDER BY position, id;
+
+-- name: UpdateMediaAlt :exec
+UPDATE media_asset SET alt_text = ? WHERE public_id = ? AND deleted_at IS NULL;
 
 -- name: ListDerivativesByAsset :many
 SELECT label, path, format, width, height, size_bytes FROM media_derivative WHERE asset_id = ? ORDER BY width;

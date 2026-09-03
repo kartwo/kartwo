@@ -33,8 +33,12 @@ var validStatuses = map[string]bool{"draft": true, "active": true, "archived": t
 
 type ProductInput struct {
 	Title             string
+	TitleZH           string
 	Slug              string
+	SlugZH            string
 	Description       string
+	SEODescription    string
+	SEODescriptionZH  string
 	Status            string
 	Options           []OptionInput
 	Variants          []VariantInput
@@ -71,8 +75,12 @@ type ProductSummary struct {
 type ProductDetail struct {
 	PublicID    string
 	Title       string
+	TitleZH     string
 	Slug        string
+	SlugZH      string
 	Description string
+	SEODescription   string
+	SEODescriptionZH string
 	Status      string
 	Variants    []VariantView
 }
@@ -138,7 +146,8 @@ func createProducts(ctx context.Context, q *sqlcgen.Queries, inputs []ProductInp
 
 		publicID := uuid.Must(uuid.NewV7()).String()
 		pid, err := q.CreateProduct(ctx, sqlcgen.CreateProductParams{
-			PublicID: publicID, Title: in.Title, Slug: in.Slug, Description: in.Description, Status: status,
+			PublicID: publicID, Title: in.Title, TitleZh: in.TitleZH, Slug: in.Slug, SlugZh: in.SlugZH,
+			Description: in.Description, SeoDescription: in.SEODescription, SeoDescriptionZh: in.SEODescriptionZH, Status: status,
 		})
 		if err != nil {
 			if isUnique(err) {
@@ -286,12 +295,18 @@ func (s *Service) GetProduct(ctx context.Context, publicID string) (*ProductDeta
 		return nil, err
 	}
 	return &ProductDetail{
-		PublicID: p.PublicID, Title: p.Title, Slug: p.Slug, Description: p.Description, Status: p.Status, Variants: matrix,
+		PublicID: p.PublicID, Title: p.Title, TitleZH: p.TitleZh, Slug: p.Slug, SlugZH: p.SlugZh,
+		Description: p.Description, SEODescription: p.SeoDescription, SEODescriptionZH: p.SeoDescriptionZh, Status: p.Status, Variants: matrix,
 	}, nil
 }
 
-// UpdateProduct 改商品标题/描述/状态。不存在返回 ErrNotFound。
+// UpdateProduct 改商品标题/描述/状态。保留旧入口，供既有调用方兼容。
 func (s *Service) UpdateProduct(ctx context.Context, publicID, title, description, status string) error {
+	return s.UpdateProductContent(ctx, publicID, title, "", description, "", "", status)
+}
+
+// UpdateProductContent 改商品的英文正式内容、中文辅助内容与 SEO 描述。不存在返回 ErrNotFound。
+func (s *Service) UpdateProductContent(ctx context.Context, publicID, title, titleZH, description, seoDescription, seoDescriptionZH, status string) error {
 	if strings.TrimSpace(title) == "" {
 		return vErr("标题不能为空")
 	}
@@ -304,7 +319,7 @@ func (s *Service) UpdateProduct(ctx context.Context, publicID, title, descriptio
 	} else if err != nil {
 		return fmt.Errorf("catalog: 取商品失败: %w", err)
 	}
-	return s.q.UpdateProduct(ctx, sqlcgen.UpdateProductParams{Title: title, Description: description, Status: status, ID: p.ID})
+	return s.q.UpdateProduct(ctx, sqlcgen.UpdateProductParams{Title: title, TitleZh: titleZH, Description: description, SeoDescription: seoDescription, SeoDescriptionZh: seoDescriptionZH, Status: status, ID: p.ID})
 }
 
 // DeleteProduct 软删商品及其变体。不存在返回 ErrNotFound。

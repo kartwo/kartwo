@@ -10,16 +10,17 @@ import (
 )
 
 const getActiveProductBySlug = `-- name: GetActiveProductBySlug :one
-SELECT id, public_id, title, slug, description, updated_at FROM product WHERE slug = ? AND status = 'active' AND deleted_at IS NULL
+SELECT id, public_id, title, slug, description, seo_description, updated_at FROM product WHERE slug = ? AND status = 'active' AND deleted_at IS NULL
 `
 
 type GetActiveProductBySlugRow struct {
-	ID          int64  `db:"id" json:"id"`
-	PublicID    string `db:"public_id" json:"public_id"`
-	Title       string `db:"title" json:"title"`
-	Slug        string `db:"slug" json:"slug"`
-	Description string `db:"description" json:"description"`
-	UpdatedAt   string `db:"updated_at" json:"updated_at"`
+	ID             int64  `db:"id" json:"id"`
+	PublicID       string `db:"public_id" json:"public_id"`
+	Title          string `db:"title" json:"title"`
+	Slug           string `db:"slug" json:"slug"`
+	Description    string `db:"description" json:"description"`
+	SeoDescription string `db:"seo_description" json:"seo_description"`
+	UpdatedAt      string `db:"updated_at" json:"updated_at"`
 }
 
 func (q *Queries) GetActiveProductBySlug(ctx context.Context, slug string) (GetActiveProductBySlugRow, error) {
@@ -31,6 +32,7 @@ func (q *Queries) GetActiveProductBySlug(ctx context.Context, slug string) (GetA
 		&i.Title,
 		&i.Slug,
 		&i.Description,
+		&i.SeoDescription,
 		&i.UpdatedAt,
 	)
 	return i, err
@@ -38,16 +40,17 @@ func (q *Queries) GetActiveProductBySlug(ctx context.Context, slug string) (GetA
 
 const listActiveProducts = `-- name: ListActiveProducts :many
 
-SELECT id, public_id, title, slug, description, updated_at FROM product WHERE status = 'active' AND deleted_at IS NULL ORDER BY id DESC
+SELECT id, public_id, title, slug, description, seo_description, updated_at FROM product WHERE status = 'active' AND deleted_at IS NULL ORDER BY id DESC
 `
 
 type ListActiveProductsRow struct {
-	ID          int64  `db:"id" json:"id"`
-	PublicID    string `db:"public_id" json:"public_id"`
-	Title       string `db:"title" json:"title"`
-	Slug        string `db:"slug" json:"slug"`
-	Description string `db:"description" json:"description"`
-	UpdatedAt   string `db:"updated_at" json:"updated_at"`
+	ID             int64  `db:"id" json:"id"`
+	PublicID       string `db:"public_id" json:"public_id"`
+	Title          string `db:"title" json:"title"`
+	Slug           string `db:"slug" json:"slug"`
+	Description    string `db:"description" json:"description"`
+	SeoDescription string `db:"seo_description" json:"seo_description"`
+	UpdatedAt      string `db:"updated_at" json:"updated_at"`
 }
 
 // Storefront Queries
@@ -69,6 +72,7 @@ func (q *Queries) ListActiveProducts(ctx context.Context) ([]ListActiveProductsR
 			&i.Title,
 			&i.Slug,
 			&i.Description,
+			&i.SeoDescription,
 			&i.UpdatedAt,
 		); err != nil {
 			return nil, err

@@ -115,6 +115,7 @@ type MediaAsset struct {
 	Position     int64          `db:"position" json:"position"`
 	CreatedAt    string         `db:"created_at" json:"created_at"`
 	DeletedAt    sql.NullString `db:"deleted_at" json:"deleted_at"`
+	AltText      string         `db:"alt_text" json:"alt_text"`
 }
 
 type MediaDerivative struct {
@@ -167,15 +168,19 @@ type OrderItem struct {
 }
 
 type Product struct {
-	ID          int64          `db:"id" json:"id"`
-	PublicID    string         `db:"public_id" json:"public_id"`
-	Title       string         `db:"title" json:"title"`
-	Slug        string         `db:"slug" json:"slug"`
-	Description string         `db:"description" json:"description"`
-	Status      string         `db:"status" json:"status"`
-	CreatedAt   string         `db:"created_at" json:"created_at"`
-	UpdatedAt   string         `db:"updated_at" json:"updated_at"`
-	DeletedAt   sql.NullString `db:"deleted_at" json:"deleted_at"`
+	ID               int64          `db:"id" json:"id"`
+	PublicID         string         `db:"public_id" json:"public_id"`
+	Title            string         `db:"title" json:"title"`
+	Slug             string         `db:"slug" json:"slug"`
+	Description      string         `db:"description" json:"description"`
+	Status           string         `db:"status" json:"status"`
+	CreatedAt        string         `db:"created_at" json:"created_at"`
+	UpdatedAt        string         `db:"updated_at" json:"updated_at"`
+	DeletedAt        sql.NullString `db:"deleted_at" json:"deleted_at"`
+	TitleZh          string         `db:"title_zh" json:"title_zh"`
+	SlugZh           string         `db:"slug_zh" json:"slug_zh"`
+	SeoDescription   string         `db:"seo_description" json:"seo_description"`
+	SeoDescriptionZh string         `db:"seo_description_zh" json:"seo_description_zh"`
 }
 
 type ProductCategory struct {

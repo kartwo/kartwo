@@ -91,6 +91,7 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("POST /admin/api/products/{id}/media", protect(h.uploadMedia))
 	mux.Handle("GET /admin/api/products/{id}/media", protect(h.listMedia))
 	mux.Handle("DELETE /admin/api/media/{id}", protect(h.deleteMedia))
+	mux.Handle("PATCH /admin/api/media/{id}", protect(h.updateMediaAlt))
 
 	// 向导：主攻市场。
 	mux.Handle("GET /admin/api/markets", protect(h.listMarkets))
@@ -102,7 +103,7 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("PUT /admin/api/settings/payment", protect(h.setPayment))
 	mux.Handle("GET /admin/api/settings/translation", protect(h.getTranslationSettings))
 	mux.Handle("PUT /admin/api/settings/translation", protect(h.setTranslationSettings))
-	mux.Handle("POST /admin/api/translation/slug", protect(h.translateSlug))
+	mux.Handle("POST /admin/api/translation/text", protect(h.translateText))
 
 	// 向导：收款步骤状态 / 跳过。
 	mux.Handle("GET /admin/api/wizard/payment", protect(h.wizardPaymentStatus))

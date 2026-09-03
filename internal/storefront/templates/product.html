@@ -4,7 +4,7 @@
 <div class="detail">
   <div class="gallery">
     {{if $p.Images}}
-      {{range $p.Images}}<img src="{{.Large}}" alt="{{$p.Title}}" loading="lazy" />{{end}}
+      {{range $p.Images}}<img src="{{.Large}}" alt="{{.Alt}}" loading="lazy" />{{end}}
     {{else}}
       <div class="ph" style="aspect-ratio:1/1;background:#f1f5f9;border-radius:12px"></div>
     {{end}}

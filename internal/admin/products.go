@@ -36,8 +36,12 @@ type variantDTO struct {
 
 type createProductReq struct {
 	Title             string       `json:"title"`
+	TitleZH           string       `json:"title_zh"`
 	Slug              string       `json:"slug"`
+	SlugZH            string       `json:"slug_zh"`
 	Description       string       `json:"description"`
+	SEODescription    string       `json:"seo_description"`
+	SEODescriptionZH  string       `json:"seo_description_zh"`
 	Status            string       `json:"status"`
 	Options           []optionDTO  `json:"options"`
 	Variants          []variantDTO `json:"variants"`
@@ -50,7 +54,8 @@ func (h *HTTP) createProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in := catalog.ProductInput{
-		Title: req.Title, Slug: req.Slug, Description: req.Description, Status: req.Status,
+		Title: req.Title, TitleZH: req.TitleZH, Slug: req.Slug, SlugZH: req.SlugZH,
+		Description: req.Description, SEODescription: req.SEODescription, SEODescriptionZH: req.SEODescriptionZH, Status: req.Status,
 		CategoryPublicIDs: req.CategoryPublicIDs,
 	}
 	for _, o := range req.Options {
@@ -110,21 +115,25 @@ func (h *HTTP) getProduct(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"public_id": d.PublicID, "title": d.Title, "slug": d.Slug,
-		"description": d.Description, "status": d.Status, "variants": variants,
+		"public_id": d.PublicID, "title": d.Title, "title_zh": d.TitleZH, "slug": d.Slug, "slug_zh": d.SlugZH,
+		"description": d.Description, "seo_description": d.SEODescription, "seo_description_zh": d.SEODescriptionZH,
+		"status": d.Status, "variants": variants,
 	})
 }
 
 func (h *HTTP) updateProduct(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		Status      string `json:"status"`
+		Title            string `json:"title"`
+		TitleZH          string `json:"title_zh"`
+		Description      string `json:"description"`
+		SEODescription   string `json:"seo_description"`
+		SEODescriptionZH string `json:"seo_description_zh"`
+		Status           string `json:"status"`
 	}
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if err := h.cat.UpdateProduct(r.Context(), r.PathValue("id"), req.Title, req.Description, req.Status); err != nil {
+	if err := h.cat.UpdateProductContent(r.Context(), r.PathValue("id"), req.Title, req.TitleZH, req.Description, req.SEODescription, req.SEODescriptionZH, req.Status); err != nil {
 		h.writeCatalogErr(w, err)
 		return
 	}

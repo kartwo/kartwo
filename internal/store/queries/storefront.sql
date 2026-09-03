@@ -4,7 +4,7 @@
 -- NOTE: ASCII-only comments here (sqlc v1.30 multibyte-span bug; see DECISIONS.md).
 
 -- name: ListActiveProducts :many
-SELECT id, public_id, title, slug, description, updated_at FROM product WHERE status = 'active' AND deleted_at IS NULL ORDER BY id DESC;
+SELECT id, public_id, title, slug, description, seo_description, updated_at FROM product WHERE status = 'active' AND deleted_at IS NULL ORDER BY id DESC;
 
 -- name: GetActiveProductBySlug :one
-SELECT id, public_id, title, slug, description, updated_at FROM product WHERE slug = ? AND status = 'active' AND deleted_at IS NULL;
+SELECT id, public_id, title, slug, description, seo_description, updated_at FROM product WHERE slug = ? AND status = 'active' AND deleted_at IS NULL;

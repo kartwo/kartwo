@@ -34,7 +34,6 @@
 | github.com/tetratelabs/wazero | gen2brain/webp 依赖：纯 Go WASM 运行时 | Apache-2.0 | 已引入（间接） |
 | github.com/ebitengine/purego | gen2brain/webp 依赖 | Apache-2.0 | 已引入（间接） |
 | golang.org/x/image | 图片缩放（draw）与 WebP 解码 | BSD-3-Clause | 已引入 |
-| pinyin-pro | Admin 中文商品标题转英文拼音 slug（浏览器本地转换） | MIT | 已引入 |
 | 工具：sqlc | 由纯 SQL 生成类型安全数据层代码（构建期，不进二进制） | MIT | 已引入 |
 | 工具：golangci-lint | 静态检查（CI 门禁，不进二进制） | GPL-3.0（仅作为外部 CLI 调用，不链接进产物） | 已引入 |
 | 工具：govulncheck | 依赖漏洞扫描（CI 门禁，不进二进制） | BSD-3-Clause | 已引入 |

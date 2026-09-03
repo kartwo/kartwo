@@ -2,7 +2,6 @@
 <script setup>
 import { ref, computed, onMounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { pinyin } from 'pinyin-pro'
 import { api, APIError } from '../api.js'
 import { useToast } from '../toast.js'
 import ErrorState from '../components/ErrorState.vue'
@@ -19,11 +18,14 @@ const busy = ref(false)
 
 // 公共字段
 const title = ref('')
+const titleZh = ref('')
 const slug = ref('')
+const slugZh = ref('')
 const slugCustomized = ref(false)
-const translationConfigured = ref(false)
-let translationTimer
 const description = ref('')
+const seoDescription = ref('')
+const seoDescriptionZh = ref('')
+const translationNeedsSetup = ref(false)
 const status = ref('draft')
 
 // 新建：轴 + 生成的变体矩阵
@@ -51,26 +53,48 @@ function yuanToCents(y) {
   return Math.round(n * 100)
 }
 
-// slugFromTitle 在浏览器本地将中文标题转为无声调英文拼音，空格和标点折为连字符。
-// 不调用在线翻译或转写服务，商品标题不会离开浏览器。
-function slugFromTitle(value) {
-  return pinyin(value, { toneType: 'none', type: 'array' }).join('-').toLowerCase()
-    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+// slugFromEnglish 只处理已确认的英文内容；中文翻译必须由商家点击按钮触发。
+function slugFromEnglish(value) {
+  return value.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+    .slice(0, 72).replace(/-+$/g, '')
 }
 
 function suggestSlug() {
-  if (slugCustomized.value) return
-  slug.value = slugFromTitle(title.value)
-  clearTimeout(translationTimer)
-  if (translationConfigured.value && title.value.trim()) translationTimer = setTimeout(async () => {
-    try { const r = await api.translateSlug(title.value); if (!slugCustomized.value) slug.value = slugFromTitle(r.text) } catch (_) { /* 保留拼音回退 */ }
-  }, 900)
+  if (slugCustomized.value || slugZh.value.trim()) return
+  slug.value = slugFromEnglish(title.value)
 }
 
 function markSlugCustomized() {
   slugCustomized.value = true
+}
+
+async function translate(source, apply) {
+  if (!source.value.trim()) { toast.error('请先填写中文辅助内容'); return }
+  try {
+    const settings = await api.getTranslation()
+    if (!settings.configured) { translationNeedsSetup.value = true; return }
+  } catch (e) { toast.error(e.message); return }
+  translationNeedsSetup.value = false
+  busy.value = true
+  try {
+    const r = await api.translateText(source.value)
+    apply(r.text)
+    toast.success('已翻译为英文，请确认后保存')
+  } catch (e) { toast.error(e.message) } finally { busy.value = false }
+}
+
+function translateTitle() {
+  return translate(titleZh, text => { title.value = text; suggestSlug() })
+}
+
+function translateSlug() {
+  return translate(slugZh, text => { slug.value = slugFromEnglish(text); slugCustomized.value = true })
+}
+
+function translateSEODescription() {
+  return translate(seoDescriptionZh, text => { seoDescription.value = text })
 }
 
 function generateMatrix() {
@@ -98,7 +122,8 @@ async function saveNew() {
   busy.value = true
   try {
     const payload = {
-      title: title.value, slug: slug.value, description: description.value, status: status.value,
+      title: title.value, title_zh: titleZh.value, slug: slug.value, slug_zh: slugZh.value,
+      description: description.value, seo_description: seoDescription.value, seo_description_zh: seoDescriptionZh.value, status: status.value,
       options: parseAxes(),
       variants: newVariants.value.map((v, i) => ({
         sku: v.sku, price_cents: cents[i], quantity: Number(v.quantity),
@@ -117,7 +142,8 @@ async function load() {
   err.value = ''
   try {
     const d = await api.getProduct(props.id)
-    title.value = d.title; slug.value = d.slug; description.value = d.description; status.value = d.status
+    title.value = d.title; titleZh.value = d.title_zh; slug.value = d.slug; slugZh.value = d.slug_zh
+    description.value = d.description; seoDescription.value = d.seo_description; seoDescriptionZh.value = d.seo_description_zh; status.value = d.status
     // _qty/_priceYuan 为编辑态输入绑定（价格以元回显，两位小数）。
     variants.value = d.variants.map(v => ({ ...v, _qty: v.quantity, _priceYuan: (v.price_cents / 100).toFixed(2) }))
     await loadMedia()
@@ -129,13 +155,13 @@ async function load() {
 
 async function loadMedia() {
   const r = await api.listMedia(props.id)
-  media.value = r.media || []
+  media.value = (r.media || []).map(m => ({ ...m, _altText: m.alt_text || '' }))
 }
 
 async function saveFields() {
   busy.value = true
   try {
-    await api.updateProduct(props.id, { title: title.value, description: description.value, status: status.value })
+    await api.updateProduct(props.id, { title: title.value, title_zh: titleZh.value, description: description.value, seo_description: seoDescription.value, seo_description_zh: seoDescriptionZh.value, status: status.value })
     toast.success('已保存')
   } catch (e) { toast.error(e.message) } finally { busy.value = false }
 }
@@ -179,12 +205,16 @@ async function removeMedia(m) {
   try { await api.deleteMedia(m.public_id); await loadMedia() } catch (e) { toast.error(e.message) }
 }
 
+async function saveMediaAlt(m) {
+  try { await api.updateMediaAlt(m.public_id, m._altText || ''); m.alt_text = m._altText || ''; toast.success('图片 alt 已保存') } catch (e) { toast.error(e.message) }
+}
+
 function thumb(m) {
   const d = (m.derivatives || []).find(x => x.label === 'thumb') || (m.derivatives || [])[0]
   return d ? d.url : m.original_url
 }
 
-onMounted(async () => { if (!isNew.value) return load(); try { translationConfigured.value = !!(await api.getTranslation()).configured } catch (_) {} })
+onMounted(async () => { if (!isNew.value) return load() })
 </script>
 
 <template>
@@ -196,11 +226,24 @@ onMounted(async () => { if (!isNew.value) return load(); try { translationConfig
 
   <div class="panel">
     <div class="row">
-      <div><label>标题</label><input v-model="title" @input="suggestSlug" /></div>
-      <div v-if="isNew"><label>slug（英文 URL 标识，唯一；中文标题自动转拼音，可手动修改）</label><input v-model="slug" @input="markSlugCustomized" /></div>
+      <div><label>中文标题（可选，供翻译与日后维护）</label><input v-model="titleZh" placeholder="例如：速干运动短袖" /><button class="translate-button" :disabled="busy" @click="translateTitle">翻译为英文标题</button></div>
+      <div><label>英文标题（必填，店面正式展示）</label><input v-model="title" @input="suggestSlug" placeholder="例如：Quick-Dry Sports T-Shirt" /></div>
     </div>
+    <div v-if="isNew" class="row">
+      <div><label>中文 slug（可选，简短中文 URL 含义）</label><input v-model="slugZh" placeholder="例如：速干运动短袖" /><button class="translate-button" :disabled="busy" @click="translateSlug">翻译 slug</button></div>
+      <div><label>英文 slug（必填，唯一，可修改）</label><input v-model="slug" @input="markSlugCustomized" placeholder="quick-dry-sports-t-shirt" /></div>
+    </div>
+    <p v-if="translationNeedsSetup" class="translation-warning">
+      尚未设置翻译 API，无法生成英文内容。
+      <button class="link-button" @click="router.push('/translation')">前往翻译服务设置</button>
+    </p>
     <label>描述</label>
     <textarea v-model="description" rows="2"></textarea>
+    <label>中文 SEO 描述（可选，供翻译与日后维护）</label>
+    <textarea v-model="seoDescriptionZh" rows="2" placeholder="例如：轻盈透气的运动短袖，适合跑步与日常训练。"></textarea>
+    <button class="translate-button" :disabled="busy" @click="translateSEODescription">翻译为英文 SEO 描述</button>
+    <label>英文 SEO 描述（可选，留空时使用英文描述）</label>
+    <textarea v-model="seoDescription" rows="2" placeholder="建议简洁描述商品特点，供搜索结果和社交分享使用。"></textarea>
     <label>状态</label>
     <select v-model="status">
       <option value="draft">草稿 draft</option>
@@ -286,6 +329,9 @@ onMounted(async () => { if (!isNew.value) return load(); try { translationConfig
       <div class="thumbs">
         <figure v-for="m in media" :key="m.public_id">
           <img :src="thumb(m)" :alt="m.public_id" />
+          <label>图片 alt（英文）</label>
+          <input v-model="m._altText" :placeholder="title" />
+          <button style="margin-top:.3rem; width:96px" @click="saveMediaAlt(m)">保存 alt</button>
           <button class="danger" style="margin-top:.3rem; width:96px" @click="removeMedia(m)">删除</button>
         </figure>
       </div>
@@ -309,4 +355,10 @@ onMounted(async () => { if (!isNew.value) return load(); try { translationConfig
 .upload-note {
   margin: 0 0 var(--sp-2); color: var(--text-muted); font-size: var(--fs-sm);
 }
+.translate-button { margin-top: var(--sp-2); }
+.translation-warning {
+  margin: var(--sp-3) 0; padding: var(--sp-2) var(--sp-3);
+  color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn); border-radius: var(--radius-md);
+}
+.link-button { margin-left: var(--sp-2); }
 </style>

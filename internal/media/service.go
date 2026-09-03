@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -22,6 +23,7 @@ var (
 	ErrNotFound = errors.New("media: 资源不存在")
 	// ErrTooManyPerProduct 单商品图片数量超上限。
 	ErrTooManyPerProduct = errors.New("media: 该商品图片数量已达上限")
+	ErrAltTooLong        = errors.New("media: 图片 alt 文本过长")
 )
 
 // Service 承载媒体上传与生命周期。
@@ -46,6 +48,7 @@ type Asset struct {
 	Height      int
 	SizeBytes   int64
 	OriginalURL string
+	AltText     string
 	Derivatives []DerivativeView
 }
 
@@ -99,14 +102,14 @@ func (s *Service) Upload(ctx context.Context, productID int64, data []byte) (*As
 	assetID, err := q.CreateMediaAsset(ctx, sqlcgen.CreateMediaAssetParams{
 		PublicID: publicID, ProductID: productID, ContentHash: p.ContentHash, OriginalPath: origPath,
 		Mime: p.MIME, Width: int64(p.Width), Height: int64(p.Height), SizeBytes: int64(len(p.OriginalBytes)),
-		Position: cnt,
+		Position: cnt, AltText: "",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("media: 记录资产失败: %w", err)
 	}
 	view := &Asset{
 		PublicID: publicID, Mime: p.MIME, Width: p.Width, Height: p.Height,
-		SizeBytes: int64(len(p.OriginalBytes)), OriginalURL: mediaURL(origPath),
+		SizeBytes: int64(len(p.OriginalBytes)), AltText: "", OriginalURL: mediaURL(origPath),
 	}
 	for _, d := range p.Derivatives {
 		dp := derivedPath(p.ContentHash, d.Label)
@@ -149,7 +152,7 @@ func (s *Service) StoreProcessedTx(ctx context.Context, tx *sql.Tx, productID in
 	}
 	assetID, err := q.CreateMediaAsset(ctx, sqlcgen.CreateMediaAssetParams{
 		PublicID: uuid.Must(uuid.NewV7()).String(), ProductID: productID, ContentHash: p.ContentHash, OriginalPath: origPath,
-		Mime: p.MIME, Width: int64(p.Width), Height: int64(p.Height), SizeBytes: int64(len(p.OriginalBytes)), Position: cnt,
+		Mime: p.MIME, Width: int64(p.Width), Height: int64(p.Height), SizeBytes: int64(len(p.OriginalBytes)), Position: cnt, AltText: "",
 	})
 	if err != nil {
 		return fmt.Errorf("media: 记录资产失败: %w", err)
@@ -175,7 +178,7 @@ func (s *Service) ListByProduct(ctx context.Context, productID int64) ([]Asset, 
 	for _, r := range rows {
 		a := Asset{
 			PublicID: r.PublicID, Mime: r.Mime, Width: int(r.Width), Height: int(r.Height),
-			SizeBytes: r.SizeBytes, OriginalURL: mediaURL(r.OriginalPath),
+			SizeBytes: r.SizeBytes, AltText: r.AltText, OriginalURL: mediaURL(r.OriginalPath),
 		}
 		ds, err := s.q.ListDerivativesByAsset(ctx, r.ID)
 		if err != nil {
@@ -187,6 +190,23 @@ func (s *Service) ListByProduct(ctx context.Context, productID int64) ([]Asset, 
 		out = append(out, a)
 	}
 	return out, nil
+}
+
+// UpdateAlt 保存图片替代文本，供店面图片与无障碍/搜索引擎使用。
+func (s *Service) UpdateAlt(ctx context.Context, publicID, altText string) error {
+	altText = strings.TrimSpace(altText)
+	if len([]rune(altText)) > 250 {
+		return ErrAltTooLong
+	}
+	if _, err := s.q.GetMediaByPublicID(ctx, publicID); errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	} else if err != nil {
+		return fmt.Errorf("media: 取图片失败: %w", err)
+	}
+	if err := s.q.UpdateMediaAlt(ctx, sqlcgen.UpdateMediaAltParams{AltText: altText, PublicID: publicID}); err != nil {
+		return fmt.Errorf("media: 保存图片 alt 失败: %w", err)
+	}
+	return nil
 }
 
 // Delete 删除一张图片：移除文件 + 硬删记录。不存在返回 ErrNotFound。
