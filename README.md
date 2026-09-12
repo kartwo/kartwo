@@ -1,99 +1,101 @@
 # Kartwo
 
-极简到非技术商家也能自部署的跨境独立站电商后端。Go 单静态二进制 + 内嵌 SQLite，数据即文件夹，可跑 1C1G $5 VPS。
+极简到非技术商家也能自部署的跨境独立站电商系统。一个 Go 可执行文件内嵌 Admin 与英文店面，默认使用 SQLite，数据即文件夹，可运行在 1C1G VPS。
 
-> 一套代码、一个内核：开源 ⊂ 自部署商业 ⊂ SaaS。本仓库 = 单租户内核（v1）。
-> 权威文档：[ARCHITECTURE](ARCHITECTURE.md) · [ROADMAP](ROADMAP.md) · [PROGRESS](PROGRESS.md) · [DECISIONS](DECISIONS.md) · [CONVENTIONS](CONVENTIONS.md) · [LICENSES](LICENSES.md)
+> 一套代码、一个内核：开源 ⊂ 自部署商业 ⊂ SaaS。本仓库是单租户内核。
 
-## 当前状态
+## 当前版本
 
-已验收：**M0** 地基骨架 · **M1** 商品/变体/分类/库存 + Admin + 媒体上传 · **M2** SSR 店面 + 购物车 + 下单（防超卖）+ SEO 基建 · **M3** 支付路由 + Stripe/PayPal + 沙箱 + 退款。
-进行中：**M4** 自动 HTTPS + 向导完整 + 30 分钟开店。进度以 [PROGRESS.md](PROGRESS.md) 为准。
+`v0.6.0-beta.1` 是首个公开开源测试版，可完整完成开店、上架、收款、发货与内容运营，但仍是 **beta**，建议先在测试店或小流量店铺验证并保持自动备份。
 
-## SEO 优势
+- Linux x86_64：发布流水线在干净数据目录实跑迁移、20 件演示商品、店面、后台与健康检查。
+- Linux ARM64、macOS Apple Silicon、Windows x86_64：编译产出，尚未逐平台人工实跑。
+- Linux 二进制依赖 glibc；Alpine/musl 暂不支持。
 
-独立站的自然流量命门在于**搜索引擎能不能顺畅地抓取、理解、索引你的商品页**。Kartwo 的店面把这层技术基建做扎实：
+## 已具备能力
 
-1. **服务端渲染（SSR）store­front** —— 店面用 Go `html/template` 在服务端直接吐出完整 HTML，爬虫无需执行 JavaScript 就能拿到全部内容。相比依赖前端 JS 渲染的 SPA / headless 电商，这是最根本的 SEO 优势：内容对搜索引擎**首屏即可见**。
-2. **结构化数据 JSON-LD**（Product + AggregateOffer） —— 用 schema.org 标注商品与价格区间，帮搜索引擎准确理解页面是"什么商品、什么价"，从而有机会获得富媒体搜索结果（rich results）。
-3. **规范化标签** —— `canonical`（收敛重复内容、避免自我竞争）、Open Graph（社交平台分享时的标题/图片预览）。
-4. **sitemap.xml + robots.txt** —— 自动生成站点地图帮爬虫发现全部商品页；robots 放行公开页、屏蔽后台（`/admin/`）。
-5. **WebP 响应式多尺寸图** —— 服务端生成更小体积的现代格式图片、按屏幕给合适尺寸，缩短首屏时间。页面速度是 Google 排名因素之一、WebP 是 Google 推荐的现代图片格式（加分项，非决定性）。
+- 商品、双轴变体、库存、分类、图片 WebP 处理与首页精选
+- 英文 SSR 店面、搜索、购物车、结账、防超卖与 SEO 基建
+- Stripe / PayPal 收款、退款、订单邮件、后台订单与 CSV 导出
+- 按洲选择配送国家、默认/特殊地区运费、发货与物流追踪
+- 店铺名称与 Logo、内容页、7 个可编辑页脚政策页面
+- Shopify CSV 导入与旧链接 301、本机诊断、审计、全量导出/恢复、自动备份
+- 内嵌自动 HTTPS、初始化向导、单二进制升级保护
+- 显式命令装入 5 个分类 × 4 件商品及可选原创封面，不会在启动或升级时污染真实店铺
 
-> **诚实边界**：以上是**技术 SEO 基建**——系统能控的部分做到位。搜索排名与流量最终还取决于内容质量、外链、行业竞争等**非技术因素**，不在系统的承诺范围内。Kartwo 保证的是"不让技术拖后腿"，不是"保证排名或流量"。
-> 注：多语言 / hreflang 等国际化 SEO 属 v1.1，当前版本未实现。
+版本变更和已知边界见 [CHANGELOG.md](CHANGELOG.md)。
 
-## 部署与运行
+## 下载与快速体验
 
-分三层，从"本机试一试"到"对外卖货"到"进阶加固"。**桌面系统（macOS / Windows）用于本地评估试用，不是生产卖货环境**——生产请用 Linux 服务器。
+从 [GitHub Releases](https://github.com/kartwo/kartwo/releases) 下载 `v0.6.0-beta.1` 对应平台文件和 `SHA256SUMS.txt`。
 
-### 第 1 层 · 本地评估 / 试用（macOS / Windows / Linux，跨平台）
-
-在自己电脑上把系统跑起来、录商品、熟悉后台与店面，**纯本地、无公网 HTTPS**。
-
-获取二进制：从 [Releases 页](https://github.com/kartwo/kartwo/releases) 下载对应平台的预编译产物（无需 Go 工具链），或从源码构建 `go build -o kartwo ./cmd/kartwo`。
-
-**逐平台验证状态**（编译通过 ≠ 开过机，据实标注）：
-
-| 平台 | 文件 | 验证状态 |
+| 平台 | 文件 | 状态 |
 |---|---|---|
-| Linux x86_64（绝大多数 VPS） | `kartwo-linux-amd64` | ✅ **已验证**（干净 Ubuntu 24.04 实跑：启动→迁移→后台→店面） |
-| Linux ARM64 | `kartwo-linux-arm64` | ⚠️ 未验证（仅编译通过） |
-| macOS Apple Silicon | `kartwo-darwin-arm64` | ⚠️ 未验证（仅编译通过） |
-| Windows x86_64 | `kartwo-windows-amd64.exe` | ⚠️ 未验证（仅编译通过） |
+| Linux x86_64 VPS | `kartwo-linux-amd64` | 已验证 |
+| Linux ARM64 | `kartwo-linux-arm64` | 仅编译 |
+| macOS Apple Silicon | `kartwo-darwin-arm64` | 仅编译 |
+| Windows x86_64 | `kartwo-windows-amd64.exe` | 仅编译 |
 
-下载后核对完整性：`sha256sum -c SHA256SUMS.txt --ignore-missing`；确认版本：`./kartwo-linux-amd64 version`。
-
-> **运行环境**：Linux 产物依赖 **glibc**（Ubuntu/Debian/CentOS 等主流发行版自带），**musl 系（Alpine）暂不支持**——原因见 `DECISIONS.md`「静态链接」条。
-> 目前仅发过预发布版 `v0.4.0-rc1`；正式 `v0.4.0` 待北极星计时验收通过后发布。
-
-HTTP-only 评估态运行（不配域名，统一用高位端口 `:8080` 回避不同系统绑低端口的权限差异）：
+Linux/macOS：
 
 ```bash
-# macOS / Linux
-KARTWO_ENV=prod KARTWO_HTTP_ADDR=:8080 KARTWO_DATA_DIR=./data ./kartwo serve
+chmod 755 kartwo-linux-amd64
+./kartwo-linux-amd64 version
+KARTWO_ENV=prod KARTWO_HTTP_ADDR=:8080 KARTWO_DATA_DIR=./data ./kartwo-linux-amd64 serve
 ```
+
+Windows PowerShell：
+
 ```powershell
-# Windows PowerShell
-$env:KARTWO_ENV="prod"; $env:KARTWO_HTTP_ADDR=":8080"; $env:KARTWO_DATA_DIR="./data"; .\kartwo.exe serve
+.\kartwo-windows-amd64.exe version
+$env:KARTWO_ENV="prod"; $env:KARTWO_HTTP_ADDR=":8080"; $env:KARTWO_DATA_DIR="./data"; .\kartwo-windows-amd64.exe serve
 ```
 
-浏览器打开 `http://localhost:8080/`（店面）与 `http://localhost:8080/admin/`（后台）即可预览。
+浏览器打开 `http://localhost:8080/` 和 `http://localhost:8080/admin/`。首次进入后台会创建管理员；数据持续保存在 `./data`，升级时不要删除该目录。
 
-> 部署到远程 Linux 服务器时，先把本地构建好的二进制拷上去（`<IP>` 换成你服务器的公网 IP）：
-> ```bash
-> scp ~/bin/kartwo-linux-amd64 root@<IP>:~/kartwo
-> ```
-
-- 这是**受支持的 HTTP-only 评估态**：未配域名时不启 TLS、也**不发 HSTS**（避免把无证书的本地站锁死跳 HTTPS）。
-- **仅供本地试用，无公网 HTTPS**；对外卖货请走第 2 层。
-
-<!-- TODO(M4.1 段二后)：Derek 在 macOS 亲验 darwin 构建后回填校正本层实际命令与预期输出 -->
-
-### 第 2 层 · 生产部署（Linux 服务器 / VPS）
-
-Kartwo 在生产模式自行监听 `:80` 与 `:443`，内嵌 Let's Encrypt 自动签发和续期证书；单机部署不需要 Nginx 或 Certbot。请按[生产部署图文手册](docs/production-deployment.md)操作，其中包含端口/DNS 检查、systemd 后台服务、HTTPS 验证、故障定位和可直接录制的视频分镜。
-
-- 生产环境要求 Linux VPS、持久化数据目录与云安全组放行 TCP `80`/`443`。
-- 生产服务由 systemd 守护，可开机自启、异常重启和查看日志。
-- `KARTWO_DOMAIN` 填精确域名，不含 `https://`、路径或端口；`KARTWO_DATA_DIR` 必须指向已有店铺数据目录。
-
-### 第 3 层 · 进阶（可选）
-
-- **Cloudflare 橙云 + Origin Certificate**：把域名开橙云代理，隐藏源站 IP、叠加 CDN 与防护；此时对外 TLS 由 Cloudflare 边缘接管，源站换用 Cloudflare Origin Certificate、内嵌 autocert 让位。（结构说明，具体步骤后续补。）
-
-## 开发与门禁
+校验下载完整性：
 
 ```bash
-go build -o kartwo ./cmd/kartwo   # 单静态二进制
-KARTWO_ADDR=:8080 ./kartwo        # dev 默认监听 :8080，数据写入 ./data
-curl http://localhost:8080/health # {"status":"ok",...}
-
-make check   # 合主干前本地门禁：vet + test + build + lint + govulncheck
+sha256sum -c SHA256SUMS.txt --ignore-missing
 ```
 
-需安装 `sqlc` `golangci-lint` `govulncheck` `gitleaks`（版本见 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)）。
+### 可选：装入跑步演示店铺
+
+同一 Release 的 `kartwo-running-demo-images.zip` 包含 20 张原创 WebP 封面。将压缩包与程序放在同一工作目录，先解压再显式装入：
+
+```bash
+unzip kartwo-running-demo-images.zip
+KARTWO_ENV=prod KARTWO_DATA_DIR=./data ./kartwo-linux-amd64 seed-running-demo
+```
+
+该命令只补缺，不覆盖已有商品、分类、政策正文或商品图片；重复运行安全。若不下载图片包，仍会生成 20 件商品，只是没有封面。
+
+## Linux 生产部署
+
+生产模式可直接监听 `:80` 和 `:443`，内嵌 Let's Encrypt 自动签发与续期证书，不强制依赖 Nginx 或 Certbot。完整步骤见[生产部署手册](docs/production-deployment.md)。
+
+- 使用持久目录，例如 `/data/kartwo`，并定期验证备份可恢复。
+- 放行 TCP 80/443；`KARTWO_DOMAIN` 只填域名，不含协议、路径或端口。
+- 建议交给 systemd 守护；升级前先停止服务并备份完整数据目录。
+- 收款先用 Stripe/PayPal 沙箱完成一笔付款与退款，再切正式密钥。
+
+## SEO 基建
+
+店面直接输出完整 HTML，并提供 Product/AggregateOffer JSON-LD、canonical、Open Graph、sitemap.xml、robots.txt 与响应式 WebP。它解决技术可抓取性，不承诺搜索排名；多语言与 hreflang 尚未实现。
+
+## 从源码开发
+
+要求 Go 与 Node 版本见 [CI 配置](.github/workflows/ci.yml)。
+
+```bash
+make gen
+cd web/admin/ui && npm ci && npm run build && cd ../../..
+go build -o kartwo ./cmd/kartwo
+make check
+```
+
+`make check` 包含 vet、race test、build、lint、govulncheck 与 gitleaks。发布工作流会重新构建 Admin 后再嵌入二进制，避免提交产物陈旧。
 
 ## 许可
 
-内核 MIT（见 [LICENSES.md](LICENSES.md) 登记的第三方资源许可）。
+Kartwo 内核采用 [MIT License](LICENSE)。第三方依赖与原创媒体来源见 [LICENSES.md](LICENSES.md)。
