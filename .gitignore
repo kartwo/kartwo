@@ -1,7 +1,21 @@
 # 二进制产物
 /kartwo
 /dist-bin/
+/dist/
 *.exe
+
+# AI 商品图保留本机 PNG 原稿；仓库仅提交经正式媒体管线压缩的 WebP 发布资源
+/assets/generated-products/*.png
+
+# 本机 AI 协作配置与内部规划文档（保留本地，不发布到开源仓库）
+/.claude/
+/AGENTS.md
+/ARCHITECTURE.md
+/CLAUDE.md
+/CONVENTIONS.md
+/DECISIONS.md
+/PROGRESS.md
+/ROADMAP.md
 
 # 数据目录（数据即文件夹，绝不进 git）
 /data/
