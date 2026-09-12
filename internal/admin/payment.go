@@ -128,6 +128,24 @@ func (h *HTTP) setPayment(w http.ResponseWriter, r *http.Request) {
 	h.getPayment(w, r)
 }
 
+// testStripeConnection 验证当前已保存并激活的 Stripe Secret key，不保存或回传密钥。
+func (h *HTTP) testStripeConnection(w http.ResponseWriter, r *http.Request) {
+	if h.stripeTest == nil {
+		writeErr(w, http.StatusNotImplemented, "Stripe 测试连接暂不可用")
+		return
+	}
+	if err := h.stripeTest.TestStripeConnection(r.Context()); err != nil {
+		if errors.Is(err, payment.ErrLocked) {
+			writeErr(w, http.StatusConflict, "Stripe Secret key 尚未配置或未激活")
+			return
+		}
+		writeErr(w, http.StatusBadGateway, "Stripe 连接失败，请确认 Secret key 有效、具备账户读取权限且与所选模式一致")
+		return
+	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "payment.stripe_connection_test", "settings", "payment")
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 // saveSetting 写一个设置项；encrypted=true 且 value 空则跳过（保持原值）。失败已写响应、返回 false。
 func (h *HTTP) saveSetting(ctx context.Context, w http.ResponseWriter, key, value string, encrypted bool, kek []byte) bool {
 	if encrypted {

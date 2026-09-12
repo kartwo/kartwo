@@ -12,13 +12,17 @@ import AuditEvents from './views/AuditEvents.vue'
 import ProductList from './views/ProductList.vue'
 import ProductEdit from './views/ProductEdit.vue'
 import ImportCSV from './views/ImportCSV.vue'
-import MarketSelect from './views/MarketSelect.vue'
 import PaymentSettings from './views/PaymentSettings.vue'
+import ShopSettings from './views/ShopSettings.vue'
 import DomainSettings from './views/DomainSettings.vue'
 import SmtpSettings from './views/SmtpSettings.vue'
 import TranslationSettings from './views/TranslationSettings.vue'
 import OrderList from './views/OrderList.vue'
 import OrderDetail from './views/OrderDetail.vue'
+import Merchandising from './views/Merchandising.vue'
+import CategoryManagement from './views/CategoryManagement.vue'
+import ShippingSettings from './views/ShippingSettings.vue'
+import PolicySettings from './views/PolicySettings.vue'
 import './style.css'
 
 const router = createRouter({
@@ -34,13 +38,18 @@ const router = createRouter({
     { path: '/products/new', component: ProductEdit },
     { path: '/products/:id', component: ProductEdit, props: true },
     { path: '/imports/csv', component: ImportCSV },
-    { path: '/market', component: MarketSelect },
+    { path: '/market', redirect: '/payment' },
     { path: '/payment', component: PaymentSettings },
+    { path: '/shop', component: ShopSettings },
     { path: '/domain', component: DomainSettings },
     { path: '/smtp', component: SmtpSettings },
     { path: '/translation', component: TranslationSettings },
     { path: '/orders', component: OrderList },
     { path: '/orders/:id', component: OrderDetail, props: true },
+    { path: '/merchandising', component: Merchandising },
+    { path: '/categories', component: CategoryManagement },
+    { path: '/shipping', component: ShippingSettings },
+    { path: '/policies', component: PolicySettings },
   ],
 })
 

@@ -1,0 +1,15 @@
+{{define "content"}}
+<header class="catalog-head">
+  <div><span class="eyebrow">Shop</span><h1>{{.Heading}}</h1><p>{{.Intro}}</p></div>
+  <a href="/collections/all">Browse all products →</a>
+</header>
+{{if not .Items}}<p class="muted">No matching products found. Try another search or browse all products.</p>{{end}}
+<div class="grid">
+  {{range .Items}}
+  <a class="card" href="/p/{{.Slug}}">
+    {{if .ThumbURL}}<img class="ph" src="{{.ThumbURL}}" alt="{{.ThumbAlt}}" loading="lazy" width="300" height="300" />{{else}}<span class="ph" role="img" aria-label="Product image coming soon"></span>{{end}}
+    <div class="body"><span class="product-kicker">{{if .Category}}{{.Category}}{{else}}Running essential{{end}}</span><div class="t">{{.Title}}</div><div class="price">From {{call $.Money .FromCents}}</div></div>
+  </a>
+  {{end}}
+</div>
+{{end}}

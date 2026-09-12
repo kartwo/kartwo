@@ -36,20 +36,22 @@ var tmplFS embed.FS
 
 // HTTP 承载店面页面与 SEO 端点。
 type HTTP struct {
-	trusted   []*net.IPNet
-	svc       *Service
-	cart      *cart.Service
-	order     *order.Service
-	settings  *settings.Service
-	pay       PaymentGateway // 可为 nil（未接入收款）
-	redirect  *redirect.Service
-	shopName  string
-	baseURL   string // 配置基址；空则按请求推导
-	homeTmpl  *template.Template
-	prodTmpl  *template.Template
-	cartTmpl  *template.Template
-	ckoutTmpl *template.Template
-	orderTmpl *template.Template
+	trusted          []*net.IPNet
+	svc              *Service
+	cart             *cart.Service
+	order            *order.Service
+	settings         *settings.Service
+	pay              PaymentGateway // 可为 nil（未接入收款）
+	redirect         *redirect.Service
+	shopNameFallback string
+	baseURL          string // 配置基址；空则按请求推导
+	homeTmpl         *template.Template
+	catalogTmpl      *template.Template
+	prodTmpl         *template.Template
+	cartTmpl         *template.Template
+	ckoutTmpl        *template.Template
+	orderTmpl        *template.Template
+	pageTmpl         *template.Template
 }
 
 // secureFor 判定本次响应的 Cookie 是否该带 Secure：直连 TLS 始终安全；
@@ -64,24 +66,37 @@ func (h *HTTP) secureFor(r *http.Request) bool {
 
 // NewHTTP 构建店面 HTTP 层。货币按当前主攻市场逐请求解析（向导切市场即时生效）。
 // 注：cookie 的 Secure 标记按**每次请求**是否走 TLS 决定（见 secureFor），故不再需要 secure 参数。
-func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, settingsSvc *settings.Service, pay PaymentGateway, redirectSvc *redirect.Service, shopName, baseURL string, trusted []*net.IPNet) *HTTP {
+func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, settingsSvc *settings.Service, pay PaymentGateway, redirectSvc *redirect.Service, shopName, baseURL string, trusted []*net.IPNet, shopNameOverride ...string) *HTTP {
 	parse := func(page string) *template.Template {
 		return template.Must(template.New("").ParseFS(tmplFS, "templates/base.html", page))
 	}
-	return &HTTP{
+	h := &HTTP{
 		trusted: trusted,
-		svc:     svc, cart: cartSvc, order: orderSvc, settings: settingsSvc, pay: pay, redirect: redirectSvc, shopName: shopName,
-		baseURL:   strings.TrimRight(baseURL, "/"),
-		homeTmpl:  parse("templates/home.html"),
-		prodTmpl:  parse("templates/product.html"),
-		cartTmpl:  parse("templates/cart.html"),
-		ckoutTmpl: parse("templates/checkout.html"),
-		orderTmpl: parse("templates/order.html"),
+		svc:     svc, cart: cartSvc, order: orderSvc, settings: settingsSvc, pay: pay, redirect: redirectSvc, shopNameFallback: shopName,
+		baseURL:     strings.TrimRight(baseURL, "/"),
+		homeTmpl:    parse("templates/home.html"),
+		catalogTmpl: parse("templates/catalog.html"),
+		prodTmpl:    parse("templates/product.html"),
+		cartTmpl:    parse("templates/cart.html"),
+		ckoutTmpl:   parse("templates/checkout.html"),
+		orderTmpl:   parse("templates/order.html"),
+		pageTmpl:    parse("templates/content_page.html"),
 	}
+	if len(shopNameOverride) > 0 {
+		if fallback := strings.TrimSpace(shopNameOverride[0]); fallback != "" {
+			h.shopNameFallback = fallback
+		}
+	}
+	return h
 }
 
 // cur 解析当前请求的货币代码（按主攻市场）。
 func (h *HTTP) cur(ctx context.Context) string { return h.settings.Currency(ctx) }
+
+// shopName 返回当前有效店名；后台设置始终可修改，环境变量仅作为未配置时的回退。
+func (h *HTTP) shopName(ctx context.Context) string {
+	return h.settings.ShopName(ctx, h.shopNameFallback)
+}
 
 // money 返回当前请求的金额格式化器（供模板 {{call $.Money .Cents}}）。
 func (h *HTTP) money(ctx context.Context) func(int64) string { return moneyFunc(h.cur(ctx)) }
@@ -90,10 +105,15 @@ func (h *HTTP) money(ctx context.Context) func(int64) string { return moneyFunc(
 func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /{$}", h.home) // 仅根路径，避免吃掉其它前缀
 	mux.HandleFunc("GET /p/{slug}", h.product)
+	mux.HandleFunc("GET /collections/all", h.allProducts)
+	mux.HandleFunc("GET /collections/{slug}", h.categoryPage)
+	mux.HandleFunc("GET /search", h.searchPage)
+	mux.HandleFunc("GET /pages/{slug}", h.contentPage)
 	mux.HandleFunc("GET /products/{handle}", h.shopifyProductRedirect)
 	mux.HandleFunc("GET /sitemap.xml", h.sitemap)
 	mux.HandleFunc("GET /robots.txt", h.robots)
 	mux.HandleFunc("GET /static/cart.js", h.cartJS)
+	mux.HandleFunc("GET /static/running-tee-hero.png", h.runningTeeHero)
 	// 购物车（匿名，cookie 标识；SameSite=Lax 缓解 CSRF）。
 	mux.HandleFunc("GET /cart", h.cartPage)
 	mux.HandleFunc("GET /cart/data", h.cartData)
@@ -151,25 +171,142 @@ func (h *HTTP) base(r *http.Request) string {
 }
 
 func (h *HTTP) home(w http.ResponseWriter, r *http.Request) {
-	items, err := h.svc.ListCatalog(r.Context())
+	items, err := h.svc.ListFeaturedCatalog(r.Context())
+	if err == nil && len(items) == 0 {
+		items, err = h.svc.ListCatalog(r.Context())
+	}
 	if err != nil {
 		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
 	canonical := h.base(r) + "/"
+	shopName := h.shopName(r.Context())
 	ld := map[string]any{
-		"@context": "https://schema.org", "@type": "WebSite", "name": h.shopName, "url": canonical,
+		"@context": "https://schema.org", "@type": "WebSite", "name": shopName, "url": canonical,
 	}
 	data := map[string]any{
-		"ShopName": h.shopName,
+		"ShopName": shopName,
 		"Items":    items,
 		"Money":    h.money(r.Context()),
 		"SEO": seo{
-			Title: h.shopName + " — Shop", Description: h.shopName + " catalog",
+			Title: shopName + " — Shop", Description: shopName + " catalog",
 			Canonical: canonical, OGType: "website", JSONLD: jsonLD(ld),
 		},
 	}
-	h.render(w, h.homeTmpl, data)
+	h.render(w, r, h.homeTmpl, data)
+}
+
+func (h *HTTP) allProducts(w http.ResponseWriter, r *http.Request) {
+	items, err := h.svc.ListCatalog(r.Context())
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+	shopName := h.shopName(r.Context())
+	h.render(w, r, h.catalogTmpl, map[string]any{
+		"ShopName": shopName, "Heading": "All products", "Intro": "Explore the complete running collection.", "Items": items, "Money": h.money(r.Context()),
+		"SEO": seo{Title: "All products — " + shopName, Description: "Shop all products from " + shopName, Canonical: h.base(r) + "/collections/all", OGType: "website"},
+	})
+}
+
+func (h *HTTP) categoryPage(w http.ResponseWriter, r *http.Request) {
+	category, items, err := h.svc.ListCatalogByCategory(r.Context(), r.PathValue("slug"))
+	if errors.Is(err, ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+	shopName := h.shopName(r.Context())
+	h.render(w, r, h.catalogTmpl, map[string]any{
+		"ShopName": shopName, "Heading": category.Name, "Intro": fmt.Sprintf("%d products in this collection.", category.ProductCount), "Items": items, "Money": h.money(r.Context()),
+		"SEO": seo{Title: category.Name + " — " + shopName, Description: "Shop " + category.Name + " from " + shopName, Canonical: h.base(r) + "/collections/" + category.Slug, OGType: "website"},
+	})
+}
+
+func (h *HTTP) searchPage(w http.ResponseWriter, r *http.Request) {
+	term := strings.TrimSpace(r.URL.Query().Get("q"))
+	if term == "" {
+		http.Redirect(w, r, "/collections/all", http.StatusSeeOther)
+		return
+	}
+	if len(term) > 100 {
+		term = term[:100]
+	}
+	items, err := h.svc.SearchCatalog(r.Context(), term)
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+	shopName := h.shopName(r.Context())
+	h.render(w, r, h.catalogTmpl, map[string]any{
+		"ShopName": shopName, "Heading": "Search results", "Intro": fmt.Sprintf("%d results for “%s”.", len(items), term), "SearchTerm": term, "Items": items, "Money": h.money(r.Context()),
+		"SEO": seo{Title: "Search — " + shopName, Description: "Product search results", Canonical: h.base(r) + "/search", OGType: "website"},
+	})
+}
+
+func (h *HTTP) contentPage(w http.ResponseWriter, r *http.Request) {
+	p, err := h.svc.GetContentPage(r.Context(), r.PathValue("slug"))
+	if errors.Is(err, ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Something went wrong", 500)
+		return
+	}
+	shopName := h.shopName(r.Context())
+	canonical := h.base(r) + "/pages/" + p.Slug
+	h.render(w, r, h.pageTmpl, map[string]any{"ShopName": shopName, "Page": p, "Body": safeMarkdown(p.BodyMarkdown), "SEO": seo{Title: p.Title + " — " + shopName, Description: seoDescription(p.SEODescription, p.Title), Canonical: canonical, OGType: "article"}})
+}
+
+// safeMarkdown 只支持标题、段落、无序列表和行内强调；所有输入先转义，故内容页不能注入 HTML/脚本。
+func safeMarkdown(src string) template.HTML {
+	var b strings.Builder
+	inList := false
+	closeList := func() {
+		if inList {
+			b.WriteString("</ul>")
+			inList = false
+		}
+	}
+	for _, raw := range strings.Split(src, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			closeList()
+			continue
+		}
+		esc := template.HTMLEscapeString(line)
+		if strings.HasPrefix(esc, "### ") {
+			closeList()
+			b.WriteString("<h3>" + esc[4:] + "</h3>")
+			continue
+		}
+		if strings.HasPrefix(esc, "## ") {
+			closeList()
+			b.WriteString("<h2>" + esc[3:] + "</h2>")
+			continue
+		}
+		if strings.HasPrefix(esc, "# ") {
+			closeList()
+			b.WriteString("<h1>" + esc[2:] + "</h1>")
+			continue
+		}
+		if strings.HasPrefix(esc, "- ") {
+			if !inList {
+				b.WriteString("<ul>")
+				inList = true
+			}
+			b.WriteString("<li>" + esc[2:] + "</li>")
+			continue
+		}
+		closeList()
+		b.WriteString("<p>" + esc + "</p>")
+	}
+	closeList()
+	return template.HTML(b.String()) //nolint:gosec // every input line is escaped before only fixed safe tags are added
 }
 
 func (h *HTTP) product(w http.ResponseWriter, r *http.Request) {
@@ -187,18 +324,19 @@ func (h *HTTP) product(w http.ResponseWriter, r *http.Request) {
 	if len(p.Images) > 0 {
 		ogImage = h.base(r) + p.Images[0].Large
 	}
+	shopName := h.shopName(r.Context())
 	data := map[string]any{
-		"ShopName": h.shopName,
+		"ShopName": shopName,
 		"Product":  p,
 		"Money":    h.money(r.Context()),
 		"SEO": seo{
-			Title:       p.Title + " — " + h.shopName,
+			Title:       p.Title + " — " + shopName,
 			Description: seoDescription(firstNonEmpty(p.SEODescription, p.Description), p.Title),
 			Canonical:   canonical, OGType: "product", OGImage: ogImage,
 			JSONLD: jsonLD(h.productLD(r.Context(), p, canonical, ogImage)),
 		},
 	}
-	h.render(w, h.prodTmpl, data)
+	h.render(w, r, h.prodTmpl, data)
 }
 
 // productLD 构建 schema.org/Product 结构化数据（含 offers 价格/库存）。
@@ -237,6 +375,22 @@ func (h *HTTP) sitemap(w http.ResponseWriter, r *http.Request) {
 	for _, it := range items {
 		b.WriteString("  <url><loc>" + xmlEsc(base+"/p/"+it.Slug) + "</loc></url>\n")
 	}
+	categories, err := h.svc.ListCategories(r.Context())
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+	for _, category := range categories {
+		b.WriteString("  <url><loc>" + xmlEsc(base+"/collections/"+category.Slug) + "</loc></url>\n")
+	}
+	pages, err := h.svc.ListContentPages(r.Context())
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+	for _, page := range pages {
+		b.WriteString("  <url><loc>" + xmlEsc(base+"/pages/"+page.Slug) + "</loc></url>\n")
+	}
 	b.WriteString("</urlset>\n")
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	_, _ = w.Write([]byte(b.String()))
@@ -247,7 +401,32 @@ func (h *HTTP) robots(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "User-agent: *\nAllow: /\nDisallow: /admin/\nSitemap: %s/sitemap.xml\n", h.base(r))
 }
 
-func (h *HTTP) render(w http.ResponseWriter, t *template.Template, data any) {
+// runningTeeHero 提供内嵌的原创跑步产品首屏图；固定路径，不接受用户输入。
+func (h *HTTP) runningTeeHero(w http.ResponseWriter, _ *http.Request) {
+	b, err := tmplFS.ReadFile("static/running-tee-hero.png")
+	if err != nil {
+		http.NotFound(w, nil)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=604800")
+	_, _ = w.Write(b)
+}
+
+func (h *HTTP) render(w http.ResponseWriter, r *http.Request, t *template.Template, data map[string]any) {
+	categories, err := h.svc.ListCategories(r.Context())
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+	pages, err := h.svc.ListContentPages(r.Context())
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+	data["NavigationCategories"] = categories
+	data["FooterPages"] = pages
+	data["ShopLogoURL"] = h.settings.ShopLogoURL(r.Context())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.ExecuteTemplate(w, "base", data); err != nil {
 		http.Error(w, "Render error", http.StatusInternalServerError)

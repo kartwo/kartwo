@@ -1,8 +1,7 @@
 <!-- 应用外壳与鉴权 / App Shell & Auth. 作者：仗键天涯(daxing) 3442535897@qq.com -->
 <script setup>
-import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
+import { ref, computed, onMounted, provide } from 'vue'
 import { api, APIError } from './api.js'
-import MarketSelect from './views/MarketSelect.vue'
 import PaymentWizard from './views/PaymentWizard.vue'
 import DomainWizard from './views/DomainWizard.vue'
 import SmtpWizard from './views/SmtpWizard.vue'
@@ -14,18 +13,16 @@ import InsecureNotice from './components/InsecureNotice.vue'
 const loading = ref(true)
 const initialized = ref(false)
 const authed = ref(false)
-const marketConfigured = ref(false)
 const paymentStepNeeded = ref(false)
 const domainStepNeeded = ref(false)
 const smtpStepNeeded = ref(false)
 const username = ref('')
 
-// 向导「第 X / N 步」进度：固定四步流，跳过的步骤仍占位、步号不跳变（口径见 DECISIONS）。
+// 向导「第 X / N 步」进度：固定三步流，跳过的步骤仍占位、步号不跳变。
 const wizardStep = computed(() => {
-  if (!marketConfigured.value) return 1
-  if (paymentStepNeeded.value) return 2
-  if (domainStepNeeded.value) return 3
-  return 4 // 邮件步（smtpStepNeeded 为真时展示）
+  if (paymentStepNeeded.value) return 1
+  if (domainStepNeeded.value) return 2
+  return 3 // 邮件步（smtpStepNeeded 为真时展示）
 })
 
 // checkDomainStep 查询是否仍需展示域名步骤（收款步完成后调用）；不需要则继续查邮件步。
@@ -52,12 +49,8 @@ async function refresh() {
         const me = await api.me()
         authed.value = true
         username.value = me.username
-        const mk = await api.getMarket()
-        marketConfigured.value = !!mk.configured
-        if (marketConfigured.value) {
-          try { paymentStepNeeded.value = !!(await api.wizardPayment()).needed } catch (_) { paymentStepNeeded.value = false }
-          if (!paymentStepNeeded.value) await checkDomainStep()
-        }
+        try { paymentStepNeeded.value = !!(await api.wizardPayment()).needed } catch (_) { paymentStepNeeded.value = false }
+        if (!paymentStepNeeded.value) await checkDomainStep()
       } catch (e) {
         authed.value = false
       }
@@ -67,11 +60,6 @@ async function refresh() {
   }
 }
 
-async function onMarketConfigured() {
-  marketConfigured.value = true
-  try { paymentStepNeeded.value = !!(await api.wizardPayment()).needed } catch (_) { paymentStepNeeded.value = false }
-  if (!paymentStepNeeded.value) await checkDomainStep()
-}
 // 收款步完成 → 进入域名步（若仍需要）。
 async function onPaymentStepDone() {
   paymentStepNeeded.value = false
@@ -82,15 +70,12 @@ async function onDomainStepDone() {
   domainStepNeeded.value = false
   await checkSmtpStep()
 }
-// 域名步「上一步」→ 回到收款步（不允许回退已配市场）；收款步完成后会再回到域名步。
+// 域名步「上一步」→ 回到收款步；收款步完成后会再回到域名步。
 function onDomainBack() { paymentStepNeeded.value = true }
 // 邮件步完成（保存或跳过）→ 进入后台。
 function onSmtpStepDone() { smtpStepNeeded.value = false }
 // 邮件步「上一步」→ 回到域名步。
 function onSmtpBack() { domainStepNeeded.value = true }
-onMounted(() => window.addEventListener('market-configured', onMarketConfigured))
-onUnmounted(() => window.removeEventListener('market-configured', onMarketConfigured))
-
 async function doSetup() {
   busy.value = true; err.value = ''
   try {
@@ -162,17 +147,7 @@ onMounted(refresh)
     </div>
   </div>
 
-  <!-- 已登录但未选市场：强制走「选择主攻市场」向导步骤 -->
-  <template v-else-if="!marketConfigured">
-    <header class="app-header">
-      <div class="brand">Kartwo Admin · 开店向导</div>
-      <button @click="doLogout">登出</button>
-    </header>
-    <WizardProgress :step="wizardStep" />
-    <MarketSelect />
-  </template>
-
-  <!-- 市场已选、收款未配且未跳过：走「配置收款」向导步骤 -->
+  <!-- 收款未配且未跳过：走「配置收款」向导步骤 -->
   <template v-else-if="paymentStepNeeded">
     <header class="app-header">
       <div class="brand">Kartwo Admin · 开店向导</div>
@@ -210,16 +185,25 @@ onMounted(refresh)
         <RouterLink to="/dashboard">概览</RouterLink>
         <RouterLink to="/diagnostics">诊断</RouterLink>
         <RouterLink to="/export">导出</RouterLink>
-        <RouterLink to="/backup">备份</RouterLink>
         <RouterLink to="/audit">审计</RouterLink>
         <RouterLink to="/products">商品</RouterLink>
+        <RouterLink to="/categories">分类</RouterLink>
+        <RouterLink to="/merchandising">内容</RouterLink>
         <RouterLink to="/imports/csv">导入</RouterLink>
         <RouterLink to="/orders">订单</RouterLink>
-        <RouterLink to="/market">市场</RouterLink>
-        <RouterLink to="/payment">收款</RouterLink>
-        <RouterLink to="/domain">域名</RouterLink>
-        <RouterLink to="/smtp">邮件</RouterLink>
-        <RouterLink to="/translation">翻译</RouterLink>
+        <details class="settings-menu">
+          <summary>设置</summary>
+          <div class="settings-submenu">
+            <RouterLink to="/shop">店铺</RouterLink>
+            <RouterLink to="/payment">收款</RouterLink>
+            <RouterLink to="/domain">域名</RouterLink>
+            <RouterLink to="/smtp">邮件</RouterLink>
+            <RouterLink to="/translation">翻译</RouterLink>
+            <RouterLink to="/backup">备份</RouterLink>
+            <RouterLink to="/shipping">配送</RouterLink>
+            <RouterLink to="/policies">店铺政策</RouterLink>
+          </div>
+        </details>
         <span class="muted">{{ username }}</span>
         <button @click="doLogout">登出</button>
       </div>
@@ -229,3 +213,14 @@ onMounted(refresh)
     </main>
   </template>
 </template>
+
+<style scoped>
+.settings-menu{position:relative}
+.settings-menu summary{cursor:pointer;list-style:none;white-space:nowrap}
+.settings-menu summary::-webkit-details-marker{display:none}
+.settings-menu summary::after{content:'⌄';margin-left:var(--sp-1);color:var(--text-muted)}
+.settings-menu[open] summary::after{content:'⌃'}
+.settings-submenu{position:absolute;right:0;top:calc(100% + var(--sp-2));z-index:10;display:grid;min-width:9rem;padding:var(--sp-2);border:1px solid var(--border);border-radius:var(--radius-md);background:var(--panel);box-shadow:var(--shadow-md)}
+.settings-submenu a{padding:var(--sp-2) var(--sp-3);border-radius:var(--radius-sm);white-space:nowrap}
+.settings-submenu a:hover{background:var(--surface-2)}
+</style>

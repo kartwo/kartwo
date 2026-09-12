@@ -9,6 +9,7 @@ const onUnauthorized = inject('onUnauthorized')
 const toast = useToast()
 const err = ref('') // 仅页级：加载收款配置失败的常驻错误（D2 保留 inline）
 const busy = ref(false)
+const testingStripe = ref(false)
 
 // Stripe
 const s = ref({ source: 'db', readonly: false, mode: 'test', publishable: '', has_secret: false, has_webhook: false, secret: '', webhook_secret: '' })
@@ -46,6 +47,17 @@ async function save(payload) {
     toast.error(e.message)
   } finally { busy.value = false }
 }
+async function testStripeConnection() {
+  if (testingStripe.value) return
+  testingStripe.value = true
+  try {
+    await api.testStripeConnection()
+    toast.success('Stripe 连接成功，Secret key 与当前模式一致。')
+  } catch (e) {
+    if (e instanceof APIError && e.status === 401) return onUnauthorized()
+    toast.error(e.message)
+  } finally { testingStripe.value = false }
+}
 onMounted(load)
 </script>
 
@@ -71,6 +83,8 @@ onMounted(load)
       <input v-model="s.webhook_secret" type="password" :placeholder="s.readonly ? '由环境变量提供' : (s.has_webhook ? '已保存，留空不改' : 'whsec_…')" autocomplete="off" :disabled="s.readonly" />
       <div class="spacer"></div>
       <button class="primary" :disabled="busy || s.readonly" @click="saveStripe">保存 Stripe</button>
+      <button :disabled="testingStripe || !s.has_secret" @click="testStripeConnection">{{ testingStripe ? '正在测试…' : '测试 Stripe 连接' }}</button>
+      <p class="muted test-hint">测试使用当前<strong>已保存</strong>的 Secret key，不会保存输入框中尚未提交的内容。</p>
     </div>
 
     <!-- PayPal -->

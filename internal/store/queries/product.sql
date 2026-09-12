@@ -16,13 +16,16 @@ INSERT INTO product_option (product_id, name, position) VALUES (?, ?, ?);
 INSERT INTO product_option_value (option_id, value, position) VALUES (?, ?, ?);
 
 -- name: ListProducts :many
-SELECT id, public_id, title, slug, status, created_at, updated_at FROM product WHERE deleted_at IS NULL ORDER BY id DESC;
+SELECT id, public_id, title, slug, status, featured, created_at, updated_at FROM product WHERE deleted_at IS NULL ORDER BY id DESC;
 
 -- name: GetProductByPublicID :one
-SELECT id, public_id, title, title_zh, slug, slug_zh, description, seo_description, seo_description_zh, status, created_at, updated_at FROM product WHERE public_id = ? AND deleted_at IS NULL;
+SELECT id, public_id, title, title_zh, slug, slug_zh, description, seo_description, seo_description_zh, status, featured, created_at, updated_at FROM product WHERE public_id = ? AND deleted_at IS NULL;
 
 -- name: UpdateProduct :exec
 UPDATE product SET title = ?, title_zh = ?, description = ?, seo_description = ?, seo_description_zh = ?, status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND deleted_at IS NULL;
+
+-- name: SetProductFeatured :exec
+UPDATE product SET featured = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND deleted_at IS NULL;
 
 -- name: SoftDeleteProduct :exec
 UPDATE product SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND deleted_at IS NULL;

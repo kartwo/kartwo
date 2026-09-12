@@ -23,12 +23,18 @@ import (
 	"github.com/kartwo/kartwo/internal/mail"
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/order"
+	"github.com/kartwo/kartwo/internal/policy"
 	"github.com/kartwo/kartwo/internal/settings"
 )
 
 // refundService 约束后台退款所需的最小能力，便于隔离 HTTP 审计边界与支付网关实现。
 type refundService interface {
 	Refund(ctx context.Context, orderPublicID string) error
+}
+
+// stripeConnectionTester 是收款页在线验证 Secret key 的可选能力。
+type stripeConnectionTester interface {
+	TestStripeConnection(ctx context.Context) error
 }
 
 const (
@@ -40,28 +46,38 @@ const (
 
 // HTTP 承载 Admin API 处理器。
 type HTTP struct {
-	svc       *Service
-	cat       *catalog.Service
-	importer  *importer.Service
-	media     *media.Service
-	settings  *settings.Service
-	orders    *order.Service   // 后台订单页（M3.3a 起）
-	pay       refundService    // 退款编排（M3.3a 起），可为 nil
-	mailCache *mail.Cache      // SMTP 凭证缓存（M4.3 设置页/测试发信/向导），可为 nil
-	exporter  *backup.Exporter // 全量数据导出（M5.6），可为 nil
-	audit     *audit.Service   // 关键后台动作的只追加审计记录（M6.1）
-	backupCfg BackupConfig     // 本地自动备份的有效配置与 env 覆盖状态（M5.12）
-	envDomain string           // KARTWO_DOMAIN（env 覆盖 DB 的域名来源，M4.2.1 域名步骤展示/只读判定）
-	secure    bool             // 本实例能否签发 HTTPS（prod=true，dev 恒 false），供 domain 页 https_capable
-	limiter   *loginLimiter
-	trusted   []*net.IPNet
+	svc         *Service
+	cat         *catalog.Service
+	importer    *importer.Service
+	media       *media.Service
+	settings    *settings.Service
+	policy      *policy.Service
+	orders      *order.Service // 后台订单页（M3.3a 起）
+	pay         refundService  // 退款编排（M3.3a 起），可为 nil
+	stripeTest  stripeConnectionTester
+	mailCache   *mail.Cache      // SMTP 凭证缓存（M4.3 设置页/测试发信/向导），可为 nil
+	exporter    *backup.Exporter // 全量数据导出（M5.6），可为 nil
+	audit       *audit.Service   // 关键后台动作的只追加审计记录（M6.1）
+	backupCfg   BackupConfig     // 本地自动备份的有效配置与 env 覆盖状态（M5.12）
+	envDomain   string           // KARTWO_DOMAIN（env 覆盖 DB 的域名来源，M4.2.1 域名步骤展示/只读判定）
+	envShopName string           // KARTWO_SHOP_NAME（非空时覆盖 DB 店铺名称）
+	secure      bool             // 本实例能否签发 HTTPS（prod=true，dev 恒 false），供 domain 页 https_capable
+	limiter     *loginLimiter
+	trusted     []*net.IPNet
 }
 
 // NewHTTP 构建 Admin HTTP 层。secure=true 表示本实例可启用 HTTPS（prod）；
 // 注意 cookie 的 Secure 标记按**每次请求**是否走 TLS 决定（决策 D8-A），与此参数无关。
 // envDomain=KARTWO_DOMAIN，非空时域名由 env 提供、后台只读（决策 C：env 覆盖 DB、不双写）。
-func NewHTTP(svc *Service, cat *catalog.Service, importSvc *importer.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc refundService, mailCache *mail.Cache, exporter *backup.Exporter, backupCfg BackupConfig, envDomain string, secure bool, trusted []*net.IPNet) *HTTP {
-	return &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, orders: orderSvc, pay: paySvc, mailCache: mailCache, exporter: exporter, audit: audit.New(svc.db), backupCfg: backupCfg, envDomain: envDomain, secure: secure, trusted: trusted, limiter: newLoginLimiter(5, time.Minute)}
+func NewHTTP(svc *Service, cat *catalog.Service, importSvc *importer.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc refundService, mailCache *mail.Cache, exporter *backup.Exporter, backupCfg BackupConfig, envDomain string, secure bool, trusted []*net.IPNet, envShopName ...string) *HTTP {
+	h := &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, policy: policy.New(settingsSvc, cat), orders: orderSvc, pay: paySvc, mailCache: mailCache, exporter: exporter, audit: audit.New(svc.db), backupCfg: backupCfg, envDomain: envDomain, secure: secure, trusted: trusted, limiter: newLoginLimiter(5, time.Minute)}
+	if tester, ok := paySvc.(stripeConnectionTester); ok {
+		h.stripeTest = tester
+	}
+	if len(envShopName) > 0 {
+		h.envShopName = envShopName[0]
+	}
+	return h
 }
 
 // Register 在给定 mux 上注册 /admin/api/* 路由。
@@ -78,11 +94,20 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("POST /admin/api/products", protect(h.createProduct))
 	mux.Handle("GET /admin/api/products/{id}", protect(h.getProduct))
 	mux.Handle("PATCH /admin/api/products/{id}", protect(h.updateProduct))
+	mux.Handle("PATCH /admin/api/products/{id}/featured", protect(h.setProductFeatured))
 	mux.Handle("DELETE /admin/api/products/{id}", protect(h.deleteProduct))
 	mux.Handle("PATCH /admin/api/variants/{id}/inventory", protect(h.setVariantInventory))
 	mux.Handle("PATCH /admin/api/variants/{id}/price", protect(h.setVariantPrice))
 	mux.Handle("GET /admin/api/categories", protect(h.listCategories))
 	mux.Handle("POST /admin/api/categories", protect(h.createCategory))
+	mux.Handle("PATCH /admin/api/categories/{id}", protect(h.updateCategory))
+	mux.Handle("DELETE /admin/api/categories/{id}", protect(h.deleteCategory))
+	mux.Handle("GET /admin/api/content-pages", protect(h.listContentPages))
+	mux.Handle("POST /admin/api/content-pages", protect(h.createContentPage))
+	mux.Handle("GET /admin/api/content-pages/{id}", protect(h.getContentPage))
+	mux.Handle("PATCH /admin/api/content-pages/{id}", protect(h.updateContentPage))
+	mux.Handle("DELETE /admin/api/content-pages/{id}", protect(h.deleteContentPage))
+	mux.Handle("POST /admin/api/content-pages/generate-footer", protect(h.generateFooterPages))
 	mux.Handle("POST /admin/api/imports/csv/preview", protect(h.previewCSVImport))
 	mux.Handle("POST /admin/api/imports/{id}/execute", protect(h.executeImport))
 	mux.Handle("GET /admin/api/imports/{id}", protect(h.getImport))
@@ -101,6 +126,13 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	// 收款设置（Stripe 密钥；sk/whsec 加密存）。
 	mux.Handle("GET /admin/api/settings/payment", protect(h.getPayment))
 	mux.Handle("PUT /admin/api/settings/payment", protect(h.setPayment))
+	mux.Handle("POST /admin/api/settings/payment/stripe/test", protect(h.testStripeConnection))
+	mux.Handle("GET /admin/api/settings/shop", protect(h.getShop))
+	mux.Handle("PUT /admin/api/settings/shop", protect(h.setShop))
+	mux.Handle("POST /admin/api/settings/shop/logo", protect(h.uploadShopLogo))
+	mux.Handle("DELETE /admin/api/settings/shop/logo", protect(h.deleteShopLogo))
+	mux.Handle("GET /admin/api/settings/policy-profile", protect(h.getPolicyProfile))
+	mux.Handle("PUT /admin/api/settings/policy-profile", protect(h.setPolicyProfile))
 	mux.Handle("GET /admin/api/settings/translation", protect(h.getTranslationSettings))
 	mux.Handle("PUT /admin/api/settings/translation", protect(h.setTranslationSettings))
 	mux.Handle("POST /admin/api/translation/text", protect(h.translateText))
@@ -133,8 +165,17 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 
 	// 订单 + 退款（M3.3a）。
 	mux.Handle("GET /admin/api/orders", protect(h.listOrders))
+	mux.Handle("GET /admin/api/orders/export", protect(h.exportOrdersCSV))
 	mux.Handle("GET /admin/api/orders/{id}", protect(h.getOrder))
 	mux.Handle("POST /admin/api/orders/{id}/refund", protect(h.refundOrder))
+	mux.Handle("POST /admin/api/orders/{id}/fulfill", protect(h.fulfillOrder))
+	mux.Handle("GET /admin/api/settings/shipping/countries", protect(h.listShippingCountries))
+	mux.Handle("PUT /admin/api/settings/shipping/countries", protect(h.saveShippingCountries))
+	mux.Handle("PUT /admin/api/settings/shipping/default", protect(h.saveDefaultShippingZone))
+	mux.Handle("GET /admin/api/settings/shipping", protect(h.listShippingZones))
+	mux.Handle("POST /admin/api/settings/shipping", protect(h.createShippingZone))
+	mux.Handle("PATCH /admin/api/settings/shipping/{id}", protect(h.updateShippingZone))
+	mux.Handle("DELETE /admin/api/settings/shipping/{id}", protect(h.deleteShippingZone))
 }
 
 func (h *HTTP) status(w http.ResponseWriter, r *http.Request) {

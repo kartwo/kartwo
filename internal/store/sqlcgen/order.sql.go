@@ -230,6 +230,61 @@ func (q *Queries) ListOrdersForAdmin(ctx context.Context) ([]ListOrdersForAdminR
 	return items, nil
 }
 
+const listOrdersForExport = `-- name: ListOrdersForExport :many
+SELECT public_id, status, email, ship_name, ship_phone, ship_address, ship_country, currency, subtotal_cents, total_cents, payment_provider, created_at FROM "order" ORDER BY id DESC
+`
+
+type ListOrdersForExportRow struct {
+	PublicID        string `db:"public_id" json:"public_id"`
+	Status          string `db:"status" json:"status"`
+	Email           string `db:"email" json:"email"`
+	ShipName        string `db:"ship_name" json:"ship_name"`
+	ShipPhone       string `db:"ship_phone" json:"ship_phone"`
+	ShipAddress     string `db:"ship_address" json:"ship_address"`
+	ShipCountry     string `db:"ship_country" json:"ship_country"`
+	Currency        string `db:"currency" json:"currency"`
+	SubtotalCents   int64  `db:"subtotal_cents" json:"subtotal_cents"`
+	TotalCents      int64  `db:"total_cents" json:"total_cents"`
+	PaymentProvider string `db:"payment_provider" json:"payment_provider"`
+	CreatedAt       string `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) ListOrdersForExport(ctx context.Context) ([]ListOrdersForExportRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOrdersForExport)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOrdersForExportRow{}
+	for rows.Next() {
+		var i ListOrdersForExportRow
+		if err := rows.Scan(
+			&i.PublicID,
+			&i.Status,
+			&i.Email,
+			&i.ShipName,
+			&i.ShipPhone,
+			&i.ShipAddress,
+			&i.ShipCountry,
+			&i.Currency,
+			&i.SubtotalCents,
+			&i.TotalCents,
+			&i.PaymentProvider,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRefundsByOrder = `-- name: ListRefundsByOrder :many
 SELECT provider, provider_refund_id, amount_cents, created_at FROM refund WHERE order_id = ? ORDER BY id
 `

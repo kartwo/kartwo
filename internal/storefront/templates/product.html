@@ -1,6 +1,6 @@
 {{define "content"}}
 {{$p := .Product}}
-<nav class="crumbs"><a href="/">Shop</a> / {{$p.Title}}</nav>
+<nav class="crumbs"><a href="/collections/all">Shop</a>{{if $p.Categories}}{{with index $p.Categories 0}} / <a href="/collections/{{.Slug}}">{{.Name}}</a>{{end}}{{end}} / {{$p.Title}}</nav>
 <div class="detail">
   <div class="gallery">
     {{if $p.Images}}
@@ -9,12 +9,15 @@
       <div class="ph" style="aspect-ratio:1/1;background:#f1f5f9;border-radius:12px"></div>
     {{end}}
   </div>
-  <div class="info">
+  <div class="info product-info">
+    <span class="product-kicker">{{if $p.Categories}}{{with index $p.Categories 0}}{{.Name}}{{end}}{{else}}Running essential{{end}}</span>
     <h1>{{$p.Title}}</h1>
     <p class="price" style="font-size:1.3rem">
       {{if eq $p.MinCents $p.MaxCents}}{{call $.Money $p.MinCents}}{{else}}{{call $.Money $p.MinCents}} – {{call $.Money $p.MaxCents}}{{end}}
     </p>
     <p>{{if $p.InStock}}<span class="stock-in">● In stock</span>{{else}}<span class="stock-out">● Out of stock</span>{{end}}</p>
+
+    <p class="product-note">Choose your preferred fit before adding to cart. Stock is shown live for each option.</p>
 
     <!-- Choose a variant + add to cart (cart.js progressive enhancement; falls back to plain form post) -->
     <form class="opts" data-add-form action="/cart/items" method="post">

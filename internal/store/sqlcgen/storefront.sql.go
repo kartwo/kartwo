@@ -9,6 +9,35 @@ import (
 	"context"
 )
 
+const getActiveContentPageBySlug = `-- name: GetActiveContentPageBySlug :one
+SELECT id, public_id, title, slug, body_markdown, seo_description, updated_at FROM content_page WHERE slug = ? AND status = 'active' AND deleted_at IS NULL
+`
+
+type GetActiveContentPageBySlugRow struct {
+	ID             int64  `db:"id" json:"id"`
+	PublicID       string `db:"public_id" json:"public_id"`
+	Title          string `db:"title" json:"title"`
+	Slug           string `db:"slug" json:"slug"`
+	BodyMarkdown   string `db:"body_markdown" json:"body_markdown"`
+	SeoDescription string `db:"seo_description" json:"seo_description"`
+	UpdatedAt      string `db:"updated_at" json:"updated_at"`
+}
+
+func (q *Queries) GetActiveContentPageBySlug(ctx context.Context, slug string) (GetActiveContentPageBySlugRow, error) {
+	row := q.db.QueryRowContext(ctx, getActiveContentPageBySlug, slug)
+	var i GetActiveContentPageBySlugRow
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.Title,
+		&i.Slug,
+		&i.BodyMarkdown,
+		&i.SeoDescription,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getActiveProductBySlug = `-- name: GetActiveProductBySlug :one
 SELECT id, public_id, title, slug, description, seo_description, updated_at FROM product WHERE slug = ? AND status = 'active' AND deleted_at IS NULL
 `
@@ -36,6 +65,51 @@ func (q *Queries) GetActiveProductBySlug(ctx context.Context, slug string) (GetA
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listActiveContentPages = `-- name: ListActiveContentPages :many
+SELECT id, public_id, title, slug, body_markdown, seo_description, updated_at FROM content_page WHERE status = 'active' AND deleted_at IS NULL ORDER BY title
+`
+
+type ListActiveContentPagesRow struct {
+	ID             int64  `db:"id" json:"id"`
+	PublicID       string `db:"public_id" json:"public_id"`
+	Title          string `db:"title" json:"title"`
+	Slug           string `db:"slug" json:"slug"`
+	BodyMarkdown   string `db:"body_markdown" json:"body_markdown"`
+	SeoDescription string `db:"seo_description" json:"seo_description"`
+	UpdatedAt      string `db:"updated_at" json:"updated_at"`
+}
+
+func (q *Queries) ListActiveContentPages(ctx context.Context) ([]ListActiveContentPagesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveContentPages)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveContentPagesRow{}
+	for rows.Next() {
+		var i ListActiveContentPagesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.Title,
+			&i.Slug,
+			&i.BodyMarkdown,
+			&i.SeoDescription,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listActiveProducts = `-- name: ListActiveProducts :many
@@ -66,6 +140,151 @@ func (q *Queries) ListActiveProducts(ctx context.Context) ([]ListActiveProductsR
 	items := []ListActiveProductsRow{}
 	for rows.Next() {
 		var i ListActiveProductsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.Title,
+			&i.Slug,
+			&i.Description,
+			&i.SeoDescription,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActiveProductsByCategory = `-- name: ListActiveProductsByCategory :many
+SELECT p.id, p.public_id, p.title, p.slug, p.description, p.seo_description, p.updated_at
+FROM product p
+JOIN product_category pc ON pc.product_id = p.id
+JOIN category c ON c.id = pc.category_id
+WHERE c.slug = ? AND c.deleted_at IS NULL AND p.status = 'active' AND p.deleted_at IS NULL
+ORDER BY p.updated_at DESC
+`
+
+type ListActiveProductsByCategoryRow struct {
+	ID             int64  `db:"id" json:"id"`
+	PublicID       string `db:"public_id" json:"public_id"`
+	Title          string `db:"title" json:"title"`
+	Slug           string `db:"slug" json:"slug"`
+	Description    string `db:"description" json:"description"`
+	SeoDescription string `db:"seo_description" json:"seo_description"`
+	UpdatedAt      string `db:"updated_at" json:"updated_at"`
+}
+
+func (q *Queries) ListActiveProductsByCategory(ctx context.Context, slug string) ([]ListActiveProductsByCategoryRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveProductsByCategory, slug)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveProductsByCategoryRow{}
+	for rows.Next() {
+		var i ListActiveProductsByCategoryRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.Title,
+			&i.Slug,
+			&i.Description,
+			&i.SeoDescription,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFeaturedActiveProducts = `-- name: ListFeaturedActiveProducts :many
+SELECT id, public_id, title, slug, description, seo_description, updated_at FROM product WHERE status = 'active' AND featured = 1 AND deleted_at IS NULL ORDER BY updated_at DESC
+`
+
+type ListFeaturedActiveProductsRow struct {
+	ID             int64  `db:"id" json:"id"`
+	PublicID       string `db:"public_id" json:"public_id"`
+	Title          string `db:"title" json:"title"`
+	Slug           string `db:"slug" json:"slug"`
+	Description    string `db:"description" json:"description"`
+	SeoDescription string `db:"seo_description" json:"seo_description"`
+	UpdatedAt      string `db:"updated_at" json:"updated_at"`
+}
+
+func (q *Queries) ListFeaturedActiveProducts(ctx context.Context) ([]ListFeaturedActiveProductsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listFeaturedActiveProducts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListFeaturedActiveProductsRow{}
+	for rows.Next() {
+		var i ListFeaturedActiveProductsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.Title,
+			&i.Slug,
+			&i.Description,
+			&i.SeoDescription,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchActiveProducts = `-- name: SearchActiveProducts :many
+SELECT id, public_id, title, slug, description, seo_description, updated_at
+FROM product
+WHERE status = 'active' AND deleted_at IS NULL
+  AND (instr(lower(title), lower(?1)) > 0 OR instr(lower(description), lower(?1)) > 0)
+ORDER BY updated_at DESC
+LIMIT 60
+`
+
+type SearchActiveProductsRow struct {
+	ID             int64  `db:"id" json:"id"`
+	PublicID       string `db:"public_id" json:"public_id"`
+	Title          string `db:"title" json:"title"`
+	Slug           string `db:"slug" json:"slug"`
+	Description    string `db:"description" json:"description"`
+	SeoDescription string `db:"seo_description" json:"seo_description"`
+	UpdatedAt      string `db:"updated_at" json:"updated_at"`
+}
+
+func (q *Queries) SearchActiveProducts(ctx context.Context, term string) ([]SearchActiveProductsRow, error) {
+	rows, err := q.db.QueryContext(ctx, searchActiveProducts, term)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SearchActiveProductsRow{}
+	for rows.Next() {
+		var i SearchActiveProductsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.PublicID,

@@ -10,6 +10,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path"
+	"strings"
+	"unicode"
 
 	"github.com/kartwo/kartwo/internal/auth"
 	"github.com/kartwo/kartwo/internal/market"
@@ -19,6 +22,8 @@ import (
 const (
 	keyMarketCode = "market.code"
 	keyDomain     = "domain" // 站点域名（向导写入，M4.1 自动 HTTPS 读取；env KARTWO_DOMAIN 优先，此为回退来源）
+	keyShopName   = "shop.name"
+	keyShopLogo   = "shop.logo_path"
 )
 
 var (
@@ -28,6 +33,8 @@ var (
 	ErrMarketUnavailable = errors.New("settings: 该市场即将上线，暂不可选")
 	// ErrNotEncrypted 期望加密项但存的是明文（或反之）。
 	ErrNotEncrypted = errors.New("settings: 该项不是加密存储")
+	// ErrInvalidShopName 店名为空、过长或含控制字符。
+	ErrInvalidShopName = errors.New("settings: 店铺名称不合法")
 )
 
 // Service 承载设置读写。
@@ -122,4 +129,56 @@ func (s *Service) Domain(ctx context.Context) (string, error) {
 // SetDomain 写入站点域名（向导「配置域名」步骤使用，M4.2）。
 func (s *Service) SetDomain(ctx context.Context, domain string) error {
 	return s.SetPlain(ctx, keyDomain, domain)
+}
+
+// ShopName 返回店铺展示名；未配置时使用调用方给出的部署默认值。
+func (s *Service) ShopName(ctx context.Context, fallback string) string {
+	v, err := s.Get(ctx, keyShopName)
+	if err != nil || strings.TrimSpace(v) == "" {
+		return fallback
+	}
+	return v
+}
+
+// SetShopName 保存店铺展示名，供店面标题、页脚和 SEO 使用。
+func (s *Service) SetShopName(ctx context.Context, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" || len([]rune(name)) > 120 || strings.IndexFunc(name, unicode.IsControl) >= 0 {
+		return ErrInvalidShopName
+	}
+	return s.SetPlain(ctx, keyShopName, name)
+}
+
+// ShopLogoPath 返回店铺 Logo 的媒体相对路径；未上传时为空。
+func (s *Service) ShopLogoPath(ctx context.Context) string {
+	v, err := s.Get(ctx, keyShopLogo)
+	if err != nil {
+		return ""
+	}
+	v = strings.TrimSpace(v)
+	clean := path.Clean(v)
+	if clean == "." || !strings.HasPrefix(clean, "brand/") {
+		return ""
+	}
+	return clean
+}
+
+// ShopLogoURL 返回店面可直接使用的同源 Logo 地址。
+func (s *Service) ShopLogoURL(ctx context.Context) string {
+	if p := s.ShopLogoPath(ctx); p != "" {
+		return "/media/" + p
+	}
+	return ""
+}
+
+// SetShopLogoPath 保存由媒体服务生成的品牌目录相对路径；空值表示取消 Logo。
+func (s *Service) SetShopLogoPath(ctx context.Context, logoPath string) error {
+	logoPath = strings.TrimSpace(logoPath)
+	if logoPath != "" {
+		logoPath = path.Clean(logoPath)
+		if logoPath == "." || !strings.HasPrefix(logoPath, "brand/") {
+			return errors.New("settings: 店铺 Logo 路径不合法")
+		}
+	}
+	return s.SetPlain(ctx, keyShopLogo, logoPath)
 }

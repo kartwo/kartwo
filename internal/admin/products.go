@@ -92,7 +92,7 @@ func (h *HTTP) listProducts(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0, len(products))
 	for _, p := range products {
 		out = append(out, map[string]any{
-			"public_id": p.PublicID, "title": p.Title, "slug": p.Slug, "status": p.Status, "updated_at": p.UpdatedAt,
+			"public_id": p.PublicID, "title": p.Title, "slug": p.Slug, "status": p.Status, "featured": p.Featured, "updated_at": p.UpdatedAt,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"products": out})
@@ -117,23 +117,24 @@ func (h *HTTP) getProduct(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"public_id": d.PublicID, "title": d.Title, "title_zh": d.TitleZH, "slug": d.Slug, "slug_zh": d.SlugZH,
 		"description": d.Description, "seo_description": d.SEODescription, "seo_description_zh": d.SEODescriptionZH,
-		"status": d.Status, "variants": variants,
+		"status": d.Status, "featured": d.Featured, "category_public_ids": d.CategoryPublicIDs, "variants": variants,
 	})
 }
 
 func (h *HTTP) updateProduct(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Title            string `json:"title"`
-		TitleZH          string `json:"title_zh"`
-		Description      string `json:"description"`
-		SEODescription   string `json:"seo_description"`
-		SEODescriptionZH string `json:"seo_description_zh"`
-		Status           string `json:"status"`
+		Title             string   `json:"title"`
+		TitleZH           string   `json:"title_zh"`
+		Description       string   `json:"description"`
+		SEODescription    string   `json:"seo_description"`
+		SEODescriptionZH  string   `json:"seo_description_zh"`
+		Status            string   `json:"status"`
+		CategoryPublicIDs []string `json:"category_public_ids"`
 	}
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if err := h.cat.UpdateProductContent(r.Context(), r.PathValue("id"), req.Title, req.TitleZH, req.Description, req.SEODescription, req.SEODescriptionZH, req.Status); err != nil {
+	if err := h.cat.UpdateProductContentAndCategories(r.Context(), r.PathValue("id"), req.Title, req.TitleZH, req.Description, req.SEODescription, req.SEODescriptionZH, req.Status, req.CategoryPublicIDs); err != nil {
 		h.writeCatalogErr(w, err)
 		return
 	}
@@ -194,25 +195,53 @@ func (h *HTTP) listCategories(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(cats))
 	for _, c := range cats {
-		out = append(out, map[string]any{"public_id": c.PublicID, "name": c.Name, "slug": c.Slug})
+		out = append(out, map[string]any{"public_id": c.PublicID, "name": c.Name, "slug": c.Slug, "position": c.Position, "product_count": c.ProductCount})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"categories": out})
 }
 
 func (h *HTTP) createCategory(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name string `json:"name"`
-		Slug string `json:"slug"`
+		Name     string `json:"name"`
+		Slug     string `json:"slug"`
+		Position int64  `json:"position"`
 	}
 	if !readJSON(w, r, &req) {
 		return
 	}
-	publicID, err := h.cat.CreateCategory(r.Context(), req.Name, req.Slug)
+	publicID, err := h.cat.CreateCategoryWithPosition(r.Context(), req.Name, req.Slug, req.Position)
 	if err != nil {
 		h.writeCatalogErr(w, err)
 		return
 	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "category.create", "category", publicID)
 	writeJSON(w, http.StatusCreated, map[string]any{"public_id": publicID})
+}
+
+func (h *HTTP) updateCategory(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name     string `json:"name"`
+		Slug     string `json:"slug"`
+		Position int64  `json:"position"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if err := h.cat.UpdateCategory(r.Context(), r.PathValue("id"), req.Name, req.Slug, req.Position); err != nil {
+		h.writeCatalogErr(w, err)
+		return
+	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "category.update", "category", r.PathValue("id"))
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (h *HTTP) deleteCategory(w http.ResponseWriter, r *http.Request) {
+	if err := h.cat.DeleteCategory(r.Context(), r.PathValue("id")); err != nil {
+		h.writeCatalogErr(w, err)
+		return
+	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "category.delete", "category", r.PathValue("id"))
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 // writeCatalogErr 将领域错误映射为合适的 HTTP 状态。
@@ -223,6 +252,8 @@ func (h *HTTP) writeCatalogErr(w http.ResponseWriter, err error) {
 		writeErr(w, http.StatusBadRequest, ve.Msg)
 	case errors.Is(err, catalog.ErrNotFound):
 		writeErr(w, http.StatusNotFound, "资源不存在")
+	case errors.Is(err, catalog.ErrCategoryInUse):
+		writeErr(w, http.StatusConflict, "该分类仍有关联商品，请先在商品编辑页移除或更换分类")
 	default:
 		writeErr(w, http.StatusInternalServerError, "内部错误")
 	}

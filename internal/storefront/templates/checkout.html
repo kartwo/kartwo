@@ -17,8 +17,11 @@
       <input type="text" name="phone" style="width:100%" />
       <label>Shipping address *</label>
       <textarea name="address" rows="3" required style="width:100%"></textarea>
-      <label>Country/Region</label>
-      <input type="text" name="country" style="width:100%" />
+      <label>Country/Region *</label>
+      <select name="country" required style="width:100%">
+        <option value="">Select your country or region</option>
+        {{range .Countries}}<option value="{{.Code}}">{{.Name}} ({{.Code}})</option>{{end}}
+      </select>
       {{if gt (len .Methods) 1}}
       <label style="margin-top:1rem">Payment method</label>
       {{range $i, $m := .Methods}}

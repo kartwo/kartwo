@@ -1,12 +1,39 @@
 {{define "content"}}
-<h1>Shop</h1>
-{{if not .Items}}<p class="muted">No products available yet.</p>{{end}}
+<section class="hero">
+  <div class="hero-copy">
+    <span class="eyebrow">Run your everyday</span>
+    <h1>Built for the miles ahead.</h1>
+    <p>Performance-minded essentials for early starts, long strides and every finish line in between.</p>
+    <a class="btn" href="#running-essentials">Shop running essentials</a>
+  </div>
+  <img class="hero-product" src="/static/running-tee-hero.png" alt="Navy performance running T-shirt with lime-green motion detail" width="1024" height="1024" />
+  <span class="hero-mark" aria-hidden="true">RUN</span>
+</section>
+
+<section class="proof" aria-label="Brand values">
+  <div><strong>Move light</strong><span>Running layers made for everyday training.</span></div>
+  <div><strong>Choose your fit</strong><span>Clear size and color options on every product.</span></div>
+  <div><strong>Run your way</strong><span>Simple gear for road, track and recovery days.</span></div>
+</section>
+
+{{if .NavigationCategories}}
+<div class="section-heading"><div><span class="eyebrow">Shop your way</span><h2>Explore the collections.</h2></div><a href="/collections/all">View all products →</a></div>
+<div class="collection-grid">
+  {{range .NavigationCategories}}<a class="collection-card" href="/collections/{{.Slug}}"><strong>{{.Name}}</strong><span>{{.ProductCount}} products →</span></a>{{end}}
+</div>
+{{end}}
+
+<div id="running-essentials" class="section-heading">
+  <div><span class="eyebrow">Running collection</span><h2>Find your next essential.</h2></div>
+  <span class="muted">Performance staples, chosen by you.</span>
+</div>
+{{if not .Items}}<p class="muted">Running products are being prepared. Check back soon.</p>{{end}}
 <div class="grid">
   {{range .Items}}
   <a class="card" href="/p/{{.Slug}}">
-    {{if .ThumbURL}}<img class="ph" src="{{.ThumbURL}}" alt="{{.ThumbAlt}}" loading="lazy" width="300" height="300" />{{else}}<span class="ph"></span>{{end}}
+    {{if .ThumbURL}}<img class="ph" src="{{.ThumbURL}}" alt="{{.ThumbAlt}}" loading="lazy" width="300" height="300" />{{else}}<span class="ph" role="img" aria-label="Product image coming soon"></span>{{end}}
     <div class="body">
-      <div class="t">{{.Title}}</div>
+      <span class="product-kicker">{{if .Category}}{{.Category}}{{else}}Running essential{{end}}</span><div class="t">{{.Title}}</div>
       <div class="price">From {{call $.Money .FromCents}}</div>
     </div>
   </a>

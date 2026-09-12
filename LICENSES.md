@@ -52,6 +52,10 @@
 | 名称 | 用途 | 许可证 | 来源 | 状态 |
 |---|---|---|---|---|
 | （demo 数据用图须为 CC0 或自有） | | | | |
+| `running-tee-hero.png` | 跑步品牌店面首页首屏产品图 | AI 原创，项目自有使用权；不含第三方商标或素材 | Kartwo 项目内由 OpenAI Image Generation 于 2026-09-07 生成 | 已引入 |
+| `assets/generated-products/*.webp`（20 张） | 跑步演示商品独立封面；PNG 原稿仅本机保留、不进入仓库 | AI 原创，项目自有使用权；不含人物、文字、第三方商标或素材 | Kartwo 项目内由 OpenAI Image Generation 于 2026-09-07、2026-09-12 生成，并由正式媒体管线压缩 | 已引入 |
+| `assets/branding/kartwo-logo.png` | Kartwo 横版品牌 Logo（抽象 K + 双跑道 + kartwo 字标） | AI 原创，项目自有使用权；未引入或嵌入商业字体文件 | Kartwo 项目内由 OpenAI Image Generation 于 2026-09-12 生成 | 已引入 |
+| IANA tz database `iso3166.tab` 国家/地区名称 | 后台配送国家多选与结账下拉目录 | Public Domain | IANA tz database（2025-07-01 版本；名称仅作通用英文展示） | 已引入 |
 
 ---
 

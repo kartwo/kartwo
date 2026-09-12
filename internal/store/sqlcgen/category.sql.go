@@ -10,6 +10,17 @@ import (
 	"database/sql"
 )
 
+const countProductsByCategory = `-- name: CountProductsByCategory :one
+SELECT COUNT(*) FROM product_category pc JOIN product p ON p.id = pc.product_id WHERE pc.category_id = ? AND p.deleted_at IS NULL
+`
+
+func (q *Queries) CountProductsByCategory(ctx context.Context, categoryID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countProductsByCategory, categoryID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createCategory = `-- name: CreateCategory :execlastid
 
 INSERT INTO category (public_id, name, slug, parent_id, position) VALUES (?, ?, ?, ?, ?)
@@ -24,7 +35,7 @@ type CreateCategoryParams struct {
 }
 
 // Category Queries
-// Purpose: category create, product-category link
+// Purpose: category CRUD, ordering, product links and storefront collection reads
 // Author: daxing  Email: 3442535897@qq.com  Time: 2026-06-17 18:13:43
 // NOTE: ASCII-only comments here (sqlc v1.30 multibyte-span bug; see DECISIONS.md).
 func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) (int64, error) {
@@ -39,6 +50,15 @@ func (q *Queries) CreateCategory(ctx context.Context, arg CreateCategoryParams) 
 		return 0, err
 	}
 	return result.LastInsertId()
+}
+
+const deleteProductCategories = `-- name: DeleteProductCategories :exec
+DELETE FROM product_category WHERE product_id = ?
+`
+
+func (q *Queries) DeleteProductCategories(ctx context.Context, productID int64) error {
+	_, err := q.db.ExecContext(ctx, deleteProductCategories, productID)
+	return err
 }
 
 const getCategoryByPublicID = `-- name: GetCategoryByPublicID :one
@@ -56,6 +76,31 @@ type GetCategoryByPublicIDRow struct {
 func (q *Queries) GetCategoryByPublicID(ctx context.Context, publicID string) (GetCategoryByPublicIDRow, error) {
 	row := q.db.QueryRowContext(ctx, getCategoryByPublicID, publicID)
 	var i GetCategoryByPublicIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.Name,
+		&i.Slug,
+		&i.Position,
+	)
+	return i, err
+}
+
+const getCategoryBySlug = `-- name: GetCategoryBySlug :one
+SELECT id, public_id, name, slug, position FROM category WHERE slug = ? AND deleted_at IS NULL
+`
+
+type GetCategoryBySlugRow struct {
+	ID       int64  `db:"id" json:"id"`
+	PublicID string `db:"public_id" json:"public_id"`
+	Name     string `db:"name" json:"name"`
+	Slug     string `db:"slug" json:"slug"`
+	Position int64  `db:"position" json:"position"`
+}
+
+func (q *Queries) GetCategoryBySlug(ctx context.Context, slug string) (GetCategoryBySlugRow, error) {
+	row := q.db.QueryRowContext(ctx, getCategoryBySlug, slug)
+	var i GetCategoryBySlugRow
 	err := row.Scan(
 		&i.ID,
 		&i.PublicID,
@@ -119,4 +164,108 @@ func (q *Queries) ListCategories(ctx context.Context) ([]ListCategoriesRow, erro
 		return nil, err
 	}
 	return items, nil
+}
+
+const listCategoryPublicIDsByProduct = `-- name: ListCategoryPublicIDsByProduct :many
+SELECT c.public_id FROM category c JOIN product_category pc ON pc.category_id = c.id WHERE pc.product_id = ? AND c.deleted_at IS NULL ORDER BY c.position, c.id
+`
+
+func (q *Queries) ListCategoryPublicIDsByProduct(ctx context.Context, productID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listCategoryPublicIDsByProduct, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var public_id string
+		if err := rows.Scan(&public_id); err != nil {
+			return nil, err
+		}
+		items = append(items, public_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStorefrontCategories = `-- name: ListStorefrontCategories :many
+SELECT c.public_id, c.name, c.slug, c.position, COUNT(DISTINCT p.id) AS product_count
+FROM category c
+JOIN product_category pc ON pc.category_id = c.id
+JOIN product p ON p.id = pc.product_id AND p.status = 'active' AND p.deleted_at IS NULL
+WHERE c.deleted_at IS NULL
+GROUP BY c.id
+ORDER BY c.position, c.id
+`
+
+type ListStorefrontCategoriesRow struct {
+	PublicID     string `db:"public_id" json:"public_id"`
+	Name         string `db:"name" json:"name"`
+	Slug         string `db:"slug" json:"slug"`
+	Position     int64  `db:"position" json:"position"`
+	ProductCount int64  `db:"product_count" json:"product_count"`
+}
+
+func (q *Queries) ListStorefrontCategories(ctx context.Context) ([]ListStorefrontCategoriesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listStorefrontCategories)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListStorefrontCategoriesRow{}
+	for rows.Next() {
+		var i ListStorefrontCategoriesRow
+		if err := rows.Scan(
+			&i.PublicID,
+			&i.Name,
+			&i.Slug,
+			&i.Position,
+			&i.ProductCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const softDeleteCategory = `-- name: SoftDeleteCategory :exec
+UPDATE category SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND deleted_at IS NULL
+`
+
+func (q *Queries) SoftDeleteCategory(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, softDeleteCategory, id)
+	return err
+}
+
+const updateCategory = `-- name: UpdateCategory :exec
+UPDATE category SET name = ?, slug = ?, position = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND deleted_at IS NULL
+`
+
+type UpdateCategoryParams struct {
+	Name     string `db:"name" json:"name"`
+	Slug     string `db:"slug" json:"slug"`
+	Position int64  `db:"position" json:"position"`
+	ID       int64  `db:"id" json:"id"`
+}
+
+func (q *Queries) UpdateCategory(ctx context.Context, arg UpdateCategoryParams) error {
+	_, err := q.db.ExecContext(ctx, updateCategory,
+		arg.Name,
+		arg.Slug,
+		arg.Position,
+		arg.ID,
+	)
+	return err
 }

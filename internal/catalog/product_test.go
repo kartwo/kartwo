@@ -47,6 +47,37 @@ func TestCreateAndGetProduct(t *testing.T) {
 	}
 }
 
+func TestFeaturedAndContentPages(t *testing.T) {
+	svc := New(newDB(t))
+	ctx := context.Background()
+	p, err := svc.CreateProduct(ctx, tee())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetProductFeatured(ctx, p, true); err != nil {
+		t.Fatalf("设精选失败: %v", err)
+	}
+	d, err := svc.GetProduct(ctx, p)
+	if err != nil || !d.Featured {
+		t.Fatalf("精选状态未保存: %+v, %v", d, err)
+	}
+	pageID, err := svc.CreateContentPage(ctx, "About", "about", "# About\nNo HTML.", "About this shop", "active")
+	if err != nil {
+		t.Fatalf("建内容页失败: %v", err)
+	}
+	page, err := svc.GetContentPage(ctx, pageID)
+	if err != nil || page.Status != "active" {
+		t.Fatalf("取内容页异常: %+v, %v", page, err)
+	}
+	if err := svc.UpdateContentPage(ctx, pageID, "Our story", "- Safe", "Story", "draft"); err != nil {
+		t.Fatalf("改内容页失败: %v", err)
+	}
+	page, _ = svc.GetContentPage(ctx, pageID)
+	if page.Title != "Our story" || page.Status != "draft" {
+		t.Fatalf("内容页未更新: %+v", page)
+	}
+}
+
 func TestCreateProductValidation(t *testing.T) {
 	svc := New(newDB(t))
 	ctx := context.Background()
@@ -226,6 +257,28 @@ func TestCategoriesAndLink(t *testing.T) {
 	in.CategoryPublicIDs = []string{cpid}
 	if _, err := svc.CreateProduct(ctx, in); err != nil {
 		t.Fatalf("带分类建商品失败: %v", err)
+	}
+	products, _ := svc.ListProducts(ctx)
+	detail, err := svc.GetProduct(ctx, products[0].PublicID)
+	if err != nil || len(detail.CategoryPublicIDs) != 1 || detail.CategoryPublicIDs[0] != cpid {
+		t.Fatalf("商品分类未回显: detail=%+v err=%v", detail, err)
+	}
+	if err := svc.DeleteCategory(ctx, cpid); !errors.Is(err, ErrCategoryInUse) {
+		t.Fatalf("有关联商品的分类应保护删除，得到: %v", err)
+	}
+	other, err := svc.CreateCategoryWithPosition(ctx, "配件", "accessories", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.UpdateProductContentAndCategories(ctx, detail.PublicID, detail.Title, detail.TitleZH, detail.Description, detail.SEODescription, detail.SEODescriptionZH, detail.Status, []string{other}); err != nil {
+		t.Fatal(err)
+	}
+	updated, _ := svc.GetProduct(ctx, detail.PublicID)
+	if len(updated.CategoryPublicIDs) != 1 || updated.CategoryPublicIDs[0] != other {
+		t.Fatalf("编辑商品分类失败: %+v", updated.CategoryPublicIDs)
+	}
+	if err := svc.DeleteCategory(ctx, cpid); err != nil {
+		t.Fatalf("空分类应可删除: %v", err)
 	}
 
 	// 关联不存在分类应校验错误。

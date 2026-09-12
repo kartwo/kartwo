@@ -42,13 +42,14 @@
         {{end}}
       </tbody>
     </table>
-    <div class="cart-foot"><div class="total">Total: <strong>{{call $.Money $o.TotalCents}}</strong></div></div>
+    <div class="cart-foot"><div>Shipping{{if $o.ShippingRuleName}} · {{$o.ShippingRuleName}}{{end}}: <strong>{{call $.Money $o.ShippingCents}}</strong></div><div class="total">Total: <strong>{{call $.Money $o.TotalCents}}</strong></div></div>
   </div>
   <div>
     <h3>Shipping details</h3>
     <p>{{$o.ShipName}}{{if $o.ShipPhone}} · {{$o.ShipPhone}}{{end}}<br>
     {{$o.Email}}<br>
     <span style="white-space:pre-wrap">{{$o.ShipAddress}}</span>{{if $o.ShipCountry}}<br>{{$o.ShipCountry}}{{end}}</p>
+    {{if $o.TrackingNumber}}<p><strong>Shipped with {{$o.TrackingCarrier}}</strong><br>Tracking: {{if $o.TrackingURL}}<a href="{{$o.TrackingURL}}" rel="noopener noreferrer">{{$o.TrackingNumber}}</a>{{else}}{{$o.TrackingNumber}}{{end}}</p>{{end}}
     <p><a href="/">← Continue shopping</a></p>
   </div>
 </div>
