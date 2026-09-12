@@ -1,5 +1,5 @@
 # 发布构建 / Release Build
-# 功能：push tag 时现场构建 Admin 前端 → embed → 交叉编译静态二进制 → 附校验和发 Release
+# 功能：push tag 时现场构建 Admin 前端 → embed → 交叉编译发布二进制 → 冒烟 → 附资源与校验和发 Release
 # 作者：仗键天涯(daxing) ｜ 邮箱：3442535897@qq.com ｜ 时间：2026-08-06 17:47:44
 #
 # 与 ci.yml 的关键差异：ci.yml 的 frontend 与 build-test 是两个互不依赖的 job，
@@ -22,7 +22,7 @@ env:
 jobs:
   release:
     name: 构建并发布
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -48,7 +48,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           check-latest: false
 
-      - name: 交叉编译静态二进制（现场 dist 已就位，embed 的即为本次构建产物）
+      - name: 交叉编译发布二进制（现场 dist 已就位，embed 的即为本次构建产物）
         env:
           CGO_ENABLED: "0"
         run: |
@@ -78,9 +78,33 @@ jobs:
           test "${GOT}" = "${GITHUB_REF_NAME}" || {
             echo "::error::版本注入不符：期望 ${GITHUB_REF_NAME}，得 ${GOT}"; exit 1; }
 
+      - name: Linux x86_64 干净数据目录冒烟
+        run: |
+          set -euo pipefail
+          DATA_DIR="${RUNNER_TEMP}/kartwo-release-smoke"
+          KARTWO_ENV=prod KARTWO_DATA_DIR="${DATA_DIR}" \
+            ./dist/kartwo-linux-amd64 seed-running-demo
+          KARTWO_ENV=prod KARTWO_DATA_DIR="${DATA_DIR}" \
+            KARTWO_HTTP_ADDR=127.0.0.1:18080 \
+            ./dist/kartwo-linux-amd64 serve >"${RUNNER_TEMP}/kartwo-release-smoke.log" 2>&1 &
+          PID=$!
+          trap 'kill "${PID}" 2>/dev/null || true; cat "${RUNNER_TEMP}/kartwo-release-smoke.log"' EXIT
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:18080/health >/dev/null && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18080/health | grep -F "${GITHUB_REF_NAME}"
+          curl -fsS http://127.0.0.1:18080/collections/all | grep -F "Velocity Air Running Tee"
+          curl -fsS http://127.0.0.1:18080/admin/ | grep -F '<div id="app"></div>'
+
       - name: 生成 SHA256 校验和
-        working-directory: dist
-        run: sha256sum kartwo-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+        run: |
+          set -euo pipefail
+          zip -r dist/kartwo-running-demo-images.zip assets/generated-products -i '*.webp'
+          cp assets/branding/kartwo-logo.png dist/kartwo-logo.png
+          cd dist
+          sha256sum kartwo-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - name: 发布 Release 并上传产物
         uses: softprops/action-gh-release@v2
@@ -103,6 +127,8 @@ jobs:
             | macOS Apple Silicon | `kartwo-darwin-arm64` | ⚠️ **未验证**（仅编译通过，未开机冒烟） |
             | Windows x86_64 | `kartwo-windows-amd64.exe` | ⚠️ **未验证**（仅编译通过，未开机冒烟） |
 
+            `kartwo-running-demo-images.zip` 是可选的 20 件跑步演示商品封面包；`kartwo-logo.png` 是可在后台直接上传的 Kartwo 示例 Logo。
+
             > **「未验证」= 编译产出正常，但尚未有人在该平台上真正启动过。**
             > 遇到问题请提 issue，我们会据实修正标注。
             > 桌面系统（macOS/Windows）仅供本地评估试用，**生产卖货请用 Linux 服务器**。
@@ -123,4 +149,13 @@ jobs:
 
             ```bash
             ./kartwo-linux-amd64 version
+            ```
+
+            ## 可选：装入跑步演示店铺
+
+            将图片包解压到 Kartwo 工作目录后执行：
+
+            ```bash
+            unzip kartwo-running-demo-images.zip
+            ./kartwo-linux-amd64 seed-running-demo
             ```
