@@ -33,6 +33,9 @@ func setup(t *testing.T) (*sql.DB, *Service, *cart.Service, *catalog.Service) {
 	if _, err := migrate.Run(context.Background(), db, migrations.FS); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec(`INSERT INTO shipping_zone(public_id,name,countries,rate_cents,free_over_cents) VALUES('test-global','Global','',500,20000)`); err != nil {
+		t.Fatal(err)
+	}
 	return db, New(db, settings.New(db)), cart.New(db), catalog.New(db)
 }
 
@@ -85,7 +88,7 @@ func TestCheckout_Success(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if o.TotalCents != 19800 || len(o.Lines) != 1 || o.Lines[0].Quantity != 2 {
+	if o.TotalCents != 20300 || o.ShippingCents != 500 || o.ShippingRuleName != "Global" || len(o.Lines) != 1 || o.Lines[0].Quantity != 2 {
 		t.Fatalf("订单异常: total=%d lines=%d", o.TotalCents, len(o.Lines))
 	}
 	if o.Lines[0].Spec != "尺码:S" {
@@ -94,6 +97,100 @@ func TestCheckout_Success(t *testing.T) {
 	// 库存预留 = 2。
 	if _, res := reservedOf(t, db, "tee"); res != 2 {
 		t.Fatalf("预留 = %d，期望 2", res)
+	}
+}
+
+func TestShippingCountriesOnlyReturnsExplicitSelections(t *testing.T) {
+	db, ord, _, _ := setup(t)
+	ctx := context.Background()
+	countries, err := ord.ShippingCountries(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(countries) != 0 {
+		t.Fatalf("global 兜底不应出现在结账下拉，得到 %#v", countries)
+	}
+	if _, err := db.Exec(`INSERT INTO shipping_zone(public_id,name,countries,rate_cents,free_over_cents) VALUES('test-us-cn','North America and China','US,CN',500,0)`); err != nil {
+		t.Fatal(err)
+	}
+	countries, err = ord.ShippingCountries(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(countries) != 2 || countries[0].Code != "CN" || countries[0].Name != "China" || countries[1].Code != "US" {
+		t.Fatalf("仅应返回后台选择的国家，得到 %#v", countries)
+	}
+}
+
+func TestShippingCountriesConfiguredRangeControlsCheckout(t *testing.T) {
+	db, ord, crt, cat := setup(t)
+	ctx := context.Background()
+	if err := settings.New(db).SetPlain(ctx, ShippingCountriesSetting, "US"); err != nil {
+		t.Fatal(err)
+	}
+	countries, err := ord.ShippingCountries(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(countries) != 1 || countries[0].Code != "US" {
+		t.Fatalf("独立配送范围应只返回 US，得到 %#v", countries)
+	}
+	v := seedVariant(t, cat, "range-controlled", 1000, 2)
+	cid, _, err := crt.GetOrCreate(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := crt.AddItem(ctx, cid, v, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ord.Checkout(ctx, cid, info()); !errors.Is(err, ErrNoShippingRule) {
+		t.Fatalf("未启用的 CN 应拒绝结账，得到 %v", err)
+	}
+}
+
+func TestCountryCatalogHasContinents(t *testing.T) {
+	options := CountryOptions()
+	if len(options) < 240 {
+		t.Fatalf("国家地区目录不完整：%d", len(options))
+	}
+	for _, country := range options {
+		if country.Code == "" || country.Name == "" || country.Continent == "" || country.Continent == "Other" {
+			t.Fatalf("国家地区目录缺少分组信息：%#v", country)
+		}
+	}
+}
+
+func TestShippingRuleAndFulfillment(t *testing.T) {
+	db, ord, crt, cat := setup(t)
+	ctx := context.Background()
+	_, _ = db.Exec(`INSERT INTO shipping_zone(public_id,name,countries,rate_cents,free_over_cents) VALUES('test-cn','China','CN',900,0)`)
+	v := seedVariant(t, cat, "shipping-tee", 10000, 2)
+	cid, _, _ := crt.GetOrCreate(ctx, "")
+	_ = crt.AddItem(ctx, cid, v, 1)
+	id, err := ord.Checkout(ctx, cid, info())
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, _ := ord.Get(ctx, id)
+	if o.ShippingCents != 900 || o.TotalCents != 10900 {
+		t.Fatalf("配送快照错误: %+v", o)
+	}
+	if err := ord.Fulfill(ctx, id, "DHL", "ABC-123", "https://example.com/track/ABC-123"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("未付款发货应拒绝: %v", err)
+	}
+	_, err = db.Exec(`UPDATE "order" SET status='paid' WHERE public_id=?`, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ord.Fulfill(ctx, id, "DHL", "ABC-123", "https://example.com/track/ABC-123"); err != nil {
+		t.Fatal(err)
+	}
+	o, _ = ord.Get(ctx, id)
+	if o.Status != "fulfilled" || o.TrackingNumber != "ABC-123" {
+		t.Fatalf("发货追踪未保存: %+v", o)
+	}
+	if err := ord.Fulfill(ctx, id, "DHL", "ABC-123", ""); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("重复发货应拒绝: %v", err)
 	}
 }
 

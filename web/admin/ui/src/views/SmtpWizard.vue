@@ -1,5 +1,5 @@
 <!-- 向导·配置邮件 / Wizard SMTP Step. 作者：仗键天涯(daxing) 3442535897@qq.com -->
-<!-- 功能：开店向导第 4 步——录入 SMTP(复用 SmtpSettings)、可「暂不配」跳过、可「上一步」回域名步 -->
+<!-- 功能：开店向导第 3 步——录入 SMTP(复用 SmtpSettings)、可「暂不配」跳过、可「上一步」回域名步 -->
 <script setup>
 import { ref, inject } from 'vue'
 import { api, APIError } from '../api.js'

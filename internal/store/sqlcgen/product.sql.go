@@ -85,7 +85,7 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (i
 }
 
 const getProductByPublicID = `-- name: GetProductByPublicID :one
-SELECT id, public_id, title, title_zh, slug, slug_zh, description, seo_description, seo_description_zh, status, created_at, updated_at FROM product WHERE public_id = ? AND deleted_at IS NULL
+SELECT id, public_id, title, title_zh, slug, slug_zh, description, seo_description, seo_description_zh, status, featured, created_at, updated_at FROM product WHERE public_id = ? AND deleted_at IS NULL
 `
 
 type GetProductByPublicIDRow struct {
@@ -99,6 +99,7 @@ type GetProductByPublicIDRow struct {
 	SeoDescription   string `db:"seo_description" json:"seo_description"`
 	SeoDescriptionZh string `db:"seo_description_zh" json:"seo_description_zh"`
 	Status           string `db:"status" json:"status"`
+	Featured         int64  `db:"featured" json:"featured"`
 	CreatedAt        string `db:"created_at" json:"created_at"`
 	UpdatedAt        string `db:"updated_at" json:"updated_at"`
 }
@@ -117,6 +118,7 @@ func (q *Queries) GetProductByPublicID(ctx context.Context, publicID string) (Ge
 		&i.SeoDescription,
 		&i.SeoDescriptionZh,
 		&i.Status,
+		&i.Featured,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -163,7 +165,7 @@ func (q *Queries) GetProductBySlug(ctx context.Context, slug string) (GetProduct
 }
 
 const listProducts = `-- name: ListProducts :many
-SELECT id, public_id, title, slug, status, created_at, updated_at FROM product WHERE deleted_at IS NULL ORDER BY id DESC
+SELECT id, public_id, title, slug, status, featured, created_at, updated_at FROM product WHERE deleted_at IS NULL ORDER BY id DESC
 `
 
 type ListProductsRow struct {
@@ -172,6 +174,7 @@ type ListProductsRow struct {
 	Title     string `db:"title" json:"title"`
 	Slug      string `db:"slug" json:"slug"`
 	Status    string `db:"status" json:"status"`
+	Featured  int64  `db:"featured" json:"featured"`
 	CreatedAt string `db:"created_at" json:"created_at"`
 	UpdatedAt string `db:"updated_at" json:"updated_at"`
 }
@@ -191,6 +194,7 @@ func (q *Queries) ListProducts(ctx context.Context) ([]ListProductsRow, error) {
 			&i.Title,
 			&i.Slug,
 			&i.Status,
+			&i.Featured,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -205,6 +209,20 @@ func (q *Queries) ListProducts(ctx context.Context) ([]ListProductsRow, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const setProductFeatured = `-- name: SetProductFeatured :exec
+UPDATE product SET featured = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND deleted_at IS NULL
+`
+
+type SetProductFeaturedParams struct {
+	Featured int64 `db:"featured" json:"featured"`
+	ID       int64 `db:"id" json:"id"`
+}
+
+func (q *Queries) SetProductFeatured(ctx context.Context, arg SetProductFeaturedParams) error {
+	_, err := q.db.ExecContext(ctx, setProductFeatured, arg.Featured, arg.ID)
+	return err
 }
 
 const softDeleteProduct = `-- name: SoftDeleteProduct :exec

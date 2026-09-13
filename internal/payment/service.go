@@ -76,6 +76,11 @@ func (s *Service) AvailableMethods(ctx context.Context) []string {
 	return out
 }
 
+// TestStripeConnection 验证当前已激活的 Stripe Secret key 可用且模式匹配。
+func (s *Service) TestStripeConnection(ctx context.Context) error {
+	return s.stripe.TestConnection(ctx)
+}
+
 // StartCheckout 用指定通道为订单发起一次收款，返回托管收银台/审批跳转 URL。
 func (s *Service) StartCheckout(ctx context.Context, provider string, ord OrderForPayment) (string, error) {
 	prov := s.providerByName(provider)

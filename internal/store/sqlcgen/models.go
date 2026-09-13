@@ -56,6 +56,19 @@ type Category struct {
 	DeletedAt sql.NullString `db:"deleted_at" json:"deleted_at"`
 }
 
+type ContentPage struct {
+	ID             int64          `db:"id" json:"id"`
+	PublicID       string         `db:"public_id" json:"public_id"`
+	Title          string         `db:"title" json:"title"`
+	Slug           string         `db:"slug" json:"slug"`
+	BodyMarkdown   string         `db:"body_markdown" json:"body_markdown"`
+	SeoDescription string         `db:"seo_description" json:"seo_description"`
+	Status         string         `db:"status" json:"status"`
+	CreatedAt      string         `db:"created_at" json:"created_at"`
+	UpdatedAt      string         `db:"updated_at" json:"updated_at"`
+	DeletedAt      sql.NullString `db:"deleted_at" json:"deleted_at"`
+}
+
 type Customer struct {
 	ID        int64  `db:"id" json:"id"`
 	PublicID  string `db:"public_id" json:"public_id"`
@@ -137,22 +150,24 @@ type Meta struct {
 }
 
 type Order struct {
-	ID              int64  `db:"id" json:"id"`
-	PublicID        string `db:"public_id" json:"public_id"`
-	CustomerID      int64  `db:"customer_id" json:"customer_id"`
-	Status          string `db:"status" json:"status"`
-	Email           string `db:"email" json:"email"`
-	ShipName        string `db:"ship_name" json:"ship_name"`
-	ShipPhone       string `db:"ship_phone" json:"ship_phone"`
-	ShipAddress     string `db:"ship_address" json:"ship_address"`
-	ShipCountry     string `db:"ship_country" json:"ship_country"`
-	Currency        string `db:"currency" json:"currency"`
-	SubtotalCents   int64  `db:"subtotal_cents" json:"subtotal_cents"`
-	TotalCents      int64  `db:"total_cents" json:"total_cents"`
-	CreatedAt       string `db:"created_at" json:"created_at"`
-	UpdatedAt       string `db:"updated_at" json:"updated_at"`
-	PaymentProvider string `db:"payment_provider" json:"payment_provider"`
-	PaymentRef      string `db:"payment_ref" json:"payment_ref"`
+	ID               int64  `db:"id" json:"id"`
+	PublicID         string `db:"public_id" json:"public_id"`
+	CustomerID       int64  `db:"customer_id" json:"customer_id"`
+	Status           string `db:"status" json:"status"`
+	Email            string `db:"email" json:"email"`
+	ShipName         string `db:"ship_name" json:"ship_name"`
+	ShipPhone        string `db:"ship_phone" json:"ship_phone"`
+	ShipAddress      string `db:"ship_address" json:"ship_address"`
+	ShipCountry      string `db:"ship_country" json:"ship_country"`
+	Currency         string `db:"currency" json:"currency"`
+	SubtotalCents    int64  `db:"subtotal_cents" json:"subtotal_cents"`
+	TotalCents       int64  `db:"total_cents" json:"total_cents"`
+	CreatedAt        string `db:"created_at" json:"created_at"`
+	UpdatedAt        string `db:"updated_at" json:"updated_at"`
+	PaymentProvider  string `db:"payment_provider" json:"payment_provider"`
+	PaymentRef       string `db:"payment_ref" json:"payment_ref"`
+	ShippingCents    int64  `db:"shipping_cents" json:"shipping_cents"`
+	ShippingRuleName string `db:"shipping_rule_name" json:"shipping_rule_name"`
 }
 
 type OrderItem struct {
@@ -181,6 +196,7 @@ type Product struct {
 	SlugZh           string         `db:"slug_zh" json:"slug_zh"`
 	SeoDescription   string         `db:"seo_description" json:"seo_description"`
 	SeoDescriptionZh string         `db:"seo_description_zh" json:"seo_description_zh"`
+	Featured         int64          `db:"featured" json:"featured"`
 }
 
 type ProductCategory struct {
@@ -229,6 +245,28 @@ type Setting struct {
 	Value     string `db:"value" json:"value"`
 	Encrypted int64  `db:"encrypted" json:"encrypted"`
 	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
+type Shipment struct {
+	ID             int64  `db:"id" json:"id"`
+	OrderID        int64  `db:"order_id" json:"order_id"`
+	Carrier        string `db:"carrier" json:"carrier"`
+	TrackingNumber string `db:"tracking_number" json:"tracking_number"`
+	TrackingUrl    string `db:"tracking_url" json:"tracking_url"`
+	ShippedAt      string `db:"shipped_at" json:"shipped_at"`
+}
+
+type ShippingZone struct {
+	ID            int64          `db:"id" json:"id"`
+	PublicID      string         `db:"public_id" json:"public_id"`
+	Name          string         `db:"name" json:"name"`
+	Countries     string         `db:"countries" json:"countries"`
+	RateCents     int64          `db:"rate_cents" json:"rate_cents"`
+	FreeOverCents int64          `db:"free_over_cents" json:"free_over_cents"`
+	Active        int64          `db:"active" json:"active"`
+	CreatedAt     string         `db:"created_at" json:"created_at"`
+	UpdatedAt     string         `db:"updated_at" json:"updated_at"`
+	DeletedAt     sql.NullString `db:"deleted_at" json:"deleted_at"`
 }
 
 type ShopifyRedirect struct {

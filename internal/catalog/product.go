@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -19,6 +20,9 @@ import (
 
 // ErrNotFound 表示目标资源不存在（或已软删）。
 var ErrNotFound = errors.New("catalog: 资源不存在")
+
+// ErrCategoryInUse 表示分类仍有关联商品，须先重新分类后才能删除。
+var ErrCategoryInUse = errors.New("catalog: 分类仍有关联商品")
 
 // ValidationError 为可回传给客户端的人话校验错误。
 type ValidationError struct{ Msg string }
@@ -69,26 +73,31 @@ type ProductSummary struct {
 	Title     string
 	Slug      string
 	Status    string
+	Featured  bool
 	UpdatedAt string
 }
 
 type ProductDetail struct {
-	PublicID    string
-	Title       string
-	TitleZH     string
-	Slug        string
-	SlugZH      string
-	Description string
-	SEODescription   string
-	SEODescriptionZH string
-	Status      string
-	Variants    []VariantView
+	PublicID          string
+	Title             string
+	TitleZH           string
+	Slug              string
+	SlugZH            string
+	Description       string
+	SEODescription    string
+	SEODescriptionZH  string
+	Status            string
+	Featured          bool
+	CategoryPublicIDs []string
+	Variants          []VariantView
 }
 
 type CategorySummary struct {
-	PublicID string
-	Name     string
-	Slug     string
+	PublicID     string
+	Name         string
+	Slug         string
+	Position     int64
+	ProductCount int64
 }
 
 // CreateProduct 在事务内建商品 + 变体轴 + 变体 + 库存 + 分类关联，返回新商品 public_id。
@@ -253,7 +262,7 @@ func (s *Service) ListProducts(ctx context.Context) ([]ProductSummary, error) {
 	}
 	out := make([]ProductSummary, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, ProductSummary{PublicID: r.PublicID, Title: r.Title, Slug: r.Slug, Status: r.Status, UpdatedAt: r.UpdatedAt})
+		out = append(out, ProductSummary{PublicID: r.PublicID, Title: r.Title, Slug: r.Slug, Status: r.Status, Featured: r.Featured != 0, UpdatedAt: r.UpdatedAt})
 	}
 	return out, nil
 }
@@ -294,10 +303,33 @@ func (s *Service) GetProduct(ctx context.Context, publicID string) (*ProductDeta
 	if err != nil {
 		return nil, err
 	}
+	categoryIDs, err := s.q.ListCategoryPublicIDsByProduct(ctx, p.ID)
+	if err != nil {
+		return nil, fmt.Errorf("catalog: 列商品分类失败: %w", err)
+	}
 	return &ProductDetail{
 		PublicID: p.PublicID, Title: p.Title, TitleZH: p.TitleZh, Slug: p.Slug, SlugZH: p.SlugZh,
-		Description: p.Description, SEODescription: p.SeoDescription, SEODescriptionZH: p.SeoDescriptionZh, Status: p.Status, Variants: matrix,
+		Description: p.Description, SEODescription: p.SeoDescription, SEODescriptionZH: p.SeoDescriptionZh, Status: p.Status, Featured: p.Featured != 0, CategoryPublicIDs: categoryIDs, Variants: matrix,
 	}, nil
+}
+
+// SetProductFeatured 由商家手动决定首页是否展示该上架商品；草稿/归档商品不可精选，防止误露出。
+func (s *Service) SetProductFeatured(ctx context.Context, publicID string, featured bool) error {
+	p, err := s.q.GetProductByPublicID(ctx, publicID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("catalog: 取商品失败: %w", err)
+	}
+	if featured && p.Status != "active" {
+		return vErr("只有已上架商品可设为首页精选")
+	}
+	value := int64(0)
+	if featured {
+		value = 1
+	}
+	return s.q.SetProductFeatured(ctx, sqlcgen.SetProductFeaturedParams{Featured: value, ID: p.ID})
 }
 
 // UpdateProduct 改商品标题/描述/状态。保留旧入口，供既有调用方兼容。
@@ -307,6 +339,11 @@ func (s *Service) UpdateProduct(ctx context.Context, publicID, title, descriptio
 
 // UpdateProductContent 改商品的英文正式内容、中文辅助内容与 SEO 描述。不存在返回 ErrNotFound。
 func (s *Service) UpdateProductContent(ctx context.Context, publicID, title, titleZH, description, seoDescription, seoDescriptionZH, status string) error {
+	return s.UpdateProductContentAndCategories(ctx, publicID, title, titleZH, description, seoDescription, seoDescriptionZH, status, nil)
+}
+
+// UpdateProductContentAndCategories 原子更新商品基本信息与分类。categoryPublicIDs 为 nil 时保留原分类，空切片表示清空。
+func (s *Service) UpdateProductContentAndCategories(ctx context.Context, publicID, title, titleZH, description, seoDescription, seoDescriptionZH, status string, categoryPublicIDs []string) error {
 	if strings.TrimSpace(title) == "" {
 		return vErr("标题不能为空")
 	}
@@ -319,7 +356,40 @@ func (s *Service) UpdateProductContent(ctx context.Context, publicID, title, tit
 	} else if err != nil {
 		return fmt.Errorf("catalog: 取商品失败: %w", err)
 	}
-	return s.q.UpdateProduct(ctx, sqlcgen.UpdateProductParams{Title: title, TitleZh: titleZH, Description: description, SeoDescription: seoDescription, SeoDescriptionZh: seoDescriptionZH, Status: status, ID: p.ID})
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("catalog: 开启事务失败: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := s.q.WithTx(tx)
+	if err := q.UpdateProduct(ctx, sqlcgen.UpdateProductParams{Title: title, TitleZh: titleZH, Description: description, SeoDescription: seoDescription, SeoDescriptionZh: seoDescriptionZH, Status: status, ID: p.ID}); err != nil {
+		return fmt.Errorf("catalog: 更新商品失败: %w", err)
+	}
+	if categoryPublicIDs != nil {
+		cats := make([]sqlcgen.GetCategoryByPublicIDRow, 0, len(categoryPublicIDs))
+		for _, publicID := range categoryPublicIDs {
+			cat, err := q.GetCategoryByPublicID(ctx, publicID)
+			if errors.Is(err, sql.ErrNoRows) {
+				return vErr("分类 %q 不存在", publicID)
+			}
+			if err != nil {
+				return fmt.Errorf("catalog: 取分类失败: %w", err)
+			}
+			cats = append(cats, cat)
+		}
+		if err := q.DeleteProductCategories(ctx, p.ID); err != nil {
+			return fmt.Errorf("catalog: 清理商品分类失败: %w", err)
+		}
+		for _, cat := range cats {
+			if err := q.LinkProductCategory(ctx, sqlcgen.LinkProductCategoryParams{ProductID: p.ID, CategoryID: cat.ID}); err != nil {
+				return fmt.Errorf("catalog: 关联分类失败: %w", err)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("catalog: 提交商品更新失败: %w", err)
+	}
+	return nil
 }
 
 // DeleteProduct 软删商品及其变体。不存在返回 ErrNotFound。
@@ -375,11 +445,25 @@ func (s *Service) SetVariantPrice(ctx context.Context, variantPublicID string, p
 
 // CreateCategory 建分类，返回 public_id。
 func (s *Service) CreateCategory(ctx context.Context, name, slug string) (string, error) {
+	return s.CreateCategoryWithPosition(ctx, name, slug, 0)
+}
+
+var categorySlugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+
+// CreateCategoryWithPosition 建分类并设置店面排序，返回 public_id。
+func (s *Service) CreateCategoryWithPosition(ctx context.Context, name, slug string, position int64) (string, error) {
+	name, slug = strings.TrimSpace(name), strings.TrimSpace(slug)
 	if strings.TrimSpace(name) == "" || strings.TrimSpace(slug) == "" {
 		return "", vErr("分类名与 slug 不能为空")
 	}
+	if !categorySlugPattern.MatchString(slug) {
+		return "", vErr("分类 slug 只能包含小写字母、数字和连字符")
+	}
+	if position < 0 {
+		return "", vErr("分类排序不能为负数")
+	}
 	publicID := uuid.Must(uuid.NewV7()).String()
-	_, err := s.q.CreateCategory(ctx, sqlcgen.CreateCategoryParams{PublicID: publicID, Name: name, Slug: slug, Position: 0})
+	_, err := s.q.CreateCategory(ctx, sqlcgen.CreateCategoryParams{PublicID: publicID, Name: name, Slug: slug, Position: position})
 	if err != nil {
 		if isUnique(err) {
 			return "", vErr("分类 slug %q 已存在", slug)
@@ -397,9 +481,64 @@ func (s *Service) ListCategories(ctx context.Context) ([]CategorySummary, error)
 	}
 	out := make([]CategorySummary, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, CategorySummary{PublicID: r.PublicID, Name: r.Name, Slug: r.Slug})
+		count, err := s.q.CountProductsByCategory(ctx, r.ID)
+		if err != nil {
+			return nil, fmt.Errorf("catalog: 统计分类商品失败: %w", err)
+		}
+		out = append(out, CategorySummary{PublicID: r.PublicID, Name: r.Name, Slug: r.Slug, Position: r.Position, ProductCount: count})
 	}
 	return out, nil
+}
+
+// UpdateCategory 修改分类显示名、URL slug 与排序。
+func (s *Service) UpdateCategory(ctx context.Context, publicID, name, slug string, position int64) error {
+	name, slug = strings.TrimSpace(name), strings.TrimSpace(slug)
+	if name == "" || slug == "" {
+		return vErr("分类名与 slug 不能为空")
+	}
+	if !categorySlugPattern.MatchString(slug) {
+		return vErr("分类 slug 只能包含小写字母、数字和连字符")
+	}
+	if position < 0 {
+		return vErr("分类排序不能为负数")
+	}
+	cat, err := s.q.GetCategoryByPublicID(ctx, publicID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("catalog: 取分类失败: %w", err)
+	}
+	err = s.q.UpdateCategory(ctx, sqlcgen.UpdateCategoryParams{Name: name, Slug: slug, Position: position, ID: cat.ID})
+	if isUnique(err) {
+		return vErr("分类 slug %q 已存在", slug)
+	}
+	if err != nil {
+		return fmt.Errorf("catalog: 更新分类失败: %w", err)
+	}
+	return nil
+}
+
+// DeleteCategory 软删空分类；有关联商品时拒绝，避免商品无意间失去导航入口。
+func (s *Service) DeleteCategory(ctx context.Context, publicID string) error {
+	cat, err := s.q.GetCategoryByPublicID(ctx, publicID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("catalog: 取分类失败: %w", err)
+	}
+	count, err := s.q.CountProductsByCategory(ctx, cat.ID)
+	if err != nil {
+		return fmt.Errorf("catalog: 统计分类商品失败: %w", err)
+	}
+	if count > 0 {
+		return ErrCategoryInUse
+	}
+	if err := s.q.SoftDeleteCategory(ctx, cat.ID); err != nil {
+		return fmt.Errorf("catalog: 删除分类失败: %w", err)
+	}
+	return nil
 }
 
 // ---- 校验辅助 ----

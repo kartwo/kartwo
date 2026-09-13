@@ -209,6 +209,40 @@ func TestHTTPHomeAndProduct(t *testing.T) {
 	}
 }
 
+func TestHTTPCollectionsSearchAndNavigation(t *testing.T) {
+	sf, cat, db := setup(t)
+	ctx := context.Background()
+	categoryID, err := cat.CreateCategoryWithPosition(ctx, "Running Tops", "running-tops", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	product := activeTee("searchable-tee")
+	product.Title = "Velocity Search Tee"
+	product.CategoryPublicIDs = []string{categoryID}
+	if _, err := cat.CreateProduct(ctx, product); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHTTP(sf, cart.New(db), order.New(db, settings.New(db)), settings.New(db), nil, redirect.New(db), "Test Shop", "https://shop.example", nil)
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	for _, tc := range []struct{ path, want string }{
+		{"/", "/collections/running-tops"},
+		{"/collections/all", "Velocity Search Tee"},
+		{"/collections/running-tops", "1 products in this collection."},
+		{"/search?q=velocity", "1 results for"},
+		{"/sitemap.xml", "https://shop.example/collections/running-tops"},
+	} {
+		code, body := get(t, mux, tc.path)
+		if code != http.StatusOK || !strings.Contains(body, tc.want) {
+			t.Fatalf("%s 异常 code=%d，缺少 %q", tc.path, code, tc.want)
+		}
+	}
+	if code, _ := get(t, mux, "/collections/missing"); code != http.StatusNotFound {
+		t.Fatalf("不存在分类应 404，得 %d", code)
+	}
+}
+
 func TestHTTPShopifyProductRedirect(t *testing.T) {
 	sf, cat, db := setup(t)
 	ctx := context.Background()
@@ -248,6 +282,33 @@ func TestHTTPShopifyProductRedirect(t *testing.T) {
 	}
 	if code, _ := get(t, mux, "/products/old-tee"); code != http.StatusNotFound {
 		t.Fatalf("草稿商品旧链接应 404，得 %d", code)
+	}
+}
+
+func TestHeaderUsesLogoInsteadOfShopNameWhenConfigured(t *testing.T) {
+	sf, _, db := setup(t)
+	set := settings.New(db)
+	if err := set.SetShopName(context.Background(), "Kartwo Running"); err != nil {
+		t.Fatal(err)
+	}
+	if err := set.SetShopLogoPath(context.Background(), "brand/logo.webp"); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHTTP(sf, cart.New(db), order.New(db, set), set, nil, redirect.New(db), "Fallback Store", "https://shop.example", nil, "Environment Store")
+	mux := http.NewServeMux()
+	h.Register(mux)
+	code, body := get(t, mux, "/")
+	if code != http.StatusOK {
+		t.Fatalf("首页状态=%d", code)
+	}
+	if !strings.Contains(body, `<img class="brand-logo" src="/media/brand/logo.webp" alt="Kartwo Running"`) {
+		t.Fatalf("页眉未使用 Logo: %s", body)
+	}
+	if strings.Contains(body, `class="brand" href="/" aria-label="Kartwo Running home">Kartwo Running</a>`) {
+		t.Fatal("配置 Logo 后页眉不应再显示文字店名")
+	}
+	if !strings.Contains(body, `© Kartwo Running`) || !strings.Contains(body, `<title>Kartwo Running — Shop</title>`) {
+		t.Fatal("Logo 不应取代页脚或 SEO 中的店铺名称")
 	}
 }
 

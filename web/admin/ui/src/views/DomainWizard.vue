@@ -1,5 +1,5 @@
 <!-- 向导·配置域名 / Wizard Domain Step. 作者：仗键天涯(daxing) 3442535897@qq.com -->
-<!-- 功能：开店向导第 3 步——录入域名(复用 DomainSettings)、可「暂不配先用 http」跳过、可「上一步」回收款步 -->
+<!-- 功能：开店向导第 2 步——录入域名(复用 DomainSettings)、可「暂不配先用 http」跳过、可「上一步」回收款步 -->
 <script setup>
 import { ref, inject } from 'vue'
 import { api, APIError } from '../api.js'

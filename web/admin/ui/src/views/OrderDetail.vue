@@ -14,6 +14,7 @@ const toast = useToast()
 const o = ref(null)
 const err = ref('') // 仅页级：订单加载失败 / 404「订单不存在」的常驻错误（D2 保留 inline）
 const busy = ref(false)
+const shipment = ref({ carrier:'', tracking_number:'', tracking_url:'' })
 
 function money(cents, cur) { return (cents / 100).toFixed(2) + ' ' + (cur || '') }
 function statusText(s) {
@@ -50,6 +51,7 @@ async function refund() {
     toast.error(e.message)
   } finally { busy.value = false }
 }
+async function fulfill() { if(!shipment.value.carrier||!shipment.value.tracking_number){toast.error('请填写承运商和运单号');return};busy.value=true;try{await api.fulfillOrder(route.params.id,shipment.value);await load();toast.success('订单已标记为发货')}catch(e){toast.error(e.message)}finally{busy.value=false} }
 onMounted(load)
 </script>
 
@@ -94,6 +96,7 @@ onMounted(load)
       </template>
 
       <div class="spacer"></div>
+      <div v-if="o.status === 'paid'" class="panel"><h3>发货与追踪</h3><input v-model="shipment.carrier" placeholder="承运商，例如 DHL"/><input v-model="shipment.tracking_number" placeholder="运单号"/><input v-model="shipment.tracking_url" placeholder="追踪链接（可选，https://）"/><button class="primary" :disabled="busy" @click="fulfill">确认发货</button></div>
       <button v-if="o.status === 'paid'" class="danger" :disabled="busy" @click="refund">
         {{ busy ? '退款中…' : '整单全额退款' }}
       </button>

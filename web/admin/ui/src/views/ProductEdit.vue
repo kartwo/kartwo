@@ -27,6 +27,8 @@ const seoDescription = ref('')
 const seoDescriptionZh = ref('')
 const translationNeedsSetup = ref(false)
 const status = ref('draft')
+const categories = ref([])
+const categoryPublicIDs = ref([])
 
 // 新建：轴 + 生成的变体矩阵
 const axes = ref([{ name: '尺码', valuesText: 'S, M, L' }, { name: '颜色', valuesText: '黑, 白' }])
@@ -124,6 +126,7 @@ async function saveNew() {
     const payload = {
       title: title.value, title_zh: titleZh.value, slug: slug.value, slug_zh: slugZh.value,
       description: description.value, seo_description: seoDescription.value, seo_description_zh: seoDescriptionZh.value, status: status.value,
+      category_public_ids: categoryPublicIDs.value,
       options: parseAxes(),
       variants: newVariants.value.map((v, i) => ({
         sku: v.sku, price_cents: cents[i], quantity: Number(v.quantity),
@@ -144,6 +147,7 @@ async function load() {
     const d = await api.getProduct(props.id)
     title.value = d.title; titleZh.value = d.title_zh; slug.value = d.slug; slugZh.value = d.slug_zh
     description.value = d.description; seoDescription.value = d.seo_description; seoDescriptionZh.value = d.seo_description_zh; status.value = d.status
+    categoryPublicIDs.value = d.category_public_ids || []
     // _qty/_priceYuan 为编辑态输入绑定（价格以元回显，两位小数）。
     variants.value = d.variants.map(v => ({ ...v, _qty: v.quantity, _priceYuan: (v.price_cents / 100).toFixed(2) }))
     await loadMedia()
@@ -161,7 +165,7 @@ async function loadMedia() {
 async function saveFields() {
   busy.value = true
   try {
-    await api.updateProduct(props.id, { title: title.value, title_zh: titleZh.value, description: description.value, seo_description: seoDescription.value, seo_description_zh: seoDescriptionZh.value, status: status.value })
+    await api.updateProduct(props.id, { title: title.value, title_zh: titleZh.value, description: description.value, seo_description: seoDescription.value, seo_description_zh: seoDescriptionZh.value, status: status.value, category_public_ids: categoryPublicIDs.value })
     toast.success('已保存')
   } catch (e) { toast.error(e.message) } finally { busy.value = false }
 }
@@ -214,7 +218,7 @@ function thumb(m) {
   return d ? d.url : m.original_url
 }
 
-onMounted(async () => { if (!isNew.value) return load() })
+onMounted(async () => { try { categories.value = (await api.listCategories()).categories || [] } catch (_) {}; if (!isNew.value) return load() })
 </script>
 
 <template>
@@ -250,6 +254,10 @@ onMounted(async () => { if (!isNew.value) return load() })
       <option value="active">上架 active</option>
       <option value="archived">归档 archived</option>
     </select>
+    <template v-if="categories.length">
+      <label>商品分类（可多选）</label>
+      <div class="category-options"><label v-for="c in categories" :key="c.public_id"><input v-model="categoryPublicIDs" type="checkbox" :value="c.public_id" /> {{ c.name }}</label></div>
+    </template>
     <!-- 草稿不会出现在店面，这是最常见的"商品建好了但店里看不到"原因，必须说在前面。 -->
     <p class="status-hint" :class="{ warn: status === 'draft' }">
       <template v-if="status === 'draft'">
@@ -361,4 +369,6 @@ onMounted(async () => { if (!isNew.value) return load() })
   color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn); border-radius: var(--radius-md);
 }
 .link-button { margin-left: var(--sp-2); }
+.category-options { display:flex; flex-wrap:wrap; gap:var(--sp-2); }
+.category-options label { display:flex; align-items:center; gap:var(--sp-1); font-weight:400; }
 </style>

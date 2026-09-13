@@ -139,14 +139,14 @@ func (h *HTTP) cartPage(w http.ResponseWriter, r *http.Request) {
 	}
 	canonical := h.base(r) + "/cart"
 	data := map[string]any{
-		"ShopName": h.shopName,
+		"ShopName": h.shopName(r.Context()),
 		"Cart":     view,
 		"Money":    h.money(r.Context()),
 		"SEO": seo{
-			Title: "Cart — " + h.shopName, Description: "Your cart", Canonical: canonical, OGType: "website",
+			Title: "Cart — " + h.shopName(r.Context()), Description: "Your cart", Canonical: canonical, OGType: "website",
 		},
 	}
-	h.render(w, h.cartTmpl, data)
+	h.render(w, r, h.cartTmpl, data)
 }
 
 func (h *HTTP) respondCount(w http.ResponseWriter, r *http.Request, cartID int64) {

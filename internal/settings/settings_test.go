@@ -1,8 +1,8 @@
 // 设置服务测试 / Settings Tests
-// 功能：明文/加密读写、市场选择校验、货币派生
+// 功能：明文/加密读写、市场选择校验、货币派生及品牌路径边界
 // 作者：仗键天涯(daxing)
 // 邮箱：3442535897@qq.com
-// 时间：2026-06-19 21:22:05
+// 时间：2026-09-12 23:10:00
 package settings
 
 import (
@@ -90,5 +90,19 @@ func TestMarketSelection(t *testing.T) {
 	}
 	if v, _ := s.Get(ctx, "market.code"); v != "US" {
 		t.Fatalf("market.code 应已写入")
+	}
+}
+
+func TestShopLogoPathRejectsTraversal(t *testing.T) {
+	s := newSvc(t)
+	ctx := context.Background()
+	if err := s.SetShopLogoPath(ctx, "brand/logo.webp"); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.ShopLogoURL(ctx); got != "/media/brand/logo.webp" {
+		t.Fatalf("Logo URL=%q", got)
+	}
+	if err := s.SetShopLogoPath(ctx, "brand/../originals/private.png"); err == nil {
+		t.Fatal("应拒绝逃出 brand 目录的路径")
 	}
 }

@@ -192,7 +192,7 @@ WantedBy=multi-user.target
 | `KARTWO_DOMAIN` | `www.example.com` | 精确证书域名 |
 | `KARTWO_BASE_URL` | `https://www.example.com` | 支付回跳、邮件和公开链接的基础地址 |
 | `KARTWO_DATA_DIR` | 实际持久化目录 | 数据库、媒体、备份、证书缓存 |
-| `KARTWO_SHOP_NAME` | 店铺名称 | 店面显示名；含空格必须保留双引号 |
+| `KARTWO_SHOP_NAME` | 初始店铺名称 | 数据库尚未保存店名时的回退值；后台“设置 → 店铺”可随时覆盖；含空格必须保留双引号 |
 
 特别注意这行：
 

@@ -35,17 +35,23 @@ func (h *HTTP) renderCheckout(w http.ResponseWriter, r *http.Request, errMsg str
 	if h.pay != nil {
 		methods = h.pay.AvailableMethods(r.Context())
 	}
+	countries, err := h.order.ShippingCountries(r.Context())
+	if err != nil {
+		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
 	data := map[string]any{
-		"ShopName": h.shopName,
-		"Cart":     view,
-		"Error":    errMsg,
-		"Money":    h.money(r.Context()),
-		"Methods":  methods, // 可用支付方式（stripe/paypal）；>1 时结算页显示选择
+		"ShopName":  h.shopName(r.Context()),
+		"Cart":      view,
+		"Error":     errMsg,
+		"Money":     h.money(r.Context()),
+		"Methods":   methods, // 可用支付方式（stripe/paypal）；>1 时结算页显示选择
+		"Countries": countries,
 		"SEO": seo{
-			Title: "Checkout — " + h.shopName, Description: "Checkout", Canonical: h.base(r) + "/checkout", OGType: "website",
+			Title: "Checkout — " + h.shopName(r.Context()), Description: "Checkout", Canonical: h.base(r) + "/checkout", OGType: "website",
 		},
 	}
-	h.render(w, h.ckoutTmpl, data)
+	h.render(w, r, h.ckoutTmpl, data)
 }
 
 func (h *HTTP) checkoutSubmit(w http.ResponseWriter, r *http.Request) {
@@ -121,7 +127,7 @@ func (h *HTTP) startPayment(r *http.Request, publicID, provider string) (string,
 		Email:       o.Email,
 		Currency:    o.Currency,
 		AmountCents: o.TotalCents,
-		Description: h.shopName + " — Order",
+		Description: h.shopName(r.Context()) + " — Order",
 	}
 	switch provider {
 	case "paypal":
@@ -180,15 +186,15 @@ func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
 		payMethods = h.pay.AvailableMethods(r.Context())
 	}
 	data := map[string]any{
-		"ShopName": h.shopName,
+		"ShopName": h.shopName(r.Context()),
 		"Order":    o,
 		"Methods":  payMethods,
 		"Money":    h.money(r.Context()),
 		"SEO": seo{
-			Title: "Order — " + h.shopName, Description: "Order confirmation", Canonical: h.base(r) + "/order/" + o.PublicID, OGType: "website",
+			Title: "Order — " + h.shopName(r.Context()), Description: "Order confirmation", Canonical: h.base(r) + "/order/" + o.PublicID, OGType: "website",
 		},
 	}
-	h.render(w, h.orderTmpl, data)
+	h.render(w, r, h.orderTmpl, data)
 }
 
 // orderPay 对未付订单重新发起收款（订单页「去支付」按钮）。

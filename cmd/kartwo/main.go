@@ -34,6 +34,7 @@ import (
 	"github.com/kartwo/kartwo/internal/media"
 	"github.com/kartwo/kartwo/internal/order"
 	"github.com/kartwo/kartwo/internal/payment"
+	"github.com/kartwo/kartwo/internal/policy"
 	"github.com/kartwo/kartwo/internal/redirect"
 	"github.com/kartwo/kartwo/internal/server"
 	"github.com/kartwo/kartwo/internal/settings"
@@ -74,7 +75,7 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
-	// 子命令分发：默认 serve；seed-demo 装演示数据后退出；restore 将导出包恢复到新数据目录。
+	// 子命令分发：默认 serve；演示数据命令仅显式执行时写入；restore 将导出包恢复到新数据目录。
 	sub := "serve"
 	if len(os.Args) > 1 {
 		sub = os.Args[1]
@@ -86,13 +87,15 @@ func main() {
 		err = runServe(logger)
 	case "seed-demo":
 		err = runSeedDemo(logger)
+	case "seed-running-demo":
+		err = runSeedRunningDemo(logger)
 	case "restore":
 		err = runRestore(logger, os.Args[2:])
 	case "version", "--version", "-v":
 		// 纯文本单行输出（不走 slog）：商家反馈问题时的第一手信息，也供 release 流水线自检。
 		fmt.Println(Version)
 	default:
-		err = fmt.Errorf("未知子命令 %q（可用：serve | seed-demo | restore | version）", sub)
+		err = fmt.Errorf("未知子命令 %q（可用：serve | seed-demo | seed-running-demo | restore | version）", sub)
 	}
 	if err != nil {
 		logger.Error("执行失败", "subcommand", sub, "err", err)
@@ -200,6 +203,52 @@ func runSeedDemo(logger *slog.Logger) error {
 	return nil
 }
 
+// runSeedRunningDemo 显式补齐五个跑步分类与二十件商品；绝不在 serve 或升级期间自动执行。
+func runSeedRunningDemo(logger *slog.Logger) error {
+	cfg, st, err := setup(logger)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
+	ctx := context.Background()
+	catSvc := catalog.New(st.DB)
+	result, err := catSvc.SeedRunningDemo(ctx)
+	if err != nil {
+		return err
+	}
+	imageResult, err := catSvc.ImportRunningDemoImages(ctx, filepath.Join("assets", "generated-products"), newMediaService(cfg, st))
+	if err != nil {
+		return err
+	}
+	if imageResult.DirectoryFound {
+		logger.Info("跑步演示封面导入完成", "imported", imageResult.Imported, "existing", imageResult.Existing, "missing", imageResult.Missing)
+	} else {
+		logger.Info("未发现跑步演示封面目录，跳过图片导入", "path", filepath.Join("assets", "generated-products"))
+	}
+	policySvc := policy.New(settings.New(st.DB), catSvc)
+	_, configured, err := policySvc.Get(ctx)
+	if err != nil {
+		return err
+	}
+	profileCreated := false
+	if !configured {
+		if err := policySvc.Save(ctx, policy.KartwoDemoProfile()); err != nil {
+			return err
+		}
+		profileCreated = true
+	}
+	pages, err := policySvc.Generate(ctx, true, false)
+	if err != nil {
+		return err
+	}
+	if result.CategoriesCreated == 0 && result.ProductsCreated == 0 && result.LinksCreated == 0 && imageResult.Imported == 0 && !profileCreated && pages.Created == 0 {
+		logger.Info("跑步演示分类与商品已完整存在，无需补齐")
+		return nil
+	}
+	logger.Info("跑步演示目录与页脚内容已补齐", "categories_created", result.CategoriesCreated, "products_created", result.ProductsCreated, "links_created", result.LinksCreated, "policy_profile_created", profileCreated, "content_pages_created", pages.Created, "content_pages_skipped", pages.Skipped)
+	return nil
+}
+
 func runServe(logger *slog.Logger) error {
 	cfg, st, err := setup(logger)
 	if err != nil {
@@ -272,8 +321,12 @@ func runServe(logger *slog.Logger) error {
 	backupCfg.WebDAVUsername = cfg.BackupWebDAVUsername
 	backupCfg.WebDAVUsernameEnv = cfg.BackupWebDAVUsernameEnv
 	backupCfg.WebDAVPathEnv = cfg.BackupWebDAVPathEnv
-	adminHTTP := admin.NewHTTP(adminSvc, catalogSvc, importer.New(st.DB, catalogSvc, mediaSvc, redirectSvc), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, exporter, backupCfg, cfg.Domain, cfg.Env == "prod", cfg.TrustedProxies)
-	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, redirectSvc, cfg.ShopName, cfg.BaseURL, cfg.TrustedProxies)
+	shopNameOverride := ""
+	if cfg.ShopNameEnv {
+		shopNameOverride = cfg.ShopName
+	}
+	adminHTTP := admin.NewHTTP(adminSvc, catalogSvc, importer.New(st.DB, catalogSvc, mediaSvc, redirectSvc), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, exporter, backupCfg, cfg.Domain, cfg.Env == "prod", cfg.TrustedProxies, shopNameOverride)
+	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, redirectSvc, cfg.ShopName, cfg.BaseURL, cfg.TrustedProxies, shopNameOverride)
 	payHTTP := payment.NewHTTP(paySvc)
 	// 解析"当前生效域名"（env 覆盖 DB），决定是否启用 HTTPS（仅 prod）。
 	baseCtx := context.Background()

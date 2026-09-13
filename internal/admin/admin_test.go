@@ -219,7 +219,7 @@ func TestConfigSurvivesRestartAndRelogin(t *testing.T) {
 func newHTTP(t *testing.T) (*HTTP, http.Handler) { return newHTTPEnvDomain(t, "") }
 
 // newHTTPEnvDomain 构建 Admin HTTP，可注入 envDomain（模拟 KARTWO_DOMAIN 覆盖，测域名步骤只读态）。
-func newHTTPEnvDomain(t *testing.T, envDomain string) (*HTTP, http.Handler) {
+func newHTTPEnvDomain(t *testing.T, envDomain string, envShopName ...string) (*HTTP, http.Handler) {
 	svc := newSvc(t)
 	dataDir := t.TempDir()
 	root := dataDir + "/media"
@@ -229,10 +229,52 @@ func newHTTPEnvDomain(t *testing.T, envDomain string) (*HTTP, http.Handler) {
 	mc := mail.NewCache(set)
 	svc.SetMailKeys(mc)
 	cat := catalog.New(svc.db)
-	h := NewHTTP(svc, cat, importer.New(svc.db, cat, md, redirect.New(svc.db)), md, set, ord, nil, mc, backup.New(svc.db, dataDir, "test-version"), BackupConfig{Interval: 24 * time.Hour, Retention: 7}, envDomain, false, nil)
+	h := NewHTTP(svc, cat, importer.New(svc.db, cat, md, redirect.New(svc.db)), md, set, ord, nil, mc, backup.New(svc.db, dataDir, "test-version"), BackupConfig{Interval: 24 * time.Hour, Retention: 7}, envDomain, false, nil, envShopName...)
 	mux := http.NewServeMux()
 	h.Register(mux)
 	return h, mux
+}
+
+func TestHTTPShopNameRemainsEditableWithEnvFallbackAndLogoLifecycle(t *testing.T) {
+	_, mux := newHTTPEnvDomain(t, "", "M4 Final Store")
+	sess, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+
+	initial := doJSON(t, mux, "GET", "/admin/api/settings/shop", "", auth, "")
+	if initial.StatusCode != http.StatusOK || !bytes.Contains(initial.Body, []byte(`"name":"M4 Final Store"`)) || !bytes.Contains(initial.Body, []byte(`"readonly":false`)) {
+		t.Fatalf("环境变量应只作可编辑回退: %d %s", initial.StatusCode, initial.Body)
+	}
+	saved := doJSON(t, mux, "PUT", "/admin/api/settings/shop", `{"name":"Kartwo Running"}`, auth, csrf)
+	if saved.StatusCode != http.StatusOK || !bytes.Contains(saved.Body, []byte(`"name":"Kartwo Running"`)) {
+		t.Fatalf("后台店名应可覆盖环境回退: %d %s", saved.StatusCode, saved.Body)
+	}
+
+	var imageBody bytes.Buffer
+	if err := png.Encode(&imageBody, image.NewRGBA(image.Rect(0, 0, 1200, 400))); err != nil {
+		t.Fatal(err)
+	}
+	var multipartBody bytes.Buffer
+	mw := multipart.NewWriter(&multipartBody)
+	part, err := mw.CreateFormFile("file", "kartwo-logo.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = part.Write(imageBody.Bytes())
+	_ = mw.Close()
+	req := httptest.NewRequest("POST", "/admin/api/settings/shop/logo", &multipartBody)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set(csrfHeader, csrf)
+	req.AddCookie(sess)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"logo_url":"/media/brand/`)) {
+		t.Fatalf("上传 Logo 失败: %d %s", rec.Code, rec.Body.String())
+	}
+
+	deleted := doJSON(t, mux, "DELETE", "/admin/api/settings/shop/logo", "", auth, csrf)
+	if deleted.StatusCode != http.StatusOK || !bytes.Contains(deleted.Body, []byte(`"logo_url":""`)) {
+		t.Fatalf("删除 Logo 失败: %d %s", deleted.StatusCode, deleted.Body)
+	}
 }
 
 func TestHTTPExportData(t *testing.T) {
@@ -285,6 +327,66 @@ func doJSON(t *testing.T, mux http.Handler, method, path, body string, cookies [
 	defer func() { _ = res.Body.Close() }()
 	b, _ := io.ReadAll(res.Body)
 	return apiResp{StatusCode: res.StatusCode, Cookies: res.Cookies(), Body: b}
+}
+
+func TestHTTPContentPageCreateAndUpdatePayload(t *testing.T) {
+	_, mux := newHTTP(t)
+	sess, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+
+	// 严格解码仍应拒绝界面状态字段；前端必须只发送 API 定义的字段。
+	unknown := `{"public_id":"","title":"About Us","slug":"aboutus","body_markdown":"kartwo.com","seo_description":"about kartwo.com","status":"draft"}`
+	if resp := doJSON(t, mux, http.MethodPost, "/admin/api/content-pages", unknown, auth, csrf); resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("未知 public_id 应拒绝，得 %d %s", resp.StatusCode, resp.Body)
+	}
+
+	valid := `{"title":"About Us","slug":"aboutus","body_markdown":"kartwo.com","seo_description":"about kartwo.com","status":"draft"}`
+	created := doJSON(t, mux, http.MethodPost, "/admin/api/content-pages", valid, auth, csrf)
+	if created.StatusCode != http.StatusCreated {
+		t.Fatalf("合法内容页应创建，得 %d %s", created.StatusCode, created.Body)
+	}
+	var result struct {
+		PublicID string `json:"public_id"`
+	}
+	if err := json.Unmarshal(created.Body, &result); err != nil || result.PublicID == "" {
+		t.Fatalf("创建响应异常: %s", created.Body)
+	}
+	updated := `{"title":"About Kartwo","slug":"aboutus","body_markdown":"# About\nUpdated.","seo_description":"About Kartwo","status":"active"}`
+	if resp := doJSON(t, mux, http.MethodPatch, "/admin/api/content-pages/"+result.PublicID, updated, auth, csrf); resp.StatusCode != http.StatusOK {
+		t.Fatalf("合法内容页应更新，得 %d %s", resp.StatusCode, resp.Body)
+	}
+	page := doJSON(t, mux, http.MethodGet, "/admin/api/content-pages/"+result.PublicID, "", auth, "")
+	if page.StatusCode != http.StatusOK || !bytes.Contains(page.Body, []byte(`"title":"About Kartwo"`)) || !bytes.Contains(page.Body, []byte(`"status":"active"`)) {
+		t.Fatalf("内容页更新未生效: %d %s", page.StatusCode, page.Body)
+	}
+}
+
+func TestHTTPPolicyProfileAndFooterGeneration(t *testing.T) {
+	_, mux := newHTTP(t)
+	sess, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+
+	if r := doJSON(t, mux, http.MethodPost, "/admin/api/content-pages/generate-footer", `{"publish":true,"overwrite":false}`, auth, csrf); r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("未保存资料不应生成，得 %d %s", r.StatusCode, r.Body)
+	}
+	if r := doJSON(t, mux, http.MethodPut, "/admin/api/settings/policy-profile", `{"support_email":"bad"}`, auth, csrf); r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("非法资料应拒绝，得 %d %s", r.StatusCode, r.Body)
+	}
+	body := `{"support_email":"info@kartwo.com","ship_from":"China","processing_hours":48,"return_window_days":7,"return_shipping_payer":"buyer","business_name":"kartwo.com","delivery_estimates":[{"region":"Asia","min_business_days":5,"max_business_days":10},{"region":"Europe","min_business_days":7,"max_business_days":15},{"region":"North America","min_business_days":7,"max_business_days":15},{"region":"South America","min_business_days":10,"max_business_days":25},{"region":"Africa","min_business_days":10,"max_business_days":25},{"region":"Oceania","min_business_days":7,"max_business_days":15},{"region":"Antarctica","min_business_days":20,"max_business_days":35}]}`
+	if r := doJSON(t, mux, http.MethodPut, "/admin/api/settings/policy-profile", body, auth, csrf); r.StatusCode != http.StatusOK {
+		t.Fatalf("合法资料应保存，得 %d %s", r.StatusCode, r.Body)
+	}
+	if r := doJSON(t, mux, http.MethodGet, "/admin/api/settings/policy-profile", "", auth, ""); r.StatusCode != http.StatusOK || !bytes.Contains(r.Body, []byte(`"configured":true`)) || !bytes.Contains(r.Body, []byte(`info@kartwo.com`)) {
+		t.Fatalf("应能读取已保存资料，得 %d %s", r.StatusCode, r.Body)
+	}
+	generated := doJSON(t, mux, http.MethodPost, "/admin/api/content-pages/generate-footer", `{"publish":true,"overwrite":false}`, auth, csrf)
+	if generated.StatusCode != http.StatusOK || !bytes.Contains(generated.Body, []byte(`"created":7`)) {
+		t.Fatalf("应生成七个页脚页面，得 %d %s", generated.StatusCode, generated.Body)
+	}
+	listed := doJSON(t, mux, http.MethodGet, "/admin/api/content-pages", "", auth, "")
+	if listed.StatusCode != http.StatusOK || !bytes.Contains(listed.Body, []byte(`"slug":"shipping-policy"`)) || !bytes.Contains(listed.Body, []byte(`"status":"active"`)) {
+		t.Fatalf("生成页面应已发布，得 %d %s", listed.StatusCode, listed.Body)
+	}
 }
 
 // TestHTTPVariantPriceRequiredAndUpdate 守"价格必填、缺失/空 → 拒绝、绝不默认 0"防损失底线（创建 + 改价两路），
@@ -825,6 +927,51 @@ func TestHTTPMarkets(t *testing.T) {
 	}
 	if audit := doJSON(t, mux, "GET", "/admin/api/audit-events", "", auth, ""); !bytes.Contains(audit.Body, []byte(`"action":"market.settings_update"`)) {
 		t.Fatalf("保存市场设置应留审计事件: %s", audit.Body)
+	}
+}
+
+func TestHTTPShippingSettingsSeparated(t *testing.T) {
+	_, mux := newHTTP(t)
+	sess, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{sess}
+
+	catalog := doJSON(t, mux, http.MethodGet, "/admin/api/settings/shipping/countries", "", auth, "")
+	if catalog.StatusCode != http.StatusOK || !bytes.Contains(catalog.Body, []byte(`"continent":"Asia"`)) || !bytes.Contains(catalog.Body, []byte(`"code":"CN"`)) {
+		t.Fatalf("配送国家目录异常: %d %s", catalog.StatusCode, catalog.Body)
+	}
+	if bad := doJSON(t, mux, http.MethodPut, "/admin/api/settings/shipping/countries", `{"countries":["XX"]}`, auth, csrf); bad.StatusCode != http.StatusBadRequest {
+		t.Fatalf("非法国家代码应拒绝，得 %d", bad.StatusCode)
+	}
+	if saved := doJSON(t, mux, http.MethodPut, "/admin/api/settings/shipping/countries", `{"countries":["CN","US"]}`, auth, csrf); saved.StatusCode != http.StatusOK {
+		t.Fatalf("保存配送范围失败: %d %s", saved.StatusCode, saved.Body)
+	}
+	if saved := doJSON(t, mux, http.MethodPut, "/admin/api/settings/shipping/default", `{"rate_cents":500,"free_over_cents":20000}`, auth, csrf); saved.StatusCode != http.StatusOK {
+		t.Fatalf("保存默认运费失败: %d %s", saved.StatusCode, saved.Body)
+	}
+	created := doJSON(t, mux, http.MethodPost, "/admin/api/settings/shipping", `{"name":"China","countries":"CN","rate_cents":900,"free_over_cents":0}`, auth, csrf)
+	if created.StatusCode != http.StatusCreated {
+		t.Fatalf("新增特殊规则失败: %d %s", created.StatusCode, created.Body)
+	}
+	var result struct {
+		PublicID string `json:"public_id"`
+	}
+	if err := json.Unmarshal(created.Body, &result); err != nil || result.PublicID == "" {
+		t.Fatalf("特殊规则响应异常: %s", created.Body)
+	}
+	duplicate := doJSON(t, mux, http.MethodPost, "/admin/api/settings/shipping", `{"name":"Duplicate","countries":"CN","rate_cents":1000,"free_over_cents":0}`, auth, csrf)
+	if duplicate.StatusCode != http.StatusConflict {
+		t.Fatalf("重复国家规则应冲突，得 %d %s", duplicate.StatusCode, duplicate.Body)
+	}
+	updated := doJSON(t, mux, http.MethodPatch, "/admin/api/settings/shipping/"+result.PublicID, `{"name":"China Updated","countries":"CN","rate_cents":800,"free_over_cents":10000}`, auth, csrf)
+	if updated.StatusCode != http.StatusOK {
+		t.Fatalf("更新特殊规则失败: %d %s", updated.StatusCode, updated.Body)
+	}
+	deleted := doJSON(t, mux, http.MethodDelete, "/admin/api/settings/shipping/"+result.PublicID, "", auth, csrf)
+	if deleted.StatusCode != http.StatusNoContent {
+		t.Fatalf("删除特殊规则失败: %d %s", deleted.StatusCode, deleted.Body)
+	}
+	if audit := doJSON(t, mux, http.MethodGet, "/admin/api/audit-events", "", auth, ""); !bytes.Contains(audit.Body, []byte(`"action":"shipping.countries_update"`)) || !bytes.Contains(audit.Body, []byte(`"action":"shipping.default_update"`)) || !bytes.Contains(audit.Body, []byte(`"action":"shipping_zone.delete"`)) {
+		t.Fatalf("配送设置审计事件不完整: %s", audit.Body)
 	}
 }
 

@@ -61,6 +61,40 @@ type OrderLine struct {
 
 // Order 订单视图。
 type Order struct {
+	PublicID         string
+	Status           string
+	Email            string
+	ShipName         string
+	ShipPhone        string
+	ShipAddress      string
+	ShipCountry      string
+	Currency         string
+	SubtotalCents    int64
+	TotalCents       int64
+	ShippingCents    int64
+	ShippingRuleName string
+	TrackingCarrier  string
+	TrackingNumber   string
+	TrackingURL      string
+	PaymentProvider  string
+	CreatedAt        string
+	Lines            []OrderLine
+	Refunds          []RefundView // 仅后台详情填充
+}
+
+// OrderSummary 后台订单列表项。
+type OrderSummary struct {
+	PublicID        string
+	Status          string
+	Email           string
+	Currency        string
+	TotalCents      int64
+	PaymentProvider string
+	CreatedAt       string
+}
+
+// OrderExportRow 后台订单 CSV 导出行；金额保持整数分，避免浮点精度问题。
+type OrderExportRow struct {
 	PublicID        string
 	Status          string
 	Email           string
@@ -73,19 +107,13 @@ type Order struct {
 	TotalCents      int64
 	PaymentProvider string
 	CreatedAt       string
-	Lines           []OrderLine
-	Refunds         []RefundView // 仅后台详情填充
 }
 
-// OrderSummary 后台订单列表项。
-type OrderSummary struct {
-	PublicID        string
-	Status          string
-	Email           string
-	Currency        string
-	TotalCents      int64
-	PaymentProvider string
-	CreatedAt       string
+// OrderExportFilter 限定后台 CSV 导出的订单状态与 UTC 日期范围；空字段表示不限制。
+type OrderExportFilter struct {
+	Status string
+	From   string // UTC ISO8601 下界（含）
+	To     string // UTC ISO8601 上界（不含）
 }
 
 // RefundView 退款记录视图。
@@ -106,6 +134,9 @@ func (in CheckoutInfo) validate() error {
 	if strings.TrimSpace(in.Address) == "" {
 		return fmt.Errorf("%w: 收货地址不能为空", ErrInvalidInfo)
 	}
+	if strings.TrimSpace(in.Country) == "" {
+		return fmt.Errorf("%w: 国家不能为空", ErrInvalidInfo)
+	}
 	return nil
 }
 
@@ -123,8 +154,16 @@ func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo)
 		return "", ErrEmptyCart
 	}
 
-	// 货币在开事务前解析（事务持有唯一连接时再查会死锁）。
+	// 货币与配送规则在开事务前解析（事务持有唯一连接时再查会死锁）。
 	currency := s.settings.Currency(ctx)
+	var subtotal int64
+	for _, item := range items {
+		subtotal += item.PriceCents * item.Quantity
+	}
+	shipping, rule, err := s.shippingFor(ctx, info.Country, subtotal)
+	if err != nil {
+		return "", err
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -157,19 +196,18 @@ func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo)
 		return "", fmt.Errorf("order: 取客户失败: %w", err)
 	}
 
-	// 3) 合计 + 建订单。
-	var subtotal int64
-	for _, it := range items {
-		subtotal += it.PriceCents * it.Quantity
-	}
+	// 3) 使用事务前已解析的金额快照建订单。
 	publicID := uuid.Must(uuid.NewV7()).String()
 	orderID, err := q.CreateOrder(ctx, sqlcgen.CreateOrderParams{
 		PublicID: publicID, CustomerID: cust.ID, Email: info.Email,
 		ShipName: info.Name, ShipPhone: info.Phone, ShipAddress: info.Address, ShipCountry: info.Country,
-		Currency: currency, SubtotalCents: subtotal, TotalCents: subtotal, // v1: 税/运 = 0
+		Currency: currency, SubtotalCents: subtotal, TotalCents: subtotal + shipping,
 	})
 	if err != nil {
 		return "", fmt.Errorf("order: 建订单失败: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE \"order\" SET shipping_cents=?, shipping_rule_name=? WHERE id=?", shipping, rule, orderID); err != nil {
+		return "", fmt.Errorf("order: 写配送快照: %w", err)
 	}
 
 	// 4) 订单行（快照：标题/规格/单价）。
@@ -225,6 +263,8 @@ func (s *Service) Get(ctx context.Context, publicID string) (*Order, error) {
 			UnitCents: it.UnitCents, Quantity: it.Quantity, LineCents: it.LineCents,
 		})
 	}
+	_ = s.db.QueryRowContext(ctx, "SELECT shipping_cents,shipping_rule_name FROM \"order\" WHERE id=?", o.ID).Scan(&out.ShippingCents, &out.ShippingRuleName)
+	_ = s.db.QueryRowContext(ctx, "SELECT carrier,tracking_number,tracking_url FROM shipment WHERE order_id=?", o.ID).Scan(&out.TrackingCarrier, &out.TrackingNumber, &out.TrackingURL)
 	return out, nil
 }
 
@@ -239,6 +279,33 @@ func (s *Service) AdminList(ctx context.Context) ([]OrderSummary, error) {
 		out = append(out, OrderSummary{
 			PublicID: r.PublicID, Status: r.Status, Email: r.Email, Currency: r.Currency,
 			TotalCents: r.TotalCents, PaymentProvider: r.PaymentProvider, CreatedAt: r.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
+// AdminExport 返回订单 CSV 所需的完整后台字段（按下单时间倒序）。
+func (s *Service) AdminExport(ctx context.Context, filter OrderExportFilter) ([]OrderExportRow, error) {
+	rows, err := s.q.ListOrdersForExport(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("order: 列导出订单失败: %w", err)
+	}
+	out := make([]OrderExportRow, 0, len(rows))
+	for _, r := range rows {
+		if filter.Status != "" && r.Status != filter.Status {
+			continue
+		}
+		if filter.From != "" && r.CreatedAt < filter.From {
+			continue
+		}
+		if filter.To != "" && r.CreatedAt >= filter.To {
+			continue
+		}
+		out = append(out, OrderExportRow{
+			PublicID: r.PublicID, Status: r.Status, Email: r.Email,
+			ShipName: r.ShipName, ShipPhone: r.ShipPhone, ShipAddress: r.ShipAddress, ShipCountry: r.ShipCountry,
+			Currency: r.Currency, SubtotalCents: r.SubtotalCents, TotalCents: r.TotalCents,
+			PaymentProvider: r.PaymentProvider, CreatedAt: r.CreatedAt,
 		})
 	}
 	return out, nil
