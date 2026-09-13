@@ -1,6 +1,6 @@
 <!-- 应用外壳与鉴权 / App Shell & Auth. 作者：仗键天涯(daxing) 3442535897@qq.com -->
 <script setup>
-import { ref, computed, onMounted, provide } from 'vue'
+import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
 import { api, APIError } from './api.js'
 import PaymentWizard from './views/PaymentWizard.vue'
 import DomainWizard from './views/DomainWizard.vue'
@@ -17,6 +17,19 @@ const paymentStepNeeded = ref(false)
 const domainStepNeeded = ref(false)
 const smtpStepNeeded = ref(false)
 const username = ref('')
+const demoAvailable = ref(false)
+const demoSession = ref(false)
+const demoExpiresAt = ref('')
+const now = ref(Date.now())
+let clock = null
+
+provide('demoSession', demoSession)
+
+const demoRemaining = computed(() => {
+  const seconds = Math.max(0, Math.ceil((new Date(demoExpiresAt.value).getTime() - now.value) / 1000))
+  const minutes = Math.floor(seconds / 60)
+  return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
+})
 
 // 向导「第 X / N 步」进度：固定三步流，跳过的步骤仍占位、步号不跳变。
 const wizardStep = computed(() => {
@@ -44,11 +57,20 @@ async function refresh() {
   try {
     const s = await api.status()
     initialized.value = !!s.initialized
+		demoAvailable.value = !!s.demo_mode
     if (initialized.value) {
       try {
         const me = await api.me()
         authed.value = true
         username.value = me.username
+		demoSession.value = me.role === 'demo'
+		demoExpiresAt.value = me.expires_at || ''
+		if (demoSession.value) {
+			paymentStepNeeded.value = false
+			domainStepNeeded.value = false
+			smtpStepNeeded.value = false
+			return
+		}
         try { paymentStepNeeded.value = !!(await api.wizardPayment()).needed } catch (_) { paymentStepNeeded.value = false }
         if (!paymentStepNeeded.value) await checkDomainStep()
       } catch (e) {
@@ -97,16 +119,37 @@ async function doLogin() {
   } finally { busy.value = false }
 }
 
+async function doDemo() {
+  busy.value = true; err.value = ''
+  try {
+    await api.demoSession()
+    await refresh()
+  } catch (e) {
+    err.value = e.message
+  } finally { busy.value = false }
+}
+
+async function resetDemo() {
+  if (!window.confirm('清空本次演示创建的临时商品与图片？示例数据不会受影响。')) return
+  try {
+    await api.resetDemo()
+    window.location.hash = '#/products'
+    window.location.reload()
+  } catch (e) { err.value = e.message }
+}
+
 async function doLogout() {
   try { await api.logout() } catch (_) { /* ignore */ }
   authed.value = false
+	demoSession.value = false
   form.value = { user: '', pass: '' }
 }
 
 // 子组件遇 401 时调用，回到登录态。
 provide('onUnauthorized', () => { authed.value = false })
 
-onMounted(refresh)
+onMounted(() => { refresh(); clock = window.setInterval(() => { now.value = Date.now() }, 1000) })
+onUnmounted(() => { if (clock) window.clearInterval(clock) })
 </script>
 
 <template>
@@ -144,6 +187,11 @@ onMounted(refresh)
       <p v-if="err" class="err">{{ err }}</p>
       <div class="spacer"></div>
       <button class="primary" :disabled="busy" @click="doLogin">登录</button>
+			<template v-if="demoAvailable">
+				<div class="demo-divider"><span>或</span></div>
+				<button class="demo-enter" :disabled="busy" @click="doDemo">一键进入公开演示</button>
+				<p class="muted demo-note">无需密码 · 45 分钟独立体验 · 示例数据受保护</p>
+			</template>
     </div>
   </div>
 
@@ -179,19 +227,25 @@ onMounted(refresh)
 
   <!-- 已登录：应用 -->
   <template v-else>
+		<div v-if="demoSession" class="demo-banner">
+			<span><strong>公开演示模式</strong>　可查看后台并新建 3 个临时草稿商品；示例商品和关键配置受保护。</span>
+			<span class="demo-actions">剩余 {{ demoRemaining }} <button @click="resetDemo">重置本次演示</button></span>
+		</div>
     <header class="app-header">
       <div class="brand">Kartwo Admin</div>
       <div class="row" style="gap:1rem; flex: 0;">
         <RouterLink to="/dashboard">概览</RouterLink>
-        <RouterLink to="/diagnostics">诊断</RouterLink>
-        <RouterLink to="/export">导出</RouterLink>
-        <RouterLink to="/audit">审计</RouterLink>
+				<template v-if="!demoSession">
+					<RouterLink to="/diagnostics">诊断</RouterLink>
+					<RouterLink to="/export">导出</RouterLink>
+					<RouterLink to="/audit">审计</RouterLink>
+				</template>
         <RouterLink to="/products">商品</RouterLink>
         <RouterLink to="/categories">分类</RouterLink>
         <RouterLink to="/merchandising">内容</RouterLink>
-        <RouterLink to="/imports/csv">导入</RouterLink>
-        <RouterLink to="/orders">订单</RouterLink>
-        <details class="settings-menu">
+				<RouterLink v-if="!demoSession" to="/imports/csv">导入</RouterLink>
+				<RouterLink v-if="!demoSession" to="/orders">订单</RouterLink>
+				<details v-if="!demoSession" class="settings-menu">
           <summary>设置</summary>
           <div class="settings-submenu">
             <RouterLink to="/shop">店铺</RouterLink>
@@ -223,4 +277,12 @@ onMounted(refresh)
 .settings-submenu{position:absolute;right:0;top:calc(100% + var(--sp-2));z-index:10;display:grid;min-width:9rem;padding:var(--sp-2);border:1px solid var(--border);border-radius:var(--radius-md);background:var(--panel);box-shadow:var(--shadow-md)}
 .settings-submenu a{padding:var(--sp-2) var(--sp-3);border-radius:var(--radius-sm);white-space:nowrap}
 .settings-submenu a:hover{background:var(--surface-2)}
+.demo-banner{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);padding:var(--sp-2) var(--sp-4);color:#713f12;background:#fef3c7;border-bottom:1px solid #f59e0b;font-size:var(--fs-sm)}
+.demo-actions{display:flex;align-items:center;gap:var(--sp-3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.demo-actions button{padding:.3rem .65rem;background:#fff}
+.demo-divider{display:flex;align-items:center;gap:var(--sp-3);margin:var(--sp-4) 0;color:var(--text-muted)}
+.demo-divider::before,.demo-divider::after{content:'';height:1px;flex:1;background:var(--border)}
+.demo-enter{width:100%;color:var(--accent);border-color:var(--accent);font-weight:600}
+.demo-note{text-align:center;font-size:var(--fs-xs);margin-bottom:0}
+@media(max-width:760px){.demo-banner{align-items:flex-start;flex-direction:column}.demo-actions{width:100%;justify-content:space-between}}
 </style>

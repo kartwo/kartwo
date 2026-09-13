@@ -7,6 +7,7 @@ import { confirm } from '../confirm.js'
 
 const toast = useToast()
 const onUnauthorized = inject('onUnauthorized')
+const demoSession = inject('demoSession', ref(false))
 const categories = ref([])
 const form = ref({ name: '', slug: '', position: 0 })
 const busy = ref(false)
@@ -58,8 +59,9 @@ onMounted(load)
 <template>
   <h2>分类管理</h2>
   <p class="muted">分类用于后台整理商品，也会按排序显示在英文店面导航和分类页。删除前须先把关联商品移到其他分类。</p>
+	<p v-if="demoSession" class="demo-readonly">公开演示中分类为只读，临时商品仍可选择这些分类。</p>
 
-  <form class="panel create-form" @submit.prevent="create">
+	<form v-if="!demoSession" class="panel create-form" @submit.prevent="create">
     <h3>新建分类</h3>
     <div class="row">
       <div><label>分类名称</label><input v-model="form.name" required placeholder="例如 Running Tops" @input="form.slug ||= slugify(form.name)" /></div>
@@ -72,13 +74,12 @@ onMounted(load)
   <section class="panel category-list">
     <div class="list-head"><h3>现有分类</h3><span class="muted">共 {{ categories.length }} 个</span></div>
     <p v-if="!categories.length" class="muted">尚无分类，请先新建一个。</p>
-    <div v-for="category in categories" :key="category.public_id" class="category-row">
-      <div><label>名称</label><input v-model="category._name" /></div>
-      <div><label>slug</label><input v-model="category._slug" /></div>
-      <div class="position"><label>排序</label><input v-model.number="category._position" type="number" min="0" /></div>
+		<div v-for="category in categories" :key="category.public_id" class="category-row" :class="{ 'demo-row': demoSession }">
+			<div><label>名称</label><input v-model="category._name" :readonly="demoSession" /></div>
+			<div><label>slug</label><input v-model="category._slug" :readonly="demoSession" /></div>
+			<div class="position"><label>排序</label><input v-model.number="category._position" type="number" min="0" :readonly="demoSession" /></div>
       <div class="count"><span>{{ category.product_count }}</span><small>件商品</small></div>
-      <button @click="save(category)">保存</button>
-      <button class="danger" @click="remove(category)">删除</button>
+			<template v-if="!demoSession"><button @click="save(category)">保存</button><button class="danger" @click="remove(category)">删除</button></template>
     </div>
   </section>
 </template>
@@ -89,5 +90,7 @@ onMounted(load)
 .position{max-width:7rem}.list-head{display:flex;align-items:center;justify-content:space-between}
 .category-row{display:grid;grid-template-columns:minmax(12rem,1fr) minmax(12rem,1fr) 6rem 5rem auto auto;gap:var(--sp-2);align-items:end;padding:var(--sp-3) 0;border-bottom:1px solid var(--border)}
 .category-row:last-child{border-bottom:0}.count{text-align:center;padding-bottom:.55rem}.count span{display:block;font-weight:800}.count small{color:var(--text-muted)}
+.demo-readonly{padding:var(--sp-3);color:#713f12;background:#fef3c7;border:1px solid #f59e0b;border-radius:var(--radius-md)}
+.demo-row{grid-template-columns:minmax(12rem,1fr) minmax(12rem,1fr) 6rem 5rem}.demo-row input{pointer-events:none;background:var(--surface-2)}
 @media(max-width:900px){.category-row{grid-template-columns:1fr 1fr}.position{max-width:none}.count{text-align:left}.category-row button{width:100%}}
 </style>

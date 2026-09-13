@@ -10,11 +10,14 @@ const props = defineProps({ id: { type: String, default: '' } })
 const route = useRoute()
 const router = useRouter()
 const onUnauthorized = inject('onUnauthorized')
+const demoSession = inject('demoSession', ref(false))
 const toast = useToast()
 
 const isNew = computed(() => !props.id)
 const err = ref('') // 仅页级：编辑页商品加载失败的常驻错误（D2 保留 inline）
 const busy = ref(false)
+const demoOwned = ref(false)
+const readOnlyProduct = computed(() => demoSession.value && !isNew.value && !demoOwned.value)
 
 // 公共字段
 const title = ref('')
@@ -145,6 +148,7 @@ async function load() {
   err.value = ''
   try {
     const d = await api.getProduct(props.id)
+		demoOwned.value = !!d.demo_owned
     title.value = d.title; titleZh.value = d.title_zh; slug.value = d.slug; slugZh.value = d.slug_zh
     description.value = d.description; seoDescription.value = d.seo_description; seoDescriptionZh.value = d.seo_description_zh; status.value = d.status
     categoryPublicIDs.value = d.category_public_ids || []
@@ -227,14 +231,16 @@ onMounted(async () => { try { categories.value = (await api.listCategories()).ca
     <button style="flex:0" @click="router.push('/products')">← 返回</button>
   </div>
   <ErrorState v-if="err" :message="err" :retry="load" />
+	<p v-if="readOnlyProduct" class="demo-readonly">这是受保护的示例商品。公开演示可以查看，但不能修改或删除。</p>
+	<p v-else-if="demoSession" class="demo-readonly">临时商品只在本次会话中保留，始终为草稿，不会出现在顾客店面。</p>
 
-  <div class="panel">
+	<div class="panel" :inert="readOnlyProduct">
     <div class="row">
-      <div><label>中文标题（可选，供翻译与日后维护）</label><input v-model="titleZh" placeholder="例如：速干运动短袖" /><button class="translate-button" :disabled="busy" @click="translateTitle">翻译为英文标题</button></div>
+			<div><label>中文标题（可选，供翻译与日后维护）</label><input v-model="titleZh" placeholder="例如：速干运动短袖" /><button v-if="!demoSession" class="translate-button" :disabled="busy" @click="translateTitle">翻译为英文标题</button></div>
       <div><label>英文标题（必填，店面正式展示）</label><input v-model="title" @input="suggestSlug" placeholder="例如：Quick-Dry Sports T-Shirt" /></div>
     </div>
     <div v-if="isNew" class="row">
-      <div><label>中文 slug（可选，简短中文 URL 含义）</label><input v-model="slugZh" placeholder="例如：速干运动短袖" /><button class="translate-button" :disabled="busy" @click="translateSlug">翻译 slug</button></div>
+			<div><label>中文 slug（可选，简短中文 URL 含义）</label><input v-model="slugZh" placeholder="例如：速干运动短袖" /><button v-if="!demoSession" class="translate-button" :disabled="busy" @click="translateSlug">翻译 slug</button></div>
       <div><label>英文 slug（必填，唯一，可修改）</label><input v-model="slug" @input="markSlugCustomized" placeholder="quick-dry-sports-t-shirt" /></div>
     </div>
     <p v-if="translationNeedsSetup" class="translation-warning">
@@ -245,11 +251,11 @@ onMounted(async () => { try { categories.value = (await api.listCategories()).ca
     <textarea v-model="description" rows="2"></textarea>
     <label>中文 SEO 描述（可选，供翻译与日后维护）</label>
     <textarea v-model="seoDescriptionZh" rows="2" placeholder="例如：轻盈透气的运动短袖，适合跑步与日常训练。"></textarea>
-    <button class="translate-button" :disabled="busy" @click="translateSEODescription">翻译为英文 SEO 描述</button>
+		<button v-if="!demoSession" class="translate-button" :disabled="busy" @click="translateSEODescription">翻译为英文 SEO 描述</button>
     <label>英文 SEO 描述（可选，留空时使用英文描述）</label>
     <textarea v-model="seoDescription" rows="2" placeholder="建议简洁描述商品特点，供搜索结果和社交分享使用。"></textarea>
     <label>状态</label>
-    <select v-model="status">
+		<select v-model="status" :disabled="demoSession">
       <option value="draft">草稿 draft</option>
       <option value="active">上架 active</option>
       <option value="archived">归档 archived</option>
@@ -304,15 +310,15 @@ onMounted(async () => { try { categories.value = (await api.listCategories()).ca
     </template>
 
     <div class="spacer"></div>
-    <button class="primary" :disabled="busy" @click="saveNew">保存商品</button>
+		<button class="primary" :disabled="busy" @click="saveNew">保存临时草稿商品</button>
   </div>
 
   <!-- 编辑：保存字段 + 变体库存 + 图片 -->
   <template v-else>
-    <button class="primary" :disabled="busy" @click="saveFields">保存基本信息</button>
+		<button v-if="!readOnlyProduct" class="primary" :disabled="busy" @click="saveFields">保存基本信息</button>
 
     <div class="spacer"></div>
-    <div class="panel">
+		<div class="panel" :inert="readOnlyProduct">
       <h3>变体与库存</h3>
       <table>
         <thead><tr><th>组合</th><th>SKU</th><th>价格(元)</th><th>库存</th><th></th></tr></thead>
@@ -329,9 +335,9 @@ onMounted(async () => { try { categories.value = (await api.listCategories()).ca
     </div>
 
     <div class="spacer"></div>
-    <div class="panel">
+		<div class="panel" :inert="readOnlyProduct">
       <h3>图片</h3>
-      <p class="upload-note">建议选择 100KB–8MB 的 JPG、PNG 或 WebP 图片；系统最大支持 10MB。</p>
+			<p class="upload-note">{{ demoSession ? '演示商品最多 1 张图片，文件不得超过 2MB。' : '建议选择 100KB–8MB 的 JPG、PNG 或 WebP 图片；系统最大支持 10MB。' }}</p>
       <input ref="fileInput" type="file" :disabled="uploading" accept="image/png,image/jpeg,image/webp" @change="onUpload" />
       <p v-if="uploading" class="upload-hint" role="status">正在上传并生成图片，请勿关闭页面。</p>
       <div class="thumbs">
@@ -371,4 +377,6 @@ onMounted(async () => { try { categories.value = (await api.listCategories()).ca
 .link-button { margin-left: var(--sp-2); }
 .category-options { display:flex; flex-wrap:wrap; gap:var(--sp-2); }
 .category-options label { display:flex; align-items:center; gap:var(--sp-1); font-weight:400; }
+.demo-readonly{padding:var(--sp-3);color:#713f12;background:#fef3c7;border:1px solid #f59e0b;border-radius:var(--radius-md)}
+[inert]{opacity:.72}
 </style>

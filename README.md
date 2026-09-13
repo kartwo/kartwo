@@ -68,6 +68,22 @@ unzip kartwo-running-demo-images.zip
 KARTWO_ENV=prod KARTWO_DATA_DIR=./data ./kartwo-linux-amd64 seed-running-demo
 ```
 
+### 可选：启用公开后台演示
+
+公开演示必须使用独立实例和独立数据目录，禁止连接真实经营数据库。全新实例应先在演示模式关闭时创建真正管理员，再装入演示数据；没有管理员时程序会拒绝启动公开演示。
+
+在 systemd 的 `[Service]` 中加入以下配置，即可提供无需密码、45 分钟、每会话最多 3 个临时草稿商品、每件最多 1 张 2MB 图片的隔离体验：
+
+```ini
+Environment=KARTWO_DEMO_MODE=true
+Environment=KARTWO_DEMO_SESSION_TTL=45m
+Environment=KARTWO_DEMO_MAX_PRODUCTS=3
+Environment=KARTWO_DEMO_MAX_IMAGE_BYTES=2097152
+Environment=KARTWO_DEMO_CLEANUP_INTERVAL=5m
+```
+
+演示身份不能修改基线商品、分类、内容、订单或关键配置。临时商品不会进入店面，并会在退出、重置或过期后连同图片清理。普通自部署默认关闭此模式，原有行为不变。
+
 该命令只补缺，不覆盖已有商品、分类、政策正文或商品图片；重复运行安全。若不下载图片包，仍会生成 20 件商品，只是没有封面。
 
 ## Linux 生产部署

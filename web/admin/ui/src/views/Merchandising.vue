@@ -6,6 +6,7 @@ import { useToast } from '../toast.js'
 import { confirm } from '../confirm.js'
 
 const toast = useToast(); const onUnauthorized = inject('onUnauthorized')
+const demoSession = inject('demoSession', ref(false))
 const pages = ref([])
 const form = ref({ public_id:'', title:'', slug:'', body_markdown:'', seo_description:'', status:'draft' })
 async function load() { try { pages.value=(await api.listContentPages()).pages||[] } catch(e) { if(e instanceof APIError&&e.status===401) onUnauthorized(); else toast.error(e.message) } }
@@ -17,7 +18,8 @@ onMounted(load)
 </script>
 <template>
   <h2>内容页面</h2><p class="muted">内容页会显示在店面页脚。仅支持安全的 Markdown：标题（#）、列表（-）和普通段落；不执行 HTML。</p>
-  <section class="split"><div class="panel"><h3>内容页</h3><button class="primary" @click="reset">新建内容页</button><p v-if="!pages.length" class="muted">尚无内容页。</p><div v-for="p in pages" :key="p.public_id" class="list-row"><button @click="edit(p)">{{p.title}}</button><span class="chip" :class="{draft:p.status==='draft'}">{{p.status==='active'?'已发布':'草稿'}}</span><button class="danger" @click="remove(p)">删除</button></div></div>
-  <form class="panel" @submit.prevent="save"><h3>{{form.public_id?'编辑内容页':'新建内容页'}}</h3><label>标题</label><input v-model="form.title" required/><label>链接 slug</label><input v-model="form.slug" required :disabled="!!form.public_id"/><label>SEO 描述</label><textarea v-model="form.seo_description" rows="2"/><label>内容（安全 Markdown）</label><textarea v-model="form.body_markdown" rows="12"/><label>状态</label><select v-model="form.status"><option value="draft">草稿</option><option value="active">发布</option></select><div class="spacer"></div><button class="primary">保存内容页</button></form></section>
+	<p v-if="demoSession" class="demo-readonly">公开演示中内容页为只读。</p>
+	<section class="split"><div class="panel"><h3>内容页</h3><button v-if="!demoSession" class="primary" @click="reset">新建内容页</button><p v-if="!pages.length" class="muted">尚无内容页。</p><div v-for="p in pages" :key="p.public_id" class="list-row"><button @click="edit(p)">{{p.title}}</button><span class="chip" :class="{draft:p.status==='draft'}">{{p.status==='active'?'已发布':'草稿'}}</span><button v-if="!demoSession" class="danger" @click="remove(p)">删除</button></div></div>
+	<form class="panel" :inert="demoSession" @submit.prevent="save"><h3>{{form.public_id?'编辑内容页':'新建内容页'}}</h3><label>标题</label><input v-model="form.title" required/><label>链接 slug</label><input v-model="form.slug" required :disabled="!!form.public_id"/><label>SEO 描述</label><textarea v-model="form.seo_description" rows="2"/><label>内容（安全 Markdown）</label><textarea v-model="form.body_markdown" rows="12"/><label>状态</label><select v-model="form.status"><option value="draft">草稿</option><option value="active">发布</option></select><div class="spacer"></div><button v-if="!demoSession" class="primary">保存内容页</button></form></section>
 </template>
-<style scoped>.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--sp-4);margin-top:var(--sp-4)}.list-row{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) 0;border-bottom:1px solid var(--border)}.list-row button:first-child{margin-right:auto}@media(max-width:720px){.split{grid-template-columns:1fr}}</style>
+<style scoped>.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--sp-4);margin-top:var(--sp-4)}.list-row{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) 0;border-bottom:1px solid var(--border)}.list-row button:first-child{margin-right:auto}.demo-readonly{padding:var(--sp-3);color:#713f12;background:#fef3c7;border:1px solid #f59e0b;border-radius:var(--radius-md)}[inert]{opacity:.72}@media(max-width:720px){.split{grid-template-columns:1fr}}</style>

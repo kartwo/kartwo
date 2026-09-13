@@ -55,6 +55,8 @@ export const api = {
   me: () => request('GET', '/me'),
   setup: (username, password) => request('POST', '/setup', { username, password }),
   login: (username, password) => request('POST', '/login', { username, password }),
+  demoSession: () => request('POST', '/demo-session'),
+  resetDemo: () => request('POST', '/demo/reset'),
   logout: () => request('POST', '/logout'),
 
   listProducts: () => request('GET', '/products'),
