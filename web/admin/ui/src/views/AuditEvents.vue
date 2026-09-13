@@ -67,7 +67,7 @@ onMounted(load)
         <h2>审计日志</h2>
         <p class="muted">最近 100 条关键后台操作；不记录口令、密钥、会话令牌或请求内容。</p>
       </div>
-      <button :disabled="loading" @click="load">刷新</button>
+      <span data-demo-view-control><button :disabled="loading" @click="load">刷新</button></span>
     </div>
     <section class="panel card">
       <p v-if="loading" class="muted">加载中…</p>

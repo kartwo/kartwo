@@ -842,8 +842,49 @@ func TestPublicDemoSessionEnforcesOwnershipQuotaAndOwnerOnlyRoutes(t *testing.T)
 	if me := doJSON(t, mux, http.MethodGet, "/admin/api/me", "", demo, ""); me.StatusCode != http.StatusOK || !bytes.Contains(me.Body, []byte(`"role":"demo"`)) {
 		t.Fatalf("演示身份异常: %d %s", me.StatusCode, me.Body)
 	}
-	if denied := doJSON(t, mux, http.MethodGet, "/admin/api/settings/payment", "", demo, ""); denied.StatusCode != http.StatusForbidden {
-		t.Fatalf("演示身份读取敏感设置应 403: %d %s", denied.StatusCode, denied.Body)
+	if err := h.settings.SetPlain(context.Background(), payment.KeyStripePublishable, "pk_test_must_not_leak"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.settings.SetPlain(context.Background(), payment.KeyPayPalClientID, "paypal-client-must-not-leak"); err != nil {
+		t.Fatal(err)
+	}
+	paymentView := doJSON(t, mux, http.MethodGet, "/admin/api/settings/payment", "", demo, "")
+	if paymentView.StatusCode != http.StatusOK || !bytes.Contains(paymentView.Body, []byte(`"readonly":true`)) {
+		t.Fatalf("演示身份应能只读查看脱敏收款配置: %d %s", paymentView.StatusCode, paymentView.Body)
+	}
+	if bytes.Contains(paymentView.Body, []byte("must_not_leak")) || bytes.Contains(paymentView.Body, []byte("must-not-leak")) {
+		t.Fatalf("演示身份不应看到支付客户端标识: %s", paymentView.Body)
+	}
+	if _, err := h.svc.db.Exec(`INSERT INTO customer (public_id, email) VALUES ('demo-customer', 'private@example.com')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.svc.db.Exec(`INSERT INTO "order" (public_id, customer_id, status, email, ship_name, ship_phone, ship_address, ship_country, currency, subtotal_cents, total_cents)
+		VALUES ('demo-order-sensitive', (SELECT id FROM customer WHERE public_id='demo-customer'), 'pending', 'private@example.com', 'Private Name', '123456789', 'Private Address', 'US', 'USD', 1000, 1000)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/admin/api/diagnostics", "/admin/api/audit-events", "/admin/api/orders", "/admin/api/settings/shop", "/admin/api/settings/domain", "/admin/api/settings/translation", "/admin/api/settings/shipping/countries", "/admin/api/settings/shipping"} {
+		view := doJSON(t, mux, http.MethodGet, path, "", demo, "")
+		if view.StatusCode != http.StatusOK {
+			t.Fatalf("演示身份只读访问 %s 应成功: %d %s", path, view.StatusCode, view.Body)
+		}
+		if bytes.Contains(view.Body, []byte("private@example.com")) || bytes.Contains(view.Body, []byte("Private Name")) || bytes.Contains(view.Body, []byte("Private Address")) {
+			t.Fatalf("演示只读接口 %s 泄露订单隐私: %s", path, view.Body)
+		}
+	}
+	orderView := doJSON(t, mux, http.MethodGet, "/admin/api/orders/demo-order-sensitive", "", demo, "")
+	if orderView.StatusCode != http.StatusOK || !bytes.Contains(orderView.Body, []byte("已隐藏")) {
+		t.Fatalf("演示订单详情应可查看且完成脱敏: %d %s", orderView.StatusCode, orderView.Body)
+	}
+	for _, private := range []string{"private@example.com", "Private Name", "123456789", "Private Address"} {
+		if bytes.Contains(orderView.Body, []byte(private)) {
+			t.Fatalf("演示订单详情泄露隐私 %q: %s", private, orderView.Body)
+		}
+	}
+	if denied := doJSON(t, mux, http.MethodPut, "/admin/api/settings/shop", `{"name":"Attacked"}`, demo, demoCSRF); denied.StatusCode != http.StatusForbidden {
+		t.Fatalf("演示身份修改设置应 403: %d %s", denied.StatusCode, denied.Body)
+	}
+	if denied := doJSON(t, mux, http.MethodGet, "/admin/api/export", "", demo, ""); denied.StatusCode != http.StatusForbidden {
+		t.Fatalf("演示身份执行数据导出应 403: %d %s", denied.StatusCode, denied.Body)
 	}
 	update := `{"title":"Attacked","title_zh":"","description":"","seo_description":"","seo_description_zh":"","status":"draft","category_public_ids":[]}`
 	if denied := doJSON(t, mux, http.MethodPatch, "/admin/api/products/"+baselineResult.PublicID, update, demo, demoCSRF); denied.StatusCode != http.StatusForbidden {

@@ -53,7 +53,8 @@ onMounted(load)
     <template v-if="readonly">
       <p>当前域名：<strong>{{ domain }}</strong></p>
       <p class="muted" style="font-size:.9rem">
-        该域名由环境变量 <code>KARTWO_DOMAIN</code> 提供，此处<strong>只读</strong>。如需修改，请改环境变量后重启进程。
+        <template v-if="source === 'demo'">公开演示中域名配置为<strong>只读</strong>。</template>
+        <template v-else>该域名由环境变量 <code>KARTWO_DOMAIN</code> 提供，此处<strong>只读</strong>。如需修改，请改环境变量后重启进程。</template>
       </p>
     </template>
 

@@ -46,7 +46,7 @@ function formatTime(value) {
   <div class="diagnostics-page">
     <div class="row page-title-row">
       <h2>诊断</h2>
-      <button @click="load">刷新</button>
+      <span data-demo-view-control><button @click="load">刷新</button></span>
     </div>
 
     <template v-if="data">

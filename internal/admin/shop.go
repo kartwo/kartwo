@@ -19,8 +19,12 @@ func (h *HTTP) getShop(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(h.envShopName) != "" {
 		fallback = strings.TrimSpace(h.envShopName)
 	}
+	source, readonly := "db", false
+	if isDemoRequest(r) {
+		source, readonly = "demo", true
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"name": h.settings.ShopName(r.Context(), fallback), "source": "db", "readonly": false,
+		"name": h.settings.ShopName(r.Context(), fallback), "source": source, "readonly": readonly,
 		"logo_url": h.settings.ShopLogoURL(r.Context()),
 	})
 }

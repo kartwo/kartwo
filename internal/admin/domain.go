@@ -33,10 +33,14 @@ func (h *HTTP) effectiveDomain(ctx context.Context) (domain, source string) {
 // getDomain 返回当前生效域名、来源、是否只读（env 覆盖）、本实例能否签发 HTTPS（仅 prod）。
 func (h *HTTP) getDomain(w http.ResponseWriter, r *http.Request) {
 	domain, source := h.effectiveDomain(r.Context())
+	readonly := source == "env"
+	if isDemoRequest(r) {
+		source, readonly = "demo", true
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"domain":        domain,
 		"source":        source,
-		"readonly":      source == "env",
+		"readonly":      readonly,
 		"https_capable": h.secure, // prod=true；dev 填域名只写库、绝不签发 HTTPS（本地永远纯 HTTP）
 	})
 }

@@ -18,6 +18,7 @@ const fWebDAV = ref({
   webdav_password: '',
 })
 const state = ref({
+	demo_readonly: false,
   interval_readonly: false,
   retention_readonly: false,
   webdav_enabled_readonly: false,
@@ -109,7 +110,8 @@ async function testConnection() {
     <h2>自动备份</h2>
     <section v-if="loaded" class="panel card">
       <p class="muted">服务启动时会立即生成一份完整 ZIP，之后按设定周期继续备份。周期与保留份数保存后下次重启生效。</p>
-      <p v-if="state.interval_readonly || state.retention_readonly" class="env-banner">由环境变量提供的字段为只读；修改环境变量后重启服务即可生效。</p>
+      <p v-if="state.demo_readonly" class="env-banner">🔒 公开演示仅展示备份能力，WebDAV 地址和账号已隐藏。</p>
+      <p v-else-if="state.interval_readonly || state.retention_readonly" class="env-banner">由环境变量提供的字段为只读；修改环境变量后重启服务即可生效。</p>
       <label>备份周期</label>
       <input v-model="f.interval" :disabled="state.interval_readonly" placeholder="24h" autocomplete="off" />
       <p class="muted hint">使用 Go duration，例如 `24h`、`90m`；最小为 `1m`。</p>

@@ -1,7 +1,9 @@
 <!-- 应用外壳与鉴权 / App Shell & Auth. 作者：仗键天涯(daxing) 3442535897@qq.com -->
 <script setup>
 import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
+import { useRoute } from 'vue-router'
 import { api, APIError } from './api.js'
+import { useToast } from './toast.js'
 import PaymentWizard from './views/PaymentWizard.vue'
 import DomainWizard from './views/DomainWizard.vue'
 import SmtpWizard from './views/SmtpWizard.vue'
@@ -21,6 +23,8 @@ const demoAvailable = ref(false)
 const demoSession = ref(false)
 const demoExpiresAt = ref('')
 const now = ref(Date.now())
+const route = useRoute()
+const toast = useToast()
 let clock = null
 
 provide('demoSession', demoSession)
@@ -30,6 +34,17 @@ const demoRemaining = computed(() => {
   const minutes = Math.floor(seconds / 60)
   return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 })
+const demoReadonlyRoute = computed(() => demoSession.value && !!route.meta.demoReadonly)
+
+function guardDemoReadonly(event) {
+	if (!demoReadonlyRoute.value) return
+	const control = event.target.closest('button, input, textarea, select')
+	if (!control || control.closest('[data-demo-view-control]')) return
+	if (event.type === 'keydown' && event.key === 'Tab') return
+	event.preventDefault()
+	event.stopPropagation()
+	if (event.type === 'click') toast.error('公开演示中此页面仅供查看，修改和执行操作已关闭。')
+}
 
 // 向导「第 X / N 步」进度：固定三步流，跳过的步骤仍占位、步号不跳变。
 const wizardStep = computed(() => {
@@ -235,17 +250,15 @@ onUnmounted(() => { if (clock) window.clearInterval(clock) })
       <div class="brand">Kartwo Admin</div>
       <div class="row" style="gap:1rem; flex: 0;">
         <RouterLink to="/dashboard">概览</RouterLink>
-				<template v-if="!demoSession">
-					<RouterLink to="/diagnostics">诊断</RouterLink>
-					<RouterLink to="/export">导出</RouterLink>
-					<RouterLink to="/audit">审计</RouterLink>
-				</template>
+				<RouterLink to="/diagnostics">诊断</RouterLink>
+				<RouterLink to="/export">导出</RouterLink>
+				<RouterLink to="/audit">审计</RouterLink>
         <RouterLink to="/products">商品</RouterLink>
         <RouterLink to="/categories">分类</RouterLink>
         <RouterLink to="/merchandising">内容</RouterLink>
-				<RouterLink v-if="!demoSession" to="/imports/csv">导入</RouterLink>
-				<RouterLink v-if="!demoSession" to="/orders">订单</RouterLink>
-				<details v-if="!demoSession" class="settings-menu">
+				<RouterLink to="/imports/csv">导入</RouterLink>
+				<RouterLink to="/orders">订单</RouterLink>
+				<details class="settings-menu">
           <summary>设置</summary>
           <div class="settings-submenu">
             <RouterLink to="/shop">店铺</RouterLink>
@@ -262,7 +275,8 @@ onUnmounted(() => { if (clock) window.clearInterval(clock) })
         <button @click="doLogout">登出</button>
       </div>
     </header>
-    <main class="container">
+    <main class="container" :class="{ 'demo-readonly-route': demoReadonlyRoute }" @click.capture="guardDemoReadonly" @keydown.capture="guardDemoReadonly">
+		<div v-if="demoReadonlyRoute" class="demo-readonly-notice">🔒 公开演示只读预览：敏感信息已隐藏，修改、导入、导出及订单操作均不可执行。</div>
       <RouterView />
     </main>
   </template>
@@ -284,5 +298,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock) })
 .demo-divider::before,.demo-divider::after{content:'';height:1px;flex:1;background:var(--border)}
 .demo-enter{width:100%;color:var(--accent);border-color:var(--accent);font-weight:600}
 .demo-note{text-align:center;font-size:var(--fs-xs);margin-bottom:0}
+.demo-readonly-notice{margin-bottom:var(--sp-4);padding:var(--sp-3);color:#713f12;background:#fffbeb;border:1px solid #f59e0b;border-radius:var(--radius-md);font-size:var(--fs-sm)}
+.demo-readonly-route :is(input,textarea,select,button):not([data-demo-view-control] *){cursor:not-allowed}
 @media(max-width:760px){.demo-banner{align-items:flex-start;flex-direction:column}.demo-actions{width:100%;justify-content:space-between}}
 </style>

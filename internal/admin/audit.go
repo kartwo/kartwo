@@ -5,7 +5,10 @@
 // 时间：2026-08-24 00:20:00
 package admin
 
-import "net/http"
+import (
+	"net/http"
+	"strconv"
+)
 
 func (h *HTTP) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 	if h.audit == nil {
@@ -18,11 +21,15 @@ func (h *HTTP) listAuditEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := make([]map[string]string, 0, len(events))
-	for _, e := range events {
+	for i, e := range events {
+		publicID, targetID, adminID, username := e.PublicID, e.TargetPublicID, e.AdminPublicID, e.AdminUsername
+		if isDemoRequest(r) {
+			publicID, targetID, adminID, username = "demo-event-"+strconv.Itoa(i+1), "已隐藏", "", "店主"
+		}
 		out = append(out, map[string]string{
-			"public_id": e.PublicID, "action": e.Action, "target_type": e.TargetType,
-			"target_public_id": e.TargetPublicID, "created_at": e.CreatedAt,
-			"admin_public_id": e.AdminPublicID, "admin_username": e.AdminUsername,
+			"public_id": publicID, "action": e.Action, "target_type": e.TargetType,
+			"target_public_id": targetID, "created_at": e.CreatedAt,
+			"admin_public_id": adminID, "admin_username": username,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"events": out})

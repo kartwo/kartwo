@@ -74,7 +74,8 @@ onMounted(load)
       <span class="chip" :class="{ on: configured }">{{ configured ? '已配置' : '未配置' }}</span>
     </h3>
 
-    <p v-if="readonly" class="env-banner">🔒 由<strong>环境变量</strong>提供（只读）。改环境变量后重启，或清空 SMTP_* 改用此页。</p>
+    <p v-if="source === 'demo'" class="env-banner">🔒 公开演示仅展示配置状态，SMTP 主机、账号及发件地址均已隐藏。</p>
+    <p v-else-if="readonly" class="env-banner">🔒 由<strong>环境变量</strong>提供（只读）。改环境变量后重启，或清空 SMTP_* 改用此页。</p>
     <p class="muted" style="font-size:.85rem;max-width:64ch">
       用于给顾客发订单确认信。填你的邮箱服务商 SMTP（如 Gmail、腾讯企业邮、或 Mailtrap/MailHog 等测试服务）。
       <strong>密码加密保存</strong>，绝不进日志或导出明文。
@@ -100,7 +101,7 @@ onMounted(load)
     <input v-model="f.username" placeholder="you@example.com" autocomplete="off" :disabled="readonly" />
     <label>密码 / 授权码</label>
     <input v-model="f.password" type="password" autocomplete="off" :disabled="readonly"
-           :placeholder="readonly ? '由环境变量提供' : (hasPassword ? '已保存，留空不改' : '邮箱 SMTP 授权码')" />
+           :placeholder="source === 'demo' ? '已隐藏（公开演示）' : (readonly ? '由环境变量提供' : (hasPassword ? '已保存，留空不改' : '邮箱 SMTP 授权码'))" />
     <label>发件地址（From）</label>
     <input v-model="f.from_address" placeholder="shop@example.com" autocomplete="off" :disabled="readonly" />
     <label>发件人名称（可选）</label>

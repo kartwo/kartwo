@@ -117,7 +117,7 @@ onMounted(load)
   <h2>配送</h2>
   <p class="muted">先选择可以配送的国家/地区，再设置默认运费；少数地区价格不同时再添加特殊规则。</p>
 
-  <nav class="shipping-tabs" role="tablist" aria-label="配送设置">
+  <nav class="shipping-tabs" role="tablist" aria-label="配送设置" data-demo-view-control>
     <button role="tab" :aria-selected="activeTab === 'countries'" :class="{ active: activeTab === 'countries' }" @click="activeTab = 'countries'">可配送国家/地区 <span>{{ enabled.length }}</span></button>
     <button role="tab" :aria-selected="activeTab === 'default'" :class="{ active: activeTab === 'default' }" @click="activeTab = 'default'">默认配送费</button>
     <button role="tab" :aria-selected="activeTab === 'special'" :class="{ active: activeTab === 'special' }" @click="activeTab = 'special'">特殊地区规则 <span>{{ specialZones.length }}</span></button>

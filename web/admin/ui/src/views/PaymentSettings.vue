@@ -70,7 +70,8 @@ onMounted(load)
     <!-- Stripe -->
     <div class="panel card" style="margin-top:1rem">
       <h3 style="margin-top:0">Stripe（信用卡）<span class="chip" :class="{ on: s.has_secret }">{{ s.has_secret ? '已配置' : '未配置' }}</span></h3>
-      <p v-if="s.readonly" class="env-banner">🔒 由<strong>环境变量</strong>提供（只读）。改环境变量后重启，或清空 STRIPE_* 改用此页。</p>
+      <p v-if="s.source === 'demo'" class="env-banner">🔒 公开演示仅展示配置状态，客户端标识和密钥均已隐藏。</p>
+      <p v-else-if="s.readonly" class="env-banner">🔒 由<strong>环境变量</strong>提供（只读）。改环境变量后重启，或清空 STRIPE_* 改用此页。</p>
       <label>模式</label>
       <select v-model="s.mode" :disabled="s.readonly">
         <option value="test">测试 / 沙箱</option><option value="live">正式</option>
@@ -90,7 +91,8 @@ onMounted(load)
     <!-- PayPal -->
     <div class="panel card" style="margin-top:1rem">
       <h3 style="margin-top:0">PayPal<span class="chip" :class="{ on: p.has_secret }">{{ p.has_secret ? '已配置' : '未配置' }}</span></h3>
-      <p v-if="p.readonly" class="env-banner">🔒 由<strong>环境变量</strong>提供（只读）。改环境变量后重启，或清空 PAYPAL_* 改用此页。</p>
+      <p v-if="p.source === 'demo'" class="env-banner">🔒 公开演示仅展示配置状态，客户端标识和密钥均已隐藏。</p>
+      <p v-else-if="p.readonly" class="env-banner">🔒 由<strong>环境变量</strong>提供（只读）。改环境变量后重启，或清空 PAYPAL_* 改用此页。</p>
       <p class="muted" style="font-size:.82rem">在 PayPal 开发者后台「My Apps」创建应用，复制 Client ID 与 Secret（同一沙箱/正式账号）。</p>
       <label>模式</label>
       <select v-model="p.mode" :disabled="p.readonly">

@@ -27,8 +27,12 @@ func (h *HTTP) listOrders(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(rows))
 	for _, o := range rows {
+		email := o.Email
+		if isDemoRequest(r) {
+			email = "已隐藏（公开演示）"
+		}
 		out = append(out, map[string]any{
-			"public_id": o.PublicID, "status": o.Status, "email": o.Email,
+			"public_id": o.PublicID, "status": o.Status, "email": email,
 			"currency": o.Currency, "total_cents": o.TotalCents,
 			"payment_provider": o.PaymentProvider, "created_at": o.CreatedAt,
 		})
@@ -144,16 +148,26 @@ func (h *HTTP) getOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	refunds := make([]map[string]any, 0, len(o.Refunds))
 	for _, rf := range o.Refunds {
+		providerRefundID := rf.ProviderRefundID
+		if isDemoRequest(r) {
+			providerRefundID = "已隐藏"
+		}
 		refunds = append(refunds, map[string]any{
-			"provider": rf.Provider, "provider_refund_id": rf.ProviderRefundID,
+			"provider": rf.Provider, "provider_refund_id": providerRefundID,
 			"amount_cents": rf.AmountCents, "created_at": rf.CreatedAt,
 		})
 	}
+	email, shipName, shipPhone, shipAddress := o.Email, o.ShipName, o.ShipPhone, o.ShipAddress
+	trackingNumber, trackingURL := o.TrackingNumber, o.TrackingURL
+	if isDemoRequest(r) {
+		email, shipName, shipPhone, shipAddress = "已隐藏（公开演示）", "已隐藏", "已隐藏", "已隐藏"
+		trackingNumber, trackingURL = "已隐藏", ""
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"public_id": o.PublicID, "status": o.Status, "email": o.Email,
-		"ship_name": o.ShipName, "ship_phone": o.ShipPhone, "ship_address": o.ShipAddress, "ship_country": o.ShipCountry,
+		"public_id": o.PublicID, "status": o.Status, "email": email,
+		"ship_name": shipName, "ship_phone": shipPhone, "ship_address": shipAddress, "ship_country": o.ShipCountry,
 		"currency": o.Currency, "subtotal_cents": o.SubtotalCents, "total_cents": o.TotalCents,
-		"shipping_cents": o.ShippingCents, "shipping_rule_name": o.ShippingRuleName, "tracking_carrier": o.TrackingCarrier, "tracking_number": o.TrackingNumber, "tracking_url": o.TrackingURL,
+		"shipping_cents": o.ShippingCents, "shipping_rule_name": o.ShippingRuleName, "tracking_carrier": o.TrackingCarrier, "tracking_number": trackingNumber, "tracking_url": trackingURL,
 		"payment_provider": o.PaymentProvider, "created_at": o.CreatedAt,
 		"lines": lines, "refunds": refunds,
 	})

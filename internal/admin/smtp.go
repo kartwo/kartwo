@@ -23,6 +23,14 @@ func (h *HTTP) getSMTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	st := h.mailCache.Status(r.Context())
+	if isDemoRequest(r) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"source": "demo", "readonly": true, "host": "已隐藏（公开演示）", "port": st.Port,
+			"username": "", "from_address": "", "from_name": st.FromName,
+			"encryption": st.Encryption, "has_password": st.HasPassword, "configured": st.Configured,
+		})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"source": st.Source, "readonly": st.Source == "env",
 		"host": st.Host, "port": st.Port, "username": st.Username,

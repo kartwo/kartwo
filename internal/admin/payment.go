@@ -50,6 +50,11 @@ func (h *HTTP) getPayment(w http.ResponseWriter, r *http.Request) {
 		paypal["mode"], paypal["client_id"], paypal["webhook_id"] = mode, cid, wid
 		paypal["has_secret"] = h.settingExists(ctx, payment.KeyPayPalSecret)
 	}
+	if isDemoRequest(r) {
+		// 公开演示只展示通道是否就绪与工作模式，不公开可用于账户枚举的客户端标识。
+		stripe["source"], stripe["readonly"], stripe["publishable"] = "demo", true, ""
+		paypal["source"], paypal["readonly"], paypal["client_id"], paypal["webhook_id"] = "demo", true, "", ""
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"stripe": stripe, "paypal": paypal})
 }

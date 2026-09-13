@@ -21,9 +21,9 @@ import (
 // BackupConfig 是启动时实际生效的备份配置。
 // 本地备份的 interval/retention 与 WebDAV 字段都允许部分环境变量覆盖（env 覆盖 -> 该字段只读）。
 type BackupConfig struct {
-	Interval    time.Duration
-	Retention   int
-	IntervalEnv bool
+	Interval     time.Duration
+	Retention    int
+	IntervalEnv  bool
 	RetentionEnv bool
 
 	WebDAVEnabled     bool
@@ -98,29 +98,33 @@ func (h *HTTP) getBackupSettings(w http.ResponseWriter, r *http.Request) {
 	if h.backupCfg.WebDAVPasswordEnv {
 		passwordSet = h.backupCfg.WebDAVPassword != ""
 	}
+	if isDemoRequest(r) {
+		webDAVURL, webDAVPath, webDAVUsername = "已隐藏（公开演示）", "已隐藏", ""
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"interval":             interval,
-		"retention":            retention,
-		"interval_source":      intervalSource,
-		"retention_source":     retentionSource,
-		"interval_readonly":    h.backupCfg.IntervalEnv,
-		"retention_readonly":   h.backupCfg.RetentionEnv,
-		"webdav_enabled":       webDAVEnabled,
-		"webdav_enabled_source": webDAVEnabledSource,
-		"webdav_enabled_readonly": h.backupCfg.WebDAVEnabledEnv,
-		"webdav_url":           webDAVURL,
-		"webdav_url_source":    webDAVURLSource,
-		"webdav_url_readonly":  h.backupCfg.WebDAVURLEnv,
-		"webdav_path":          webDAVPath,
-		"webdav_path_source":   webDAVPathSource,
-		"webdav_path_readonly": h.backupCfg.WebDAVPathEnv,
-		"webdav_username":      webDAVUsername,
-		"webdav_username_source": webDAVUsernameSource,
-		"webdav_username_readonly": h.backupCfg.WebDAVUsernameEnv,
-		"webdav_password_set":   passwordSet,
-		"webdav_password_readonly": h.backupCfg.WebDAVPasswordEnv,
-		"restart_required":     true,
+		"demo_readonly":            isDemoRequest(r),
+		"interval":                 interval,
+		"retention":                retention,
+		"interval_source":          intervalSource,
+		"retention_source":         retentionSource,
+		"interval_readonly":        h.backupCfg.IntervalEnv || isDemoRequest(r),
+		"retention_readonly":       h.backupCfg.RetentionEnv || isDemoRequest(r),
+		"webdav_enabled":           webDAVEnabled,
+		"webdav_enabled_source":    webDAVEnabledSource,
+		"webdav_enabled_readonly":  h.backupCfg.WebDAVEnabledEnv || isDemoRequest(r),
+		"webdav_url":               webDAVURL,
+		"webdav_url_source":        webDAVURLSource,
+		"webdav_url_readonly":      h.backupCfg.WebDAVURLEnv || isDemoRequest(r),
+		"webdav_path":              webDAVPath,
+		"webdav_path_source":       webDAVPathSource,
+		"webdav_path_readonly":     h.backupCfg.WebDAVPathEnv || isDemoRequest(r),
+		"webdav_username":          webDAVUsername,
+		"webdav_username_source":   webDAVUsernameSource,
+		"webdav_username_readonly": h.backupCfg.WebDAVUsernameEnv || isDemoRequest(r),
+		"webdav_password_set":      passwordSet,
+		"webdav_password_readonly": h.backupCfg.WebDAVPasswordEnv || isDemoRequest(r),
+		"restart_required":         true,
 	})
 }
 

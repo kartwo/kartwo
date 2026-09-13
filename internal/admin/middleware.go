@@ -72,6 +72,12 @@ func authFrom(ctx context.Context) *AuthContext {
 	return ac
 }
 
+// isDemoRequest 报告当前已鉴权请求是否来自公开演示会话。
+func isDemoRequest(r *http.Request) bool {
+	ac := authFrom(r.Context())
+	return ac != nil && ac.Role == "demo"
+}
+
 // RequireAuth 导出给其它包（如 M1.3 商品 CRUD）复用的鉴权中间件。
 func (h *HTTP) RequireAuth(next http.Handler) http.Handler {
 	return h.requireAuth(next)

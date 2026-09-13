@@ -154,16 +154,16 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("PUT /admin/api/settings/market", owner(h.setMarket))
 
 	// 收款设置（Stripe 密钥；sk/whsec 加密存）。
-	mux.Handle("GET /admin/api/settings/payment", owner(h.getPayment))
+	mux.Handle("GET /admin/api/settings/payment", protect(h.getPayment))
 	mux.Handle("PUT /admin/api/settings/payment", owner(h.setPayment))
 	mux.Handle("POST /admin/api/settings/payment/stripe/test", owner(h.testStripeConnection))
-	mux.Handle("GET /admin/api/settings/shop", owner(h.getShop))
+	mux.Handle("GET /admin/api/settings/shop", protect(h.getShop))
 	mux.Handle("PUT /admin/api/settings/shop", owner(h.setShop))
 	mux.Handle("POST /admin/api/settings/shop/logo", owner(h.uploadShopLogo))
 	mux.Handle("DELETE /admin/api/settings/shop/logo", owner(h.deleteShopLogo))
-	mux.Handle("GET /admin/api/settings/policy-profile", owner(h.getPolicyProfile))
+	mux.Handle("GET /admin/api/settings/policy-profile", protect(h.getPolicyProfile))
 	mux.Handle("PUT /admin/api/settings/policy-profile", owner(h.setPolicyProfile))
-	mux.Handle("GET /admin/api/settings/translation", owner(h.getTranslationSettings))
+	mux.Handle("GET /admin/api/settings/translation", protect(h.getTranslationSettings))
 	mux.Handle("PUT /admin/api/settings/translation", owner(h.setTranslationSettings))
 	mux.Handle("POST /admin/api/translation/text", owner(h.translateText))
 
@@ -172,13 +172,13 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("POST /admin/api/wizard/payment/skip", owner(h.wizardPaymentSkip))
 
 	// 域名设置（写 settings.domain；env 覆盖时只读）+ 向导域名步骤（M4.2.1）。
-	mux.Handle("GET /admin/api/settings/domain", owner(h.getDomain))
+	mux.Handle("GET /admin/api/settings/domain", protect(h.getDomain))
 	mux.Handle("PUT /admin/api/settings/domain", owner(h.setDomain))
 	mux.Handle("GET /admin/api/wizard/domain", protect(h.wizardDomainStatus))
 	mux.Handle("POST /admin/api/wizard/domain/skip", owner(h.wizardDomainSkip))
 
 	// SMTP 设置（password 加密存；env 覆盖时只读）+ 测试发信 + 向导邮件步骤（M4.3）。
-	mux.Handle("GET /admin/api/settings/smtp", owner(h.getSMTP))
+	mux.Handle("GET /admin/api/settings/smtp", protect(h.getSMTP))
 	mux.Handle("PUT /admin/api/settings/smtp", owner(h.setSMTP))
 	mux.Handle("POST /admin/api/smtp/test", owner(h.smtpTest))
 	mux.Handle("GET /admin/api/wizard/smtp", protect(h.wizardSMTPStatus))
@@ -186,23 +186,23 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 
 	// 概览首页（登录后默认落点，M4.2.2）。
 	mux.Handle("GET /admin/api/dashboard", protect(h.dashboard))
-	mux.Handle("GET /admin/api/diagnostics", owner(h.diagnostics))
-	mux.Handle("GET /admin/api/settings/backup", owner(h.getBackupSettings))
+	mux.Handle("GET /admin/api/diagnostics", protect(h.diagnostics))
+	mux.Handle("GET /admin/api/settings/backup", protect(h.getBackupSettings))
 	mux.Handle("PUT /admin/api/settings/backup", owner(h.setBackupSettings))
 	mux.Handle("POST /admin/api/settings/backup/test", owner(h.testBackupRemote))
 	mux.Handle("GET /admin/api/export", owner(h.exportData))
-	mux.Handle("GET /admin/api/audit-events", owner(h.listAuditEvents))
+	mux.Handle("GET /admin/api/audit-events", protect(h.listAuditEvents))
 
 	// 订单 + 退款（M3.3a）。
-	mux.Handle("GET /admin/api/orders", owner(h.listOrders))
+	mux.Handle("GET /admin/api/orders", protect(h.listOrders))
 	mux.Handle("GET /admin/api/orders/export", owner(h.exportOrdersCSV))
-	mux.Handle("GET /admin/api/orders/{id}", owner(h.getOrder))
+	mux.Handle("GET /admin/api/orders/{id}", protect(h.getOrder))
 	mux.Handle("POST /admin/api/orders/{id}/refund", owner(h.refundOrder))
 	mux.Handle("POST /admin/api/orders/{id}/fulfill", owner(h.fulfillOrder))
-	mux.Handle("GET /admin/api/settings/shipping/countries", owner(h.listShippingCountries))
+	mux.Handle("GET /admin/api/settings/shipping/countries", protect(h.listShippingCountries))
 	mux.Handle("PUT /admin/api/settings/shipping/countries", owner(h.saveShippingCountries))
 	mux.Handle("PUT /admin/api/settings/shipping/default", owner(h.saveDefaultShippingZone))
-	mux.Handle("GET /admin/api/settings/shipping", owner(h.listShippingZones))
+	mux.Handle("GET /admin/api/settings/shipping", protect(h.listShippingZones))
 	mux.Handle("POST /admin/api/settings/shipping", owner(h.createShippingZone))
 	mux.Handle("PATCH /admin/api/settings/shipping/{id}", owner(h.updateShippingZone))
 	mux.Handle("DELETE /admin/api/settings/shipping/{id}", owner(h.deleteShippingZone))
