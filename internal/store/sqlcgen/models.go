@@ -15,6 +15,7 @@ type AdminUser struct {
 	PasswordHash string `db:"password_hash" json:"password_hash"`
 	CreatedAt    string `db:"created_at" json:"created_at"`
 	UpdatedAt    string `db:"updated_at" json:"updated_at"`
+	Role         string `db:"role" json:"role"`
 }
 
 type AuditEvent struct {
@@ -76,6 +77,14 @@ type Customer struct {
 	Name      string `db:"name" json:"name"`
 	CreatedAt string `db:"created_at" json:"created_at"`
 	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
+type DemoProduct struct {
+	ProductID    int64  `db:"product_id" json:"product_id"`
+	SessionToken string `db:"session_token" json:"session_token"`
+	Slot         int64  `db:"slot" json:"slot"`
+	ExpiresAt    string `db:"expires_at" json:"expires_at"`
+	CreatedAt    string `db:"created_at" json:"created_at"`
 }
 
 type EmailOutbox struct {

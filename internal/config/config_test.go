@@ -95,3 +95,25 @@ func TestLoadTrustedProxiesFromEnv(t *testing.T) {
 		t.Fatalf("trusted proxy 期望 198.51.100.10/32，得 %v", got[0])
 	}
 }
+
+func TestLoadPublicDemoDefaultsAndOverrides(t *testing.T) {
+	t.Setenv("KARTWO_DEMO_MODE", "true")
+	t.Setenv("KARTWO_DEMO_SESSION_TTL", "30m")
+	t.Setenv("KARTWO_DEMO_MAX_PRODUCTS", "2")
+	t.Setenv("KARTWO_DEMO_MAX_IMAGE_BYTES", "1048576")
+	t.Setenv("KARTWO_DEMO_CLEANUP_INTERVAL", "2m")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("加载公开演示配置失败: %v", err)
+	}
+	if !cfg.DemoMode || cfg.DemoSessionTTL != 30*time.Minute || cfg.DemoMaxProducts != 2 || cfg.DemoMaxImageBytes != 1<<20 || cfg.DemoCleanupInterval != 2*time.Minute {
+		t.Fatalf("公开演示配置错误: %+v", cfg)
+	}
+}
+
+func TestLoadRejectsUnsafePublicDemoLimits(t *testing.T) {
+	t.Setenv("KARTWO_DEMO_MAX_PRODUCTS", "4")
+	if _, err := Load(); err == nil {
+		t.Fatal("超过三件临时商品应被拒绝")
+	}
+}

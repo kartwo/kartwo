@@ -25,6 +25,7 @@ import (
 // 会话有效期与 KEK 盐在 meta 表中的键名。
 const (
 	sessionTTL    = 7 * 24 * time.Hour
+	demoUsername  = "kartwo-public-demo"
 	metaKeyKEKalt = "security.kek_salt"
 	timeLayout    = "2006-01-02T15:04:05.000Z" // 与迁移里 strftime 一致，便于字符串比较
 )
@@ -103,6 +104,7 @@ type Session struct {
 	ExpiresAt     time.Time
 	AdminID       int64
 	AdminPublicID string
+	Role          string
 }
 
 // AuthContext 为已鉴权请求的身份。
@@ -112,6 +114,8 @@ type AuthContext struct {
 	AdminPublicID string
 	SessionToken  string
 	CSRFToken     string
+	Role          string
+	ExpiresAt     time.Time
 }
 
 // IsInitialized 报告是否已建管理员。
@@ -173,6 +177,9 @@ func (s *Service) Login(ctx context.Context, username, password string) (*Sessio
 	} else if err != nil {
 		return nil, fmt.Errorf("admin: 取管理员失败: %w", err)
 	}
+	if user.Role != "owner" {
+		return nil, ErrInvalidCredentials
+	}
 
 	ok, err := auth.VerifyPassword(user.PasswordHash, password)
 	if err != nil {
@@ -210,7 +217,35 @@ func (s *Service) Login(ctx context.Context, username, password string) (*Sessio
 	if s.mailKeys != nil {
 		_ = s.mailKeys.Unlock(ctx, kek)
 	}
-	return &Session{Token: token, CSRFToken: csrf, ExpiresAt: expires, AdminID: user.ID, AdminPublicID: user.PublicID}, nil
+	return &Session{Token: token, CSRFToken: csrf, ExpiresAt: expires, AdminID: user.ID, AdminPublicID: user.PublicID, Role: user.Role}, nil
+}
+
+// CreateDemoSession 建立不接触主口令与 KEK 的短期公开演示会话。
+func (s *Service) CreateDemoSession(ctx context.Context, ttl time.Duration) (*Session, error) {
+	if ttl <= 0 {
+		return nil, fmt.Errorf("admin: 演示会话有效期非法")
+	}
+	publicID := uuid.Must(uuid.NewV7()).String()
+	if err := s.q.EnsureDemoUser(ctx, sqlcgen.EnsureDemoUserParams{PublicID: publicID, Username: demoUsername, PasswordHash: "login-disabled"}); err != nil {
+		return nil, fmt.Errorf("admin: 创建演示身份失败: %w", err)
+	}
+	user, err := s.q.GetAdminUserByUsername(ctx, demoUsername)
+	if err != nil {
+		return nil, fmt.Errorf("admin: 读取演示身份失败: %w", err)
+	}
+	token, err := randToken()
+	if err != nil {
+		return nil, err
+	}
+	csrf, err := randToken()
+	if err != nil {
+		return nil, err
+	}
+	expires := time.Now().UTC().Add(ttl)
+	if err := s.q.CreateSession(ctx, sqlcgen.CreateSessionParams{Token: token, AdminID: user.ID, CsrfToken: csrf, ExpiresAt: expires.Format(timeLayout)}); err != nil {
+		return nil, fmt.Errorf("admin: 创建演示会话失败: %w", err)
+	}
+	return &Session{Token: token, CSRFToken: csrf, ExpiresAt: expires, AdminID: user.ID, AdminPublicID: user.PublicID, Role: "demo"}, nil
 }
 
 // Authenticate 校验会话 token（未过期），返回身份。
@@ -226,20 +261,25 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*AuthContext,
 	} else if err != nil {
 		return nil, fmt.Errorf("admin: 取会话失败: %w", err)
 	}
+	expires, err := time.Parse(timeLayout, row.ExpiresAt)
+	if err != nil {
+		return nil, fmt.Errorf("admin: 解析会话有效期失败: %w", err)
+	}
 	return &AuthContext{
 		AdminID: row.AdminID, Username: row.Username, AdminPublicID: row.PublicID,
-		SessionToken: row.Token, CSRFToken: row.CsrfToken,
+		SessionToken: row.Token, CSRFToken: row.CsrfToken, Role: row.Role, ExpiresAt: expires,
 	}, nil
 }
 
 // Logout 删除会话并清内存 KEK；同时销毁收款密钥缓存（退出即销毁）。
 func (s *Service) Logout(ctx context.Context, token string) error {
-	s.vault.delete(token)
-	if s.keys != nil {
-		s.keys.Lock()
-	}
-	if s.mailKeys != nil {
-		s.mailKeys.Lock()
+	if s.vault.delete(token) {
+		if s.keys != nil {
+			s.keys.Lock()
+		}
+		if s.mailKeys != nil {
+			s.mailKeys.Lock()
+		}
 	}
 	if err := s.q.DeleteSession(ctx, token); err != nil {
 		return fmt.Errorf("admin: 删会话失败: %w", err)
@@ -282,10 +322,12 @@ func (v *kekVault) put(token string, kek []byte) {
 	v.m[token] = kek
 }
 
-func (v *kekVault) delete(token string) {
+func (v *kekVault) delete(token string) bool {
 	v.mu.Lock()
 	defer v.mu.Unlock()
+	_, ok := v.m[token]
 	delete(v.m, token)
+	return ok
 }
 
 // Key 返回会话已解锁的 KEK（M3 起消费；未解锁返回 false）。

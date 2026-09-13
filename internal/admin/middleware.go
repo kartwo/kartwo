@@ -46,6 +46,17 @@ func (h *HTTP) requireAuth(next http.Handler) http.Handler {
 	})
 }
 
+// requireOwner 阻止公开演示身份访问关键配置与不可逆业务动作。
+func (h *HTTP) requireOwner(next http.Handler) http.Handler {
+	return h.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ac := authFrom(r.Context()); ac == nil || ac.Role != "owner" {
+			writeErr(w, http.StatusForbidden, "公开演示为只读区域，此操作不可用")
+			return
+		}
+		next.ServeHTTP(w, r)
+	}))
+}
+
 func isUnsafe(method string) bool {
 	switch method {
 	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:

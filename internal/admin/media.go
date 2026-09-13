@@ -18,26 +18,57 @@ import (
 const uploadMaxBytes = 12 << 20 // 12 MiB
 
 func (h *HTTP) uploadMedia(w http.ResponseWriter, r *http.Request) {
+	ac := authFrom(r.Context())
+	if ac.Role == "demo" {
+		owned, err := h.demoOwnsProduct(r.Context(), ac.SessionToken, r.PathValue("id"))
+		if err != nil || !owned {
+			writeErr(w, http.StatusForbidden, "公开演示只能给自己新建的商品上传图片")
+			return
+		}
+	}
 	productID, err := h.cat.ProductIDByPublicID(r.Context(), r.PathValue("id"))
 	if err != nil {
 		h.writeCatalogErr(w, err)
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, uploadMaxBytes)
+	bodyLimit := int64(uploadMaxBytes)
+	if ac.Role == "demo" {
+		bodyLimit = h.demo.MaxImageBytes + (1 << 20)
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)
 	if err := r.ParseMultipartForm(4 << 20); err != nil {
 		writeErr(w, http.StatusRequestEntityTooLarge, "上传体过大或格式非法")
 		return
 	}
-	file, _, err := r.FormFile("file")
+	file, header, err := r.FormFile("file")
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "缺少 file 字段")
 		return
 	}
 	defer func() { _ = file.Close() }()
+	if ac.Role == "demo" {
+		if header.Size > h.demo.MaxImageBytes {
+			writeErr(w, http.StatusRequestEntityTooLarge, "演示商品图片最大 2MB")
+			return
+		}
+		existing, listErr := h.media.ListByProduct(r.Context(), productID)
+		if listErr != nil {
+			writeErr(w, http.StatusInternalServerError, "内部错误")
+			return
+		}
+		if len(existing) >= 1 {
+			writeErr(w, http.StatusConflict, "每个演示商品最多上传 1 张图片")
+			return
+		}
+	}
 	data, err := io.ReadAll(file)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "读取上传失败")
+		return
+	}
+	if ac.Role == "demo" && int64(len(data)) > h.demo.MaxImageBytes {
+		writeErr(w, http.StatusRequestEntityTooLarge, "演示商品图片最大 2MB")
 		return
 	}
 
@@ -51,6 +82,17 @@ func (h *HTTP) uploadMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTP) listMedia(w http.ResponseWriter, r *http.Request) {
+	if ac := authFrom(r.Context()); ac.Role == "demo" {
+		allowed, err := h.demoCanViewProduct(r.Context(), ac.SessionToken, r.PathValue("id"))
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "内部错误")
+			return
+		}
+		if !allowed {
+			writeErr(w, http.StatusNotFound, "商品不存在")
+			return
+		}
+	}
 	productID, err := h.cat.ProductIDByPublicID(r.Context(), r.PathValue("id"))
 	if err != nil {
 		h.writeCatalogErr(w, err)
@@ -70,6 +112,13 @@ func (h *HTTP) listMedia(w http.ResponseWriter, r *http.Request) {
 
 func (h *HTTP) deleteMedia(w http.ResponseWriter, r *http.Request) {
 	mediaID := r.PathValue("id")
+	if ac := authFrom(r.Context()); ac.Role == "demo" {
+		owned, err := h.demoOwnsMedia(r.Context(), ac.SessionToken, mediaID)
+		if err != nil || !owned {
+			writeErr(w, http.StatusForbidden, "公开演示不能修改示例商品图片")
+			return
+		}
+	}
 	if err := h.media.Delete(r.Context(), mediaID); err != nil {
 		h.writeMediaErr(w, err)
 		return
@@ -79,6 +128,13 @@ func (h *HTTP) deleteMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTP) updateMediaAlt(w http.ResponseWriter, r *http.Request) {
+	if ac := authFrom(r.Context()); ac.Role == "demo" {
+		owned, err := h.demoOwnsMedia(r.Context(), ac.SessionToken, r.PathValue("id"))
+		if err != nil || !owned {
+			writeErr(w, http.StatusForbidden, "公开演示不能修改示例商品图片")
+			return
+		}
+	}
 	var req struct {
 		AltText string `json:"alt_text"`
 	}

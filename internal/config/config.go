@@ -69,6 +69,13 @@ type Config struct {
 	BackupWebDAVPathEnv     bool
 	BackupWebDAVUsernameEnv bool
 	BackupWebDAVPasswordEnv bool
+
+	// —— M6.2 公开演示模式（默认关闭，不影响普通自部署）——
+	DemoMode            bool
+	DemoSessionTTL      time.Duration
+	DemoMaxProducts     int
+	DemoMaxImageBytes   int64
+	DemoCleanupInterval time.Duration
 }
 
 const (
@@ -86,20 +93,59 @@ const (
 // 双模式纪律：此处只做自部署默认语义，不感知 SaaS。
 func Load() (*Config, error) {
 	cfg := &Config{
-		Env:              getEnv("KARTWO_ENV", "dev"),
-		Addr:             getEnv("KARTWO_ADDR", ":8080"),
-		DataDir:          getEnv("KARTWO_DATA_DIR", "./data"),
-		DBEngine:         getEnv("KARTWO_DB_ENGINE", "sqlite"),
-		ShopName:         "Kartwo Store",
-		Currency:         getEnv("KARTWO_CURRENCY", "CNY"),
-		BaseURL:          getEnv("KARTWO_BASE_URL", ""),
-		Domain:           strings.TrimSpace(getEnv("KARTWO_DOMAIN", "")),
-		HTTPAddr:         getEnv("KARTWO_HTTP_ADDR", ":80"),
-		HTTPSAddr:        getEnv("KARTWO_HTTPS_ADDR", ":443"),
-		ACMEDirectory:    strings.TrimSpace(getEnv("KARTWO_ACME_DIRECTORY", "")),
-		BackupInterval:   24 * time.Hour,
-		BackupRetention:  7,
-		BackupWebDAVPath: "/",
+		Env:                 getEnv("KARTWO_ENV", "dev"),
+		Addr:                getEnv("KARTWO_ADDR", ":8080"),
+		DataDir:             getEnv("KARTWO_DATA_DIR", "./data"),
+		DBEngine:            getEnv("KARTWO_DB_ENGINE", "sqlite"),
+		ShopName:            "Kartwo Store",
+		Currency:            getEnv("KARTWO_CURRENCY", "CNY"),
+		BaseURL:             getEnv("KARTWO_BASE_URL", ""),
+		Domain:              strings.TrimSpace(getEnv("KARTWO_DOMAIN", "")),
+		HTTPAddr:            getEnv("KARTWO_HTTP_ADDR", ":80"),
+		HTTPSAddr:           getEnv("KARTWO_HTTPS_ADDR", ":443"),
+		ACMEDirectory:       strings.TrimSpace(getEnv("KARTWO_ACME_DIRECTORY", "")),
+		BackupInterval:      24 * time.Hour,
+		BackupRetention:     7,
+		BackupWebDAVPath:    "/",
+		DemoSessionTTL:      45 * time.Minute,
+		DemoMaxProducts:     3,
+		DemoMaxImageBytes:   2 << 20,
+		DemoCleanupInterval: 5 * time.Minute,
+	}
+	if raw, ok := os.LookupEnv("KARTWO_DEMO_MODE"); ok && strings.TrimSpace(raw) != "" {
+		enabled, err := strconv.ParseBool(strings.TrimSpace(raw))
+		if err != nil {
+			return nil, fmt.Errorf("非法 KARTWO_DEMO_MODE=%q（应为 true / false）", raw)
+		}
+		cfg.DemoMode = enabled
+	}
+	if raw, ok := os.LookupEnv("KARTWO_DEMO_SESSION_TTL"); ok && strings.TrimSpace(raw) != "" {
+		v, err := time.ParseDuration(strings.TrimSpace(raw))
+		if err != nil || v < 5*time.Minute || v > 24*time.Hour {
+			return nil, fmt.Errorf("非法 KARTWO_DEMO_SESSION_TTL=%q（应为 5m 到 24h）", raw)
+		}
+		cfg.DemoSessionTTL = v
+	}
+	if raw, ok := os.LookupEnv("KARTWO_DEMO_MAX_PRODUCTS"); ok && strings.TrimSpace(raw) != "" {
+		v, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil || v < 1 || v > 3 {
+			return nil, fmt.Errorf("非法 KARTWO_DEMO_MAX_PRODUCTS=%q（应为 1 到 3）", raw)
+		}
+		cfg.DemoMaxProducts = v
+	}
+	if raw, ok := os.LookupEnv("KARTWO_DEMO_MAX_IMAGE_BYTES"); ok && strings.TrimSpace(raw) != "" {
+		v, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+		if err != nil || v < 64<<10 || v > 2<<20 {
+			return nil, fmt.Errorf("非法 KARTWO_DEMO_MAX_IMAGE_BYTES=%q（应为 65536 到 2097152 字节）", raw)
+		}
+		cfg.DemoMaxImageBytes = v
+	}
+	if raw, ok := os.LookupEnv("KARTWO_DEMO_CLEANUP_INTERVAL"); ok && strings.TrimSpace(raw) != "" {
+		v, err := time.ParseDuration(strings.TrimSpace(raw))
+		if err != nil || v < time.Minute || v > time.Hour {
+			return nil, fmt.Errorf("非法 KARTWO_DEMO_CLEANUP_INTERVAL=%q（应为 1m 到 1h）", raw)
+		}
+		cfg.DemoCleanupInterval = v
 	}
 	if raw, ok := os.LookupEnv("KARTWO_SHOP_NAME"); ok && strings.TrimSpace(raw) != "" {
 		cfg.ShopName, cfg.ShopNameEnv = strings.TrimSpace(raw), true

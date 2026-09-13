@@ -265,6 +265,15 @@ func runServe(logger *slog.Logger) error {
 	// 收款密钥内存缓存（绑定 KEK 金库：登录解锁/登出销毁）+ 支付编排服务。
 	payCache := payment.NewKeyCache(settingsSvc)
 	adminSvc := admin.New(st.DB)
+	if cfg.DemoMode {
+		initialized, err := adminSvc.IsInitialized(context.Background())
+		if err != nil {
+			return err
+		}
+		if !initialized {
+			return fmt.Errorf("公开演示模式需要先完成管理员初始化；请先关闭 KARTWO_DEMO_MODE 启动一次并创建管理员")
+		}
+	}
 	adminSvc.SetPaymentKeys(payCache)
 	paySvc := payment.NewService(st.DB, settingsSvc, payCache)
 	// 仅记录密钥「来源」，绝不打印任何密钥值。
@@ -326,6 +335,7 @@ func runServe(logger *slog.Logger) error {
 		shopNameOverride = cfg.ShopName
 	}
 	adminHTTP := admin.NewHTTP(adminSvc, catalogSvc, importer.New(st.DB, catalogSvc, mediaSvc, redirectSvc), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, exporter, backupCfg, cfg.Domain, cfg.Env == "prod", cfg.TrustedProxies, shopNameOverride)
+	adminHTTP.ConfigureDemo(admin.DemoConfig{Enabled: cfg.DemoMode, SessionTTL: cfg.DemoSessionTTL, MaxProducts: cfg.DemoMaxProducts, MaxImageBytes: cfg.DemoMaxImageBytes, CleanupInterval: cfg.DemoCleanupInterval})
 	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, redirectSvc, cfg.ShopName, cfg.BaseURL, cfg.TrustedProxies, shopNameOverride)
 	payHTTP := payment.NewHTTP(paySvc)
 	// 解析"当前生效域名"（env 覆盖 DB），决定是否启用 HTTPS（仅 prod）。
@@ -347,6 +357,7 @@ func runServe(logger *slog.Logger) error {
 	go mail.NewWorker(st.DB, mailCache, logger, 0).Run(ctx)
 	// 本地全量备份走独立 goroutine，不阻塞 HTTP 服务启动；首次启动即生成一份。
 	go backup.NewScheduler(exporter, cfg.BackupInterval, cfg.BackupRetention, logger, remoteUploader).Run(ctx)
+	go adminHTTP.RunDemoCleanup(ctx, logger)
 
 	var servers []*http.Server
 	errCh := make(chan error, 1)

@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/kartwo/kartwo/internal/catalog"
+	"github.com/kartwo/kartwo/internal/store/sqlcgen"
 )
 
 // ---- 请求/响应 DTO（snake_case JSON）----
@@ -58,6 +59,19 @@ func (h *HTTP) createProduct(w http.ResponseWriter, r *http.Request) {
 		Description: req.Description, SEODescription: req.SEODescription, SEODescriptionZH: req.SEODescriptionZH, Status: req.Status,
 		CategoryPublicIDs: req.CategoryPublicIDs,
 	}
+	ac := authFrom(r.Context())
+	if ac.Role == "demo" {
+		count, err := h.svc.q.CountDemoProductsBySession(r.Context(), ac.SessionToken)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "内部错误")
+			return
+		}
+		if count >= int64(h.demo.MaxProducts) {
+			writeErr(w, http.StatusConflict, "本次演示最多可创建 3 个临时商品")
+			return
+		}
+		in.Status = "draft"
+	}
 	for _, o := range req.Options {
 		in.Options = append(in.Options, catalog.OptionInput{Name: o.Name, Values: o.Values})
 	}
@@ -79,11 +93,37 @@ func (h *HTTP) createProduct(w http.ResponseWriter, r *http.Request) {
 		h.writeCatalogErr(w, err)
 		return
 	}
+	if ac.Role == "demo" {
+		if err := h.claimDemoProduct(r.Context(), ac, publicID); err != nil {
+			if productID, findErr := h.cat.ProductIDByPublicID(r.Context(), publicID); findErr == nil {
+				_ = h.removeDemoProduct(r.Context(), productID, publicID)
+			}
+			if errors.Is(err, ErrDemoQuota) {
+				writeErr(w, http.StatusConflict, "本次演示最多可创建 3 个临时商品")
+			} else {
+				writeErr(w, http.StatusInternalServerError, "内部错误")
+			}
+			return
+		}
+	}
 	h.recordAudit(r, authFrom(r.Context()).AdminID, "product.create", "product", publicID)
 	writeJSON(w, http.StatusCreated, map[string]any{"public_id": publicID})
 }
 
 func (h *HTTP) listProducts(w http.ResponseWriter, r *http.Request) {
+	if ac := authFrom(r.Context()); ac.Role == "demo" {
+		rows, err := h.svc.q.ListProductsVisibleToDemo(r.Context(), sqlcgen.ListProductsVisibleToDemoParams{SessionToken: ac.SessionToken, SessionToken_2: ac.SessionToken})
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "内部错误")
+			return
+		}
+		out := make([]map[string]any, 0, len(rows))
+		for _, p := range rows {
+			out = append(out, map[string]any{"public_id": p.PublicID, "title": p.Title, "slug": p.Slug, "status": p.Status, "featured": p.Featured != 0, "updated_at": p.UpdatedAt, "demo_owned": p.DemoOwned != 0})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"products": out})
+		return
+	}
 	products, err := h.cat.ListProducts(r.Context())
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "内部错误")
@@ -92,13 +132,24 @@ func (h *HTTP) listProducts(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0, len(products))
 	for _, p := range products {
 		out = append(out, map[string]any{
-			"public_id": p.PublicID, "title": p.Title, "slug": p.Slug, "status": p.Status, "featured": p.Featured, "updated_at": p.UpdatedAt,
+			"public_id": p.PublicID, "title": p.Title, "slug": p.Slug, "status": p.Status, "featured": p.Featured, "updated_at": p.UpdatedAt, "demo_owned": false,
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"products": out})
 }
 
 func (h *HTTP) getProduct(w http.ResponseWriter, r *http.Request) {
+	if ac := authFrom(r.Context()); ac.Role == "demo" {
+		allowed, err := h.demoCanViewProduct(r.Context(), ac.SessionToken, r.PathValue("id"))
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "内部错误")
+			return
+		}
+		if !allowed {
+			writeErr(w, http.StatusNotFound, "资源不存在")
+			return
+		}
+	}
 	d, err := h.cat.GetProduct(r.Context(), r.PathValue("id"))
 	if err != nil {
 		h.writeCatalogErr(w, err)
@@ -114,10 +165,14 @@ func (h *HTTP) getProduct(w http.ResponseWriter, r *http.Request) {
 			"public_id": v.PublicID, "sku": v.SKU, "price_cents": v.PriceCents, "quantity": v.Quantity, "options": opts,
 		})
 	}
+	owned := false
+	if ac := authFrom(r.Context()); ac.Role == "demo" {
+		owned, _ = h.demoOwnsProduct(r.Context(), ac.SessionToken, d.PublicID)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"public_id": d.PublicID, "title": d.Title, "title_zh": d.TitleZH, "slug": d.Slug, "slug_zh": d.SlugZH,
 		"description": d.Description, "seo_description": d.SEODescription, "seo_description_zh": d.SEODescriptionZH,
-		"status": d.Status, "featured": d.Featured, "category_public_ids": d.CategoryPublicIDs, "variants": variants,
+		"status": d.Status, "featured": d.Featured, "category_public_ids": d.CategoryPublicIDs, "variants": variants, "demo_owned": owned,
 	})
 }
 
@@ -134,6 +189,14 @@ func (h *HTTP) updateProduct(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
+	if ac := authFrom(r.Context()); ac.Role == "demo" {
+		owned, err := h.demoOwnsProduct(r.Context(), ac.SessionToken, r.PathValue("id"))
+		if err != nil || !owned {
+			writeErr(w, http.StatusForbidden, "公开演示不能修改示例商品")
+			return
+		}
+		req.Status = "draft"
+	}
 	if err := h.cat.UpdateProductContentAndCategories(r.Context(), r.PathValue("id"), req.Title, req.TitleZH, req.Description, req.SEODescription, req.SEODescriptionZH, req.Status, req.CategoryPublicIDs); err != nil {
 		h.writeCatalogErr(w, err)
 		return
@@ -143,6 +206,24 @@ func (h *HTTP) updateProduct(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTP) deleteProduct(w http.ResponseWriter, r *http.Request) {
+	if ac := authFrom(r.Context()); ac.Role == "demo" {
+		owned, err := h.demoOwnsProduct(r.Context(), ac.SessionToken, r.PathValue("id"))
+		if err != nil || !owned {
+			writeErr(w, http.StatusForbidden, "公开演示不能删除示例商品")
+			return
+		}
+		productID, err := h.cat.ProductIDByPublicID(r.Context(), r.PathValue("id"))
+		if err != nil {
+			h.writeCatalogErr(w, err)
+			return
+		}
+		if err := h.removeDemoProduct(r.Context(), productID, r.PathValue("id")); err != nil {
+			writeErr(w, http.StatusInternalServerError, "内部错误")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		return
+	}
 	if err := h.cat.DeleteProduct(r.Context(), r.PathValue("id")); err != nil {
 		h.writeCatalogErr(w, err)
 		return
@@ -152,6 +233,13 @@ func (h *HTTP) deleteProduct(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTP) setVariantInventory(w http.ResponseWriter, r *http.Request) {
+	if ac := authFrom(r.Context()); ac.Role == "demo" {
+		owned, err := h.demoOwnsVariant(r.Context(), ac.SessionToken, r.PathValue("id"))
+		if err != nil || !owned {
+			writeErr(w, http.StatusForbidden, "公开演示不能修改示例商品")
+			return
+		}
+	}
 	var req struct {
 		Quantity int64 `json:"quantity"`
 	}
@@ -169,6 +257,13 @@ func (h *HTTP) setVariantInventory(w http.ResponseWriter, r *http.Request) {
 // setVariantPrice 设变体价格（整数分）。价格必填：字段缺失/空(nil) → 400 拒绝，绝不默认 0；
 // 负数由 service 拒（400）；0 与正数放行。鉴权 + CSRF 由路由中间件保证，对象级权限经变体 public_id。
 func (h *HTTP) setVariantPrice(w http.ResponseWriter, r *http.Request) {
+	if ac := authFrom(r.Context()); ac.Role == "demo" {
+		owned, err := h.demoOwnsVariant(r.Context(), ac.SessionToken, r.PathValue("id"))
+		if err != nil || !owned {
+			writeErr(w, http.StatusForbidden, "公开演示不能修改示例商品")
+			return
+		}
+	}
 	var req struct {
 		PriceCents *int64 `json:"price_cents"`
 	}

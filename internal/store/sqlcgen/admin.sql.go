@@ -11,7 +11,7 @@ import (
 
 const countAdminUsers = `-- name: CountAdminUsers :one
 
-SELECT COUNT(*) FROM admin_user
+SELECT COUNT(*) FROM admin_user WHERE role = 'owner'
 `
 
 // Admin & Session Queries
@@ -91,8 +91,23 @@ func (q *Queries) DeleteSessionsByAdmin(ctx context.Context, adminID int64) erro
 	return err
 }
 
+const ensureDemoUser = `-- name: EnsureDemoUser :exec
+INSERT OR IGNORE INTO admin_user (public_id, username, password_hash, role) VALUES (?, ?, ?, 'demo')
+`
+
+type EnsureDemoUserParams struct {
+	PublicID     string `db:"public_id" json:"public_id"`
+	Username     string `db:"username" json:"username"`
+	PasswordHash string `db:"password_hash" json:"password_hash"`
+}
+
+func (q *Queries) EnsureDemoUser(ctx context.Context, arg EnsureDemoUserParams) error {
+	_, err := q.db.ExecContext(ctx, ensureDemoUser, arg.PublicID, arg.Username, arg.PasswordHash)
+	return err
+}
+
 const getAdminUserByUsername = `-- name: GetAdminUserByUsername :one
-SELECT id, public_id, username, password_hash FROM admin_user WHERE username = ?
+SELECT id, public_id, username, password_hash, role FROM admin_user WHERE username = ?
 `
 
 type GetAdminUserByUsernameRow struct {
@@ -100,6 +115,7 @@ type GetAdminUserByUsernameRow struct {
 	PublicID     string `db:"public_id" json:"public_id"`
 	Username     string `db:"username" json:"username"`
 	PasswordHash string `db:"password_hash" json:"password_hash"`
+	Role         string `db:"role" json:"role"`
 }
 
 func (q *Queries) GetAdminUserByUsername(ctx context.Context, username string) (GetAdminUserByUsernameRow, error) {
@@ -110,12 +126,13 @@ func (q *Queries) GetAdminUserByUsername(ctx context.Context, username string) (
 		&i.PublicID,
 		&i.Username,
 		&i.PasswordHash,
+		&i.Role,
 	)
 	return i, err
 }
 
 const getSessionByToken = `-- name: GetSessionByToken :one
-SELECT s.token, s.admin_id, s.csrf_token, s.expires_at, a.username, a.public_id FROM session s JOIN admin_user a ON a.id = s.admin_id WHERE s.token = ? AND s.expires_at > ?
+SELECT s.token, s.admin_id, s.csrf_token, s.expires_at, a.username, a.public_id, a.role FROM session s JOIN admin_user a ON a.id = s.admin_id WHERE s.token = ? AND s.expires_at > ?
 `
 
 type GetSessionByTokenParams struct {
@@ -130,6 +147,7 @@ type GetSessionByTokenRow struct {
 	ExpiresAt string `db:"expires_at" json:"expires_at"`
 	Username  string `db:"username" json:"username"`
 	PublicID  string `db:"public_id" json:"public_id"`
+	Role      string `db:"role" json:"role"`
 }
 
 func (q *Queries) GetSessionByToken(ctx context.Context, arg GetSessionByTokenParams) (GetSessionByTokenRow, error) {
@@ -142,6 +160,7 @@ func (q *Queries) GetSessionByToken(ctx context.Context, arg GetSessionByTokenPa
 		&i.ExpiresAt,
 		&i.Username,
 		&i.PublicID,
+		&i.Role,
 	)
 	return i, err
 }

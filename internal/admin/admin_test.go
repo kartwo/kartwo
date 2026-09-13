@@ -12,6 +12,7 @@ import (
 	cryptotls "crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
@@ -804,6 +805,139 @@ func TestHTTPProductCRUDFlow(t *testing.T) {
 	// 软删后取 → 404
 	if resp := doJSON(t, mux, "GET", "/admin/api/products/"+created.PublicID, "", auth, ""); resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("软删后取 = %d，期望 404", resp.StatusCode)
+	}
+}
+
+func TestPublicDemoSessionEnforcesOwnershipQuotaAndOwnerOnlyRoutes(t *testing.T) {
+	h, mux := newHTTP(t)
+	h.ConfigureDemo(DemoConfig{Enabled: true, SessionTTL: 45 * time.Minute, MaxProducts: 3, MaxImageBytes: 2 << 20, CleanupInterval: 5 * time.Minute})
+	ownerSession, ownerCSRF := loginAndCookies(t, mux)
+	owner := []*http.Cookie{ownerSession}
+
+	baselineBody := `{"title":"Baseline","slug":"baseline","status":"active","options":[{"name":"Style","values":["One"]}],"variants":[{"sku":"BASE-1","price_cents":1000,"quantity":8,"selections":[{"option":"Style","value":"One"}]}]}`
+	baseline := doJSON(t, mux, http.MethodPost, "/admin/api/products", baselineBody, owner, ownerCSRF)
+	if baseline.StatusCode != http.StatusCreated {
+		t.Fatalf("创建基线商品失败: %d %s", baseline.StatusCode, baseline.Body)
+	}
+	var baselineResult struct {
+		PublicID string `json:"public_id"`
+	}
+	_ = json.Unmarshal(baseline.Body, &baselineResult)
+
+	demoLogin := doJSON(t, mux, http.MethodPost, "/admin/api/demo-session", "", nil, "")
+	if demoLogin.StatusCode != http.StatusCreated {
+		t.Fatalf("一键演示登录失败: %d %s", demoLogin.StatusCode, demoLogin.Body)
+	}
+	var demoSession *http.Cookie
+	var demoCSRF string
+	for _, cookie := range demoLogin.Cookies {
+		if cookie.Name == sessionCookie {
+			demoSession = cookie
+		}
+		if cookie.Name == csrfCookie {
+			demoCSRF = cookie.Value
+		}
+	}
+	demo := []*http.Cookie{demoSession}
+	if me := doJSON(t, mux, http.MethodGet, "/admin/api/me", "", demo, ""); me.StatusCode != http.StatusOK || !bytes.Contains(me.Body, []byte(`"role":"demo"`)) {
+		t.Fatalf("演示身份异常: %d %s", me.StatusCode, me.Body)
+	}
+	if denied := doJSON(t, mux, http.MethodGet, "/admin/api/settings/payment", "", demo, ""); denied.StatusCode != http.StatusForbidden {
+		t.Fatalf("演示身份读取敏感设置应 403: %d %s", denied.StatusCode, denied.Body)
+	}
+	update := `{"title":"Attacked","title_zh":"","description":"","seo_description":"","seo_description_zh":"","status":"draft","category_public_ids":[]}`
+	if denied := doJSON(t, mux, http.MethodPatch, "/admin/api/products/"+baselineResult.PublicID, update, demo, demoCSRF); denied.StatusCode != http.StatusForbidden {
+		t.Fatalf("演示身份修改基线商品应 403: %d %s", denied.StatusCode, denied.Body)
+	}
+
+	for i := 1; i <= 3; i++ {
+		body := fmt.Sprintf(`{"title":"Demo %d","slug":"demo-%d","status":"active","options":[{"name":"Style","values":["One"]}],"variants":[{"sku":"DEMO-%d","price_cents":1000,"quantity":1,"selections":[{"option":"Style","value":"One"}]}]}`, i, i, i)
+		created := doJSON(t, mux, http.MethodPost, "/admin/api/products", body, demo, demoCSRF)
+		if created.StatusCode != http.StatusCreated {
+			t.Fatalf("第 %d 个临时商品创建失败: %d %s", i, created.StatusCode, created.Body)
+		}
+	}
+	fourth := doJSON(t, mux, http.MethodPost, "/admin/api/products", `{"title":"Demo 4","slug":"demo-4","status":"draft","options":[{"name":"Style","values":["One"]}],"variants":[{"sku":"DEMO-4","price_cents":1000,"quantity":1,"selections":[{"option":"Style","value":"One"}]}]}`, demo, demoCSRF)
+	if fourth.StatusCode != http.StatusConflict {
+		t.Fatalf("第四个临时商品应被配额拒绝: %d %s", fourth.StatusCode, fourth.Body)
+	}
+	list := doJSON(t, mux, http.MethodGet, "/admin/api/products", "", demo, "")
+	if !bytes.Contains(list.Body, []byte(`"slug":"demo-1"`)) || !bytes.Contains(list.Body, []byte(`"status":"draft"`)) || !bytes.Contains(list.Body, []byte(`"demo_owned":true`)) {
+		t.Fatalf("演示商品应强制草稿并标注归属: %s", list.Body)
+	}
+	otherLogin := doJSON(t, mux, http.MethodPost, "/admin/api/demo-session", "", nil, "")
+	var otherSession *http.Cookie
+	for _, cookie := range otherLogin.Cookies {
+		if cookie.Name == sessionCookie {
+			otherSession = cookie
+		}
+	}
+	otherList := doJSON(t, mux, http.MethodGet, "/admin/api/products", "", []*http.Cookie{otherSession}, "")
+	if bytes.Contains(otherList.Body, []byte(`"slug":"demo-1"`)) || !bytes.Contains(otherList.Body, []byte(`"slug":"baseline"`)) {
+		t.Fatalf("不同演示会话必须隔离临时商品，同时都能看基线商品: %s", otherList.Body)
+	}
+	reset := doJSON(t, mux, http.MethodPost, "/admin/api/demo/reset", "", demo, demoCSRF)
+	if reset.StatusCode != http.StatusOK || !bytes.Contains(reset.Body, []byte(`"removed_products":3`)) {
+		t.Fatalf("演示重置失败: %d %s", reset.StatusCode, reset.Body)
+	}
+	if got, err := h.cat.GetProduct(context.Background(), baselineResult.PublicID); err != nil || got.Title != "Baseline" {
+		t.Fatalf("重置不能影响基线商品: product=%+v err=%v", got, err)
+	}
+}
+
+func TestDemoAccountCannotUsePasswordLoginOrUnlockKEK(t *testing.T) {
+	svc := newSvc(t)
+	if _, err := svc.CreateDemoSession(context.Background(), 45*time.Minute); err != nil {
+		t.Fatalf("创建演示会话失败: %v", err)
+	}
+	if _, err := svc.Login(context.Background(), demoUsername, "anything"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("演示账号不应支持密码登录: %v", err)
+	}
+}
+
+func TestPublicDemoAllowsOneSmallImageOnly(t *testing.T) {
+	h, mux := newHTTP(t)
+	h.ConfigureDemo(DemoConfig{Enabled: true, SessionTTL: 45 * time.Minute, MaxProducts: 3, MaxImageBytes: 2 << 20, CleanupInterval: 5 * time.Minute})
+	_, _ = loginAndCookies(t, mux)
+	demoLogin := doJSON(t, mux, http.MethodPost, "/admin/api/demo-session", "", nil, "")
+	var session *http.Cookie
+	var csrf string
+	for _, cookie := range demoLogin.Cookies {
+		if cookie.Name == sessionCookie {
+			session = cookie
+		}
+		if cookie.Name == csrfCookie {
+			csrf = cookie.Value
+		}
+	}
+	body := `{"title":"Image Demo","slug":"image-demo","status":"active","options":[{"name":"Style","values":["One"]}],"variants":[{"sku":"IMG-DEMO","price_cents":1000,"quantity":1,"selections":[{"option":"Style","value":"One"}]}]}`
+	created := doJSON(t, mux, http.MethodPost, "/admin/api/products", body, []*http.Cookie{session}, csrf)
+	var result struct {
+		PublicID string `json:"public_id"`
+	}
+	_ = json.Unmarshal(created.Body, &result)
+
+	var imageBody bytes.Buffer
+	_ = png.Encode(&imageBody, image.NewRGBA(image.Rect(0, 0, 100, 100)))
+	upload := func() int {
+		var multipartBody bytes.Buffer
+		writer := multipart.NewWriter(&multipartBody)
+		part, _ := writer.CreateFormFile("file", "demo.png")
+		_, _ = part.Write(imageBody.Bytes())
+		_ = writer.Close()
+		req := httptest.NewRequest(http.MethodPost, "/admin/api/products/"+result.PublicID+"/media", &multipartBody)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req.Header.Set(csrfHeader, csrf)
+		req.AddCookie(session)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if code := upload(); code != http.StatusCreated {
+		t.Fatalf("首张演示图片应允许上传，得 %d", code)
+	}
+	if code := upload(); code != http.StatusConflict {
+		t.Fatalf("第二张演示图片应被拒绝，得 %d", code)
 	}
 }
 

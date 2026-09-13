@@ -64,6 +64,16 @@ type HTTP struct {
 	secure      bool             // 本实例能否签发 HTTPS（prod=true，dev 恒 false），供 domain 页 https_capable
 	limiter     *loginLimiter
 	trusted     []*net.IPNet
+	demo        DemoConfig
+}
+
+// DemoConfig 控制公开演示权限与资源上限；Enabled=false 时所有既有行为保持不变。
+type DemoConfig struct {
+	Enabled         bool
+	SessionTTL      time.Duration
+	MaxProducts     int
+	MaxImageBytes   int64
+	CleanupInterval time.Duration
 }
 
 // NewHTTP 构建 Admin HTTP 层。secure=true 表示本实例可启用 HTTPS（prod）；
@@ -80,37 +90,57 @@ func NewHTTP(svc *Service, cat *catalog.Service, importSvc *importer.Service, md
 	return h
 }
 
+// ConfigureDemo 注入显式启用的公开演示策略。
+func (h *HTTP) ConfigureDemo(cfg DemoConfig) {
+	if cfg.SessionTTL <= 0 {
+		cfg.SessionTTL = 45 * time.Minute
+	}
+	if cfg.MaxProducts < 1 || cfg.MaxProducts > 3 {
+		cfg.MaxProducts = 3
+	}
+	if cfg.MaxImageBytes <= 0 || cfg.MaxImageBytes > 2<<20 {
+		cfg.MaxImageBytes = 2 << 20
+	}
+	if cfg.CleanupInterval <= 0 {
+		cfg.CleanupInterval = 5 * time.Minute
+	}
+	h.demo = cfg
+}
+
 // Register 在给定 mux 上注册 /admin/api/* 路由。
 func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin/api/status", h.status)
 	mux.HandleFunc("POST /admin/api/setup", h.setup)
 	mux.HandleFunc("POST /admin/api/login", h.login)
+	mux.HandleFunc("POST /admin/api/demo-session", h.demoSession)
 	mux.Handle("POST /admin/api/logout", h.requireAuth(http.HandlerFunc(h.logout)))
 	mux.Handle("GET /admin/api/me", h.requireAuth(http.HandlerFunc(h.me)))
+	mux.Handle("POST /admin/api/demo/reset", h.requireAuth(http.HandlerFunc(h.resetDemo)))
 
 	// 商品/分类/变体 CRUD（均需鉴权；写操作经中间件 CSRF 校验）。
 	protect := func(fn http.HandlerFunc) http.Handler { return h.requireAuth(fn) }
+	owner := func(fn http.HandlerFunc) http.Handler { return h.requireOwner(fn) }
 	mux.Handle("GET /admin/api/products", protect(h.listProducts))
 	mux.Handle("POST /admin/api/products", protect(h.createProduct))
 	mux.Handle("GET /admin/api/products/{id}", protect(h.getProduct))
 	mux.Handle("PATCH /admin/api/products/{id}", protect(h.updateProduct))
-	mux.Handle("PATCH /admin/api/products/{id}/featured", protect(h.setProductFeatured))
+	mux.Handle("PATCH /admin/api/products/{id}/featured", owner(h.setProductFeatured))
 	mux.Handle("DELETE /admin/api/products/{id}", protect(h.deleteProduct))
 	mux.Handle("PATCH /admin/api/variants/{id}/inventory", protect(h.setVariantInventory))
 	mux.Handle("PATCH /admin/api/variants/{id}/price", protect(h.setVariantPrice))
 	mux.Handle("GET /admin/api/categories", protect(h.listCategories))
-	mux.Handle("POST /admin/api/categories", protect(h.createCategory))
-	mux.Handle("PATCH /admin/api/categories/{id}", protect(h.updateCategory))
-	mux.Handle("DELETE /admin/api/categories/{id}", protect(h.deleteCategory))
+	mux.Handle("POST /admin/api/categories", owner(h.createCategory))
+	mux.Handle("PATCH /admin/api/categories/{id}", owner(h.updateCategory))
+	mux.Handle("DELETE /admin/api/categories/{id}", owner(h.deleteCategory))
 	mux.Handle("GET /admin/api/content-pages", protect(h.listContentPages))
-	mux.Handle("POST /admin/api/content-pages", protect(h.createContentPage))
+	mux.Handle("POST /admin/api/content-pages", owner(h.createContentPage))
 	mux.Handle("GET /admin/api/content-pages/{id}", protect(h.getContentPage))
-	mux.Handle("PATCH /admin/api/content-pages/{id}", protect(h.updateContentPage))
-	mux.Handle("DELETE /admin/api/content-pages/{id}", protect(h.deleteContentPage))
-	mux.Handle("POST /admin/api/content-pages/generate-footer", protect(h.generateFooterPages))
-	mux.Handle("POST /admin/api/imports/csv/preview", protect(h.previewCSVImport))
-	mux.Handle("POST /admin/api/imports/{id}/execute", protect(h.executeImport))
-	mux.Handle("GET /admin/api/imports/{id}", protect(h.getImport))
+	mux.Handle("PATCH /admin/api/content-pages/{id}", owner(h.updateContentPage))
+	mux.Handle("DELETE /admin/api/content-pages/{id}", owner(h.deleteContentPage))
+	mux.Handle("POST /admin/api/content-pages/generate-footer", owner(h.generateFooterPages))
+	mux.Handle("POST /admin/api/imports/csv/preview", owner(h.previewCSVImport))
+	mux.Handle("POST /admin/api/imports/{id}/execute", owner(h.executeImport))
+	mux.Handle("GET /admin/api/imports/{id}", owner(h.getImport))
 
 	// 媒体上传/列表/删除。
 	mux.Handle("POST /admin/api/products/{id}/media", protect(h.uploadMedia))
@@ -121,61 +151,61 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	// 向导：主攻市场。
 	mux.Handle("GET /admin/api/markets", protect(h.listMarkets))
 	mux.Handle("GET /admin/api/settings/market", protect(h.getMarket))
-	mux.Handle("PUT /admin/api/settings/market", protect(h.setMarket))
+	mux.Handle("PUT /admin/api/settings/market", owner(h.setMarket))
 
 	// 收款设置（Stripe 密钥；sk/whsec 加密存）。
-	mux.Handle("GET /admin/api/settings/payment", protect(h.getPayment))
-	mux.Handle("PUT /admin/api/settings/payment", protect(h.setPayment))
-	mux.Handle("POST /admin/api/settings/payment/stripe/test", protect(h.testStripeConnection))
-	mux.Handle("GET /admin/api/settings/shop", protect(h.getShop))
-	mux.Handle("PUT /admin/api/settings/shop", protect(h.setShop))
-	mux.Handle("POST /admin/api/settings/shop/logo", protect(h.uploadShopLogo))
-	mux.Handle("DELETE /admin/api/settings/shop/logo", protect(h.deleteShopLogo))
-	mux.Handle("GET /admin/api/settings/policy-profile", protect(h.getPolicyProfile))
-	mux.Handle("PUT /admin/api/settings/policy-profile", protect(h.setPolicyProfile))
-	mux.Handle("GET /admin/api/settings/translation", protect(h.getTranslationSettings))
-	mux.Handle("PUT /admin/api/settings/translation", protect(h.setTranslationSettings))
-	mux.Handle("POST /admin/api/translation/text", protect(h.translateText))
+	mux.Handle("GET /admin/api/settings/payment", owner(h.getPayment))
+	mux.Handle("PUT /admin/api/settings/payment", owner(h.setPayment))
+	mux.Handle("POST /admin/api/settings/payment/stripe/test", owner(h.testStripeConnection))
+	mux.Handle("GET /admin/api/settings/shop", owner(h.getShop))
+	mux.Handle("PUT /admin/api/settings/shop", owner(h.setShop))
+	mux.Handle("POST /admin/api/settings/shop/logo", owner(h.uploadShopLogo))
+	mux.Handle("DELETE /admin/api/settings/shop/logo", owner(h.deleteShopLogo))
+	mux.Handle("GET /admin/api/settings/policy-profile", owner(h.getPolicyProfile))
+	mux.Handle("PUT /admin/api/settings/policy-profile", owner(h.setPolicyProfile))
+	mux.Handle("GET /admin/api/settings/translation", owner(h.getTranslationSettings))
+	mux.Handle("PUT /admin/api/settings/translation", owner(h.setTranslationSettings))
+	mux.Handle("POST /admin/api/translation/text", owner(h.translateText))
 
 	// 向导：收款步骤状态 / 跳过。
 	mux.Handle("GET /admin/api/wizard/payment", protect(h.wizardPaymentStatus))
-	mux.Handle("POST /admin/api/wizard/payment/skip", protect(h.wizardPaymentSkip))
+	mux.Handle("POST /admin/api/wizard/payment/skip", owner(h.wizardPaymentSkip))
 
 	// 域名设置（写 settings.domain；env 覆盖时只读）+ 向导域名步骤（M4.2.1）。
-	mux.Handle("GET /admin/api/settings/domain", protect(h.getDomain))
-	mux.Handle("PUT /admin/api/settings/domain", protect(h.setDomain))
+	mux.Handle("GET /admin/api/settings/domain", owner(h.getDomain))
+	mux.Handle("PUT /admin/api/settings/domain", owner(h.setDomain))
 	mux.Handle("GET /admin/api/wizard/domain", protect(h.wizardDomainStatus))
-	mux.Handle("POST /admin/api/wizard/domain/skip", protect(h.wizardDomainSkip))
+	mux.Handle("POST /admin/api/wizard/domain/skip", owner(h.wizardDomainSkip))
 
 	// SMTP 设置（password 加密存；env 覆盖时只读）+ 测试发信 + 向导邮件步骤（M4.3）。
-	mux.Handle("GET /admin/api/settings/smtp", protect(h.getSMTP))
-	mux.Handle("PUT /admin/api/settings/smtp", protect(h.setSMTP))
-	mux.Handle("POST /admin/api/smtp/test", protect(h.smtpTest))
+	mux.Handle("GET /admin/api/settings/smtp", owner(h.getSMTP))
+	mux.Handle("PUT /admin/api/settings/smtp", owner(h.setSMTP))
+	mux.Handle("POST /admin/api/smtp/test", owner(h.smtpTest))
 	mux.Handle("GET /admin/api/wizard/smtp", protect(h.wizardSMTPStatus))
-	mux.Handle("POST /admin/api/wizard/smtp/skip", protect(h.wizardSMTPSkip))
+	mux.Handle("POST /admin/api/wizard/smtp/skip", owner(h.wizardSMTPSkip))
 
 	// 概览首页（登录后默认落点，M4.2.2）。
 	mux.Handle("GET /admin/api/dashboard", protect(h.dashboard))
-	mux.Handle("GET /admin/api/diagnostics", protect(h.diagnostics))
-	mux.Handle("GET /admin/api/settings/backup", protect(h.getBackupSettings))
-	mux.Handle("PUT /admin/api/settings/backup", protect(h.setBackupSettings))
-	mux.Handle("POST /admin/api/settings/backup/test", protect(h.testBackupRemote))
-	mux.Handle("GET /admin/api/export", protect(h.exportData))
-	mux.Handle("GET /admin/api/audit-events", protect(h.listAuditEvents))
+	mux.Handle("GET /admin/api/diagnostics", owner(h.diagnostics))
+	mux.Handle("GET /admin/api/settings/backup", owner(h.getBackupSettings))
+	mux.Handle("PUT /admin/api/settings/backup", owner(h.setBackupSettings))
+	mux.Handle("POST /admin/api/settings/backup/test", owner(h.testBackupRemote))
+	mux.Handle("GET /admin/api/export", owner(h.exportData))
+	mux.Handle("GET /admin/api/audit-events", owner(h.listAuditEvents))
 
 	// 订单 + 退款（M3.3a）。
-	mux.Handle("GET /admin/api/orders", protect(h.listOrders))
-	mux.Handle("GET /admin/api/orders/export", protect(h.exportOrdersCSV))
-	mux.Handle("GET /admin/api/orders/{id}", protect(h.getOrder))
-	mux.Handle("POST /admin/api/orders/{id}/refund", protect(h.refundOrder))
-	mux.Handle("POST /admin/api/orders/{id}/fulfill", protect(h.fulfillOrder))
-	mux.Handle("GET /admin/api/settings/shipping/countries", protect(h.listShippingCountries))
-	mux.Handle("PUT /admin/api/settings/shipping/countries", protect(h.saveShippingCountries))
-	mux.Handle("PUT /admin/api/settings/shipping/default", protect(h.saveDefaultShippingZone))
-	mux.Handle("GET /admin/api/settings/shipping", protect(h.listShippingZones))
-	mux.Handle("POST /admin/api/settings/shipping", protect(h.createShippingZone))
-	mux.Handle("PATCH /admin/api/settings/shipping/{id}", protect(h.updateShippingZone))
-	mux.Handle("DELETE /admin/api/settings/shipping/{id}", protect(h.deleteShippingZone))
+	mux.Handle("GET /admin/api/orders", owner(h.listOrders))
+	mux.Handle("GET /admin/api/orders/export", owner(h.exportOrdersCSV))
+	mux.Handle("GET /admin/api/orders/{id}", owner(h.getOrder))
+	mux.Handle("POST /admin/api/orders/{id}/refund", owner(h.refundOrder))
+	mux.Handle("POST /admin/api/orders/{id}/fulfill", owner(h.fulfillOrder))
+	mux.Handle("GET /admin/api/settings/shipping/countries", owner(h.listShippingCountries))
+	mux.Handle("PUT /admin/api/settings/shipping/countries", owner(h.saveShippingCountries))
+	mux.Handle("PUT /admin/api/settings/shipping/default", owner(h.saveDefaultShippingZone))
+	mux.Handle("GET /admin/api/settings/shipping", owner(h.listShippingZones))
+	mux.Handle("POST /admin/api/settings/shipping", owner(h.createShippingZone))
+	mux.Handle("PATCH /admin/api/settings/shipping/{id}", owner(h.updateShippingZone))
+	mux.Handle("DELETE /admin/api/settings/shipping/{id}", owner(h.deleteShippingZone))
 }
 
 func (h *HTTP) status(w http.ResponseWriter, r *http.Request) {
@@ -184,7 +214,27 @@ func (h *HTTP) status(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "内部错误")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"initialized": init})
+	writeJSON(w, http.StatusOK, map[string]any{"initialized": init, "demo_mode": h.demo.Enabled})
+}
+
+func (h *HTTP) demoSession(w http.ResponseWriter, r *http.Request) {
+	if !h.demo.Enabled {
+		writeErr(w, http.StatusNotFound, "公开演示未启用")
+		return
+	}
+	key := clientIP(r) + "|public-demo"
+	if !h.limiter.allow(key) {
+		writeErr(w, http.StatusTooManyRequests, "演示会话创建过于频繁，请稍后再试")
+		return
+	}
+	sess, err := h.svc.CreateDemoSession(r.Context(), h.demo.SessionTTL)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "内部错误")
+		return
+	}
+	h.setCookie(w, r, sessionCookie, sess.Token, sess.ExpiresAt, true)
+	h.setCookie(w, r, csrfCookie, sess.CSRFToken, sess.ExpiresAt, false)
+	writeJSON(w, http.StatusCreated, map[string]any{"ok": true, "expires_at": sess.ExpiresAt})
 }
 
 func (h *HTTP) setup(w http.ResponseWriter, r *http.Request) {
@@ -238,6 +288,12 @@ func (h *HTTP) login(w http.ResponseWriter, r *http.Request) {
 
 func (h *HTTP) logout(w http.ResponseWriter, r *http.Request) {
 	ac := authFrom(r.Context())
+	if ac.Role == "demo" {
+		if _, err := h.cleanupDemoSession(r.Context(), ac.SessionToken); err != nil {
+			writeErr(w, http.StatusInternalServerError, "清理演示数据失败")
+			return
+		}
+	}
 	if err := h.svc.Logout(r.Context(), ac.SessionToken); err != nil {
 		writeErr(w, http.StatusInternalServerError, "内部错误")
 		return
@@ -253,6 +309,9 @@ func (h *HTTP) recordAudit(r *http.Request, adminID int64, action, targetType, t
 	if h.audit == nil {
 		return
 	}
+	if ac := authFrom(r.Context()); ac != nil && ac.Role == "demo" {
+		return
+	}
 	if err := h.audit.Record(r.Context(), adminID, action, targetType, targetPublicID); err != nil {
 		slog.Error("审计事件写入失败", "action", action, "error", err)
 	}
@@ -260,7 +319,7 @@ func (h *HTTP) recordAudit(r *http.Request, adminID int64, action, targetType, t
 
 func (h *HTTP) me(w http.ResponseWriter, r *http.Request) {
 	ac := authFrom(r.Context())
-	writeJSON(w, http.StatusOK, map[string]any{"username": ac.Username, "public_id": ac.AdminPublicID})
+	writeJSON(w, http.StatusOK, map[string]any{"username": ac.Username, "public_id": ac.AdminPublicID, "role": ac.Role, "demo_mode": h.demo.Enabled, "expires_at": ac.ExpiresAt, "demo_max_products": h.demo.MaxProducts, "demo_max_image_bytes": h.demo.MaxImageBytes})
 }
 
 // secureFor 判定当前请求是否该发 Secure Cookie。
