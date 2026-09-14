@@ -269,6 +269,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock) })
             <RouterLink to="/backup">备份</RouterLink>
             <RouterLink to="/shipping">配送</RouterLink>
             <RouterLink to="/policies">店铺政策</RouterLink>
+            <RouterLink to="/account">账号与安全</RouterLink>
           </div>
         </details>
         <span class="muted">{{ username }}</span>

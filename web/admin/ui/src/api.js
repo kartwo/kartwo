@@ -58,6 +58,8 @@ export const api = {
   demoSession: () => request('POST', '/demo-session'),
   resetDemo: () => request('POST', '/demo/reset'),
   logout: () => request('POST', '/logout'),
+  getAccount: () => request('GET', '/account'),
+  updateAccount: (payload) => request('PUT', '/account', payload),
 
   listProducts: () => request('GET', '/products'),
   getProduct: (id) => request('GET', '/products/' + id),

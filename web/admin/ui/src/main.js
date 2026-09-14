@@ -23,6 +23,7 @@ import Merchandising from './views/Merchandising.vue'
 import CategoryManagement from './views/CategoryManagement.vue'
 import ShippingSettings from './views/ShippingSettings.vue'
 import PolicySettings from './views/PolicySettings.vue'
+import AccountSettings from './views/AccountSettings.vue'
 import './style.css'
 
 const router = createRouter({
@@ -50,6 +51,7 @@ const router = createRouter({
     { path: '/categories', component: CategoryManagement },
     { path: '/shipping', component: ShippingSettings, meta: { demoReadonly: true } },
     { path: '/policies', component: PolicySettings, meta: { demoReadonly: true } },
+    { path: '/account', component: AccountSettings, meta: { demoReadonly: true } },
   ],
 })
 

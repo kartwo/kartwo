@@ -12,6 +12,12 @@ INSERT INTO admin_user (public_id, username, password_hash) VALUES (?, ?, ?);
 -- name: GetAdminUserByUsername :one
 SELECT id, public_id, username, password_hash, role FROM admin_user WHERE username = ?;
 
+-- name: GetAdminUserByID :one
+SELECT id, public_id, username, password_hash, role FROM admin_user WHERE id = ?;
+
+-- name: UpdateOwnerCredentials :execrows
+UPDATE admin_user SET username = ?, password_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND role = 'owner';
+
 -- name: EnsureDemoUser :exec
 INSERT OR IGNORE INTO admin_user (public_id, username, password_hash, role) VALUES (?, ?, ?, 'demo');
 

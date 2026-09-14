@@ -8,3 +8,9 @@ INSERT INTO setting (key, value, encrypted) VALUES (?, ?, ?) ON CONFLICT(key) DO
 
 -- name: GetSetting :one
 SELECT value, encrypted FROM setting WHERE key = ?;
+
+-- name: ListEncryptedSettings :many
+SELECT key, value FROM setting WHERE encrypted = 1 ORDER BY key;
+
+-- name: UpdateEncryptedSettingValue :execrows
+UPDATE setting SET value = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE key = ? AND encrypted = 1;

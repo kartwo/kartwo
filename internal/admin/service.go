@@ -325,9 +325,23 @@ func (v *kekVault) put(token string, kek []byte) {
 func (v *kekVault) delete(token string) bool {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	_, ok := v.m[token]
+	k, ok := v.m[token]
+	for i := range k {
+		k[i] = 0
+	}
 	delete(v.m, token)
 	return ok
+}
+
+func (v *kekVault) clear() {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	for token, k := range v.m {
+		for i := range k {
+			k[i] = 0
+		}
+		delete(v.m, token)
+	}
 }
 
 // Key 返回会话已解锁的 KEK（M3 起消费；未解锁返回 false）。

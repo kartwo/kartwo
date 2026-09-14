@@ -106,6 +106,31 @@ func (q *Queries) EnsureDemoUser(ctx context.Context, arg EnsureDemoUserParams) 
 	return err
 }
 
+const getAdminUserByID = `-- name: GetAdminUserByID :one
+SELECT id, public_id, username, password_hash, role FROM admin_user WHERE id = ?
+`
+
+type GetAdminUserByIDRow struct {
+	ID           int64  `db:"id" json:"id"`
+	PublicID     string `db:"public_id" json:"public_id"`
+	Username     string `db:"username" json:"username"`
+	PasswordHash string `db:"password_hash" json:"password_hash"`
+	Role         string `db:"role" json:"role"`
+}
+
+func (q *Queries) GetAdminUserByID(ctx context.Context, id int64) (GetAdminUserByIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getAdminUserByID, id)
+	var i GetAdminUserByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.Username,
+		&i.PasswordHash,
+		&i.Role,
+	)
+	return i, err
+}
+
 const getAdminUserByUsername = `-- name: GetAdminUserByUsername :one
 SELECT id, public_id, username, password_hash, role FROM admin_user WHERE username = ?
 `
@@ -163,4 +188,22 @@ func (q *Queries) GetSessionByToken(ctx context.Context, arg GetSessionByTokenPa
 		&i.Role,
 	)
 	return i, err
+}
+
+const updateOwnerCredentials = `-- name: UpdateOwnerCredentials :execrows
+UPDATE admin_user SET username = ?, password_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND role = 'owner'
+`
+
+type UpdateOwnerCredentialsParams struct {
+	Username     string `db:"username" json:"username"`
+	PasswordHash string `db:"password_hash" json:"password_hash"`
+	ID           int64  `db:"id" json:"id"`
+}
+
+func (q *Queries) UpdateOwnerCredentials(ctx context.Context, arg UpdateOwnerCredentialsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateOwnerCredentials, arg.Username, arg.PasswordHash, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

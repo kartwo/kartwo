@@ -124,6 +124,111 @@ func TestKEKStableAcrossLogins(t *testing.T) {
 	}
 }
 
+func TestUpdateOwnerCredentialsReencryptsSettingsAndInvalidatesSessions(t *testing.T) {
+	svc := newSvc(t)
+	ctx := context.Background()
+	if err := svc.Initialize(ctx, "admin", "old-password"); err != nil {
+		t.Fatalf("初始化失败: %v", err)
+	}
+	s1, err := svc.Login(ctx, "admin", "old-password")
+	if err != nil {
+		t.Fatalf("首次登录失败: %v", err)
+	}
+	s2, err := svc.Login(ctx, "admin", "old-password")
+	if err != nil {
+		t.Fatalf("第二次登录失败: %v", err)
+	}
+	oldKEK, ok := svc.Key(s1.Token)
+	if !ok {
+		t.Fatal("旧会话应持有 KEK")
+	}
+	oldKEKCopy := append([]byte(nil), oldKEK...)
+	settingsSvc := settings.New(svc.db)
+	if err := settingsSvc.SetEncrypted(ctx, "test.secret.one", []byte("secret-value"), oldKEK); err != nil {
+		t.Fatalf("写入加密设置失败: %v", err)
+	}
+	ac, err := svc.Authenticate(ctx, s1.Token)
+	if err != nil {
+		t.Fatalf("读取当前身份失败: %v", err)
+	}
+	changed, err := svc.UpdateOwnerCredentials(ctx, ac.AdminID, "new-admin", "old-password", "new-password")
+	if err != nil || !changed {
+		t.Fatalf("同时修改用户名和密码失败: changed=%v err=%v", changed, err)
+	}
+	for _, token := range []string{s1.Token, s2.Token} {
+		if _, err := svc.Authenticate(ctx, token); !errors.Is(err, ErrUnauthorized) {
+			t.Fatalf("更新后旧会话必须失效: %v", err)
+		}
+		if _, ok := svc.Key(token); ok {
+			t.Fatal("更新后内存金库不得保留旧会话 KEK")
+		}
+	}
+	if _, err := svc.Login(ctx, "admin", "old-password"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("旧用户名不得继续登录: %v", err)
+	}
+	if _, err := svc.Login(ctx, "new-admin", "old-password"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("旧密码不得继续登录: %v", err)
+	}
+	newSession, err := svc.Login(ctx, "new-admin", "new-password")
+	if err != nil {
+		t.Fatalf("新凭据登录失败: %v", err)
+	}
+	newKEK, ok := svc.Key(newSession.Token)
+	if !ok {
+		t.Fatal("新会话应持有新 KEK")
+	}
+	plaintext, err := settingsSvc.GetEncrypted(ctx, "test.secret.one", newKEK)
+	if err != nil || string(plaintext) != "secret-value" {
+		t.Fatalf("新密码应能解密原配置: plaintext=%q err=%v", plaintext, err)
+	}
+	if _, err := settingsSvc.GetEncrypted(ctx, "test.secret.one", oldKEKCopy); err == nil {
+		t.Fatal("旧密码派生的 KEK 不应再能解密配置")
+	}
+}
+
+func TestUpdateOwnerCredentialsRollsBackWhenEncryptedSettingIsDamaged(t *testing.T) {
+	svc := newSvc(t)
+	ctx := context.Background()
+	if err := svc.Initialize(ctx, "admin", "old-password"); err != nil {
+		t.Fatalf("初始化失败: %v", err)
+	}
+	session, err := svc.Login(ctx, "admin", "old-password")
+	if err != nil {
+		t.Fatalf("登录失败: %v", err)
+	}
+	oldKEK, ok := svc.Key(session.Token)
+	if !ok {
+		t.Fatal("旧会话应持有 KEK")
+	}
+	settingsSvc := settings.New(svc.db)
+	if err := settingsSvc.SetEncrypted(ctx, "test.secret.valid", []byte("still-safe"), oldKEK); err != nil {
+		t.Fatalf("写入有效加密设置失败: %v", err)
+	}
+	if _, err := svc.db.ExecContext(ctx, `INSERT INTO setting (key, value, encrypted) VALUES (?, ?, 1)`, "test.secret.damaged", "not-ciphertext"); err != nil {
+		t.Fatalf("构造损坏密文失败: %v", err)
+	}
+	ac, err := svc.Authenticate(ctx, session.Token)
+	if err != nil {
+		t.Fatalf("读取当前身份失败: %v", err)
+	}
+	if _, err := svc.UpdateOwnerCredentials(ctx, ac.AdminID, "new-admin", "old-password", "new-password"); err == nil {
+		t.Fatal("存在损坏密文时必须拒绝并回滚账号更新")
+	}
+	if _, err := svc.Authenticate(ctx, session.Token); err != nil {
+		t.Fatalf("回滚后原会话仍应有效: %v", err)
+	}
+	if _, err := svc.Login(ctx, "admin", "old-password"); err != nil {
+		t.Fatalf("回滚后原凭据仍应有效: %v", err)
+	}
+	if _, err := svc.Login(ctx, "new-admin", "new-password"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("回滚后新凭据不得生效: %v", err)
+	}
+	plaintext, err := settingsSvc.GetEncrypted(ctx, "test.secret.valid", oldKEK)
+	if err != nil || string(plaintext) != "still-safe" {
+		t.Fatalf("回滚后原加密配置必须保持可读: plaintext=%q err=%v", plaintext, err)
+	}
+}
+
 // TestConfigSurvivesRestartAndRelogin 回归护栏：加密配置必须跨进程重启 + 重新登录持久存活。
 // 信任关键路径——商家重启服务、重新登录，收款密钥等加密设置不得丢失；错误口令则绝不吐明文。
 // 流程：初始化(生成并存 KEK 盐)→登录派生 KEK→加密落库收款密钥→关库(丢弃内存 KEK，模拟进程退出)
@@ -275,6 +380,49 @@ func TestHTTPShopNameRemainsEditableWithEnvFallbackAndLogoLifecycle(t *testing.T
 	deleted := doJSON(t, mux, "DELETE", "/admin/api/settings/shop/logo", "", auth, csrf)
 	if deleted.StatusCode != http.StatusOK || !bytes.Contains(deleted.Body, []byte(`"logo_url":""`)) {
 		t.Fatalf("删除 Logo 失败: %d %s", deleted.StatusCode, deleted.Body)
+	}
+}
+
+func TestHTTPUpdateAccountSignsOutAndAudits(t *testing.T) {
+	_, mux := newHTTP(t)
+	session, csrf := loginAndCookies(t, mux)
+	cookies := []*http.Cookie{session}
+
+	account := doJSON(t, mux, http.MethodGet, "/admin/api/account", "", cookies, "")
+	if account.StatusCode != http.StatusOK || !bytes.Contains(account.Body, []byte(`"username":"admin"`)) || !bytes.Contains(account.Body, []byte(`"readonly":false`)) {
+		t.Fatalf("读取账号设置失败: %d %s", account.StatusCode, account.Body)
+	}
+	wrong := doJSON(t, mux, http.MethodPut, "/admin/api/account", `{"username":"new-admin","current_password":"wrong","new_password":"new-password"}`, cookies, csrf)
+	if wrong.StatusCode != http.StatusForbidden {
+		t.Fatalf("当前密码错误应拒绝: %d %s", wrong.StatusCode, wrong.Body)
+	}
+	updated := doJSON(t, mux, http.MethodPut, "/admin/api/account", `{"username":"new-admin","current_password":"supersecret","new_password":"new-password"}`, cookies, csrf)
+	if updated.StatusCode != http.StatusOK || !bytes.Contains(updated.Body, []byte(`"signed_out":true`)) || bytes.Contains(updated.Body, []byte("new-password")) {
+		t.Fatalf("更新账号响应异常: %d %s", updated.StatusCode, updated.Body)
+	}
+	clearedSession := false
+	clearedCSRF := false
+	for _, cookie := range updated.Cookies {
+		if cookie.Name == sessionCookie && cookie.MaxAge < 0 {
+			clearedSession = true
+		}
+		if cookie.Name == csrfCookie && cookie.MaxAge < 0 {
+			clearedCSRF = true
+		}
+	}
+	if !clearedSession || !clearedCSRF {
+		t.Fatalf("更新账号后必须清除登录 Cookie: session=%v csrf=%v", clearedSession, clearedCSRF)
+	}
+	if me := doJSON(t, mux, http.MethodGet, "/admin/api/me", "", cookies, ""); me.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("更新账号后旧会话应失效: %d %s", me.StatusCode, me.Body)
+	}
+	login := doJSON(t, mux, http.MethodPost, "/admin/api/login", `{"username":"new-admin","password":"new-password"}`, nil, "")
+	if login.StatusCode != http.StatusOK {
+		t.Fatalf("新凭据登录失败: %d %s", login.StatusCode, login.Body)
+	}
+	audit := doJSON(t, mux, http.MethodGet, "/admin/api/audit-events", "", login.Cookies, "")
+	if audit.StatusCode != http.StatusOK || !bytes.Contains(audit.Body, []byte(`"action":"account.credentials_update"`)) {
+		t.Fatalf("账号更新应留下审计记录: %d %s", audit.StatusCode, audit.Body)
 	}
 }
 
@@ -862,7 +1010,7 @@ func TestPublicDemoSessionEnforcesOwnershipQuotaAndOwnerOnlyRoutes(t *testing.T)
 		VALUES ('demo-order-sensitive', (SELECT id FROM customer WHERE public_id='demo-customer'), 'pending', 'private@example.com', 'Private Name', '123456789', 'Private Address', 'US', 'USD', 1000, 1000)`); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/admin/api/diagnostics", "/admin/api/audit-events", "/admin/api/orders", "/admin/api/settings/shop", "/admin/api/settings/domain", "/admin/api/settings/translation", "/admin/api/settings/shipping/countries", "/admin/api/settings/shipping"} {
+	for _, path := range []string{"/admin/api/diagnostics", "/admin/api/audit-events", "/admin/api/orders", "/admin/api/account", "/admin/api/settings/shop", "/admin/api/settings/domain", "/admin/api/settings/translation", "/admin/api/settings/shipping/countries", "/admin/api/settings/shipping"} {
 		view := doJSON(t, mux, http.MethodGet, path, "", demo, "")
 		if view.StatusCode != http.StatusOK {
 			t.Fatalf("演示身份只读访问 %s 应成功: %d %s", path, view.StatusCode, view.Body)
@@ -882,6 +1030,9 @@ func TestPublicDemoSessionEnforcesOwnershipQuotaAndOwnerOnlyRoutes(t *testing.T)
 	}
 	if denied := doJSON(t, mux, http.MethodPut, "/admin/api/settings/shop", `{"name":"Attacked"}`, demo, demoCSRF); denied.StatusCode != http.StatusForbidden {
 		t.Fatalf("演示身份修改设置应 403: %d %s", denied.StatusCode, denied.Body)
+	}
+	if denied := doJSON(t, mux, http.MethodPut, "/admin/api/account", `{"username":"attacker","current_password":"x","new_password":"new-password"}`, demo, demoCSRF); denied.StatusCode != http.StatusForbidden {
+		t.Fatalf("演示身份修改管理员账号应 403: %d %s", denied.StatusCode, denied.Body)
 	}
 	if denied := doJSON(t, mux, http.MethodGet, "/admin/api/export", "", demo, ""); denied.StatusCode != http.StatusForbidden {
 		t.Fatalf("演示身份执行数据导出应 403: %d %s", denied.StatusCode, denied.Body)

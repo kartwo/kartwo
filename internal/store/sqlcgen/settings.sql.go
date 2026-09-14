@@ -25,6 +25,55 @@ func (q *Queries) GetSetting(ctx context.Context, key string) (GetSettingRow, er
 	return i, err
 }
 
+const listEncryptedSettings = `-- name: ListEncryptedSettings :many
+SELECT key, value FROM setting WHERE encrypted = 1 ORDER BY key
+`
+
+type ListEncryptedSettingsRow struct {
+	Key   string `db:"key" json:"key"`
+	Value string `db:"value" json:"value"`
+}
+
+func (q *Queries) ListEncryptedSettings(ctx context.Context) ([]ListEncryptedSettingsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listEncryptedSettings)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEncryptedSettingsRow{}
+	for rows.Next() {
+		var i ListEncryptedSettingsRow
+		if err := rows.Scan(&i.Key, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateEncryptedSettingValue = `-- name: UpdateEncryptedSettingValue :execrows
+UPDATE setting SET value = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE key = ? AND encrypted = 1
+`
+
+type UpdateEncryptedSettingValueParams struct {
+	Value string `db:"value" json:"value"`
+	Key   string `db:"key" json:"key"`
+}
+
+func (q *Queries) UpdateEncryptedSettingValue(ctx context.Context, arg UpdateEncryptedSettingValueParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateEncryptedSettingValue, arg.Value, arg.Key)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const upsertSetting = `-- name: UpsertSetting :exec
 
 INSERT INTO setting (key, value, encrypted) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, encrypted = excluded.encrypted, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')

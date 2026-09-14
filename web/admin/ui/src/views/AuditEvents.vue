@@ -42,6 +42,7 @@ function describe(event) {
     'shipping_zone.create': '新增特殊配送规则',
     'shipping_zone.update': '更新特殊配送规则',
     'shipping_zone.delete': '删除特殊配送规则',
+    'account.credentials_update': '更新管理员账号',
   }
   return labels[event.action] || event.action
 }

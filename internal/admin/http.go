@@ -116,6 +116,8 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("POST /admin/api/logout", h.requireAuth(http.HandlerFunc(h.logout)))
 	mux.Handle("GET /admin/api/me", h.requireAuth(http.HandlerFunc(h.me)))
 	mux.Handle("POST /admin/api/demo/reset", h.requireAuth(http.HandlerFunc(h.resetDemo)))
+	mux.Handle("GET /admin/api/account", h.requireAuth(http.HandlerFunc(h.getAccount)))
+	mux.Handle("PUT /admin/api/account", h.requireOwner(http.HandlerFunc(h.updateAccount)))
 
 	// 商品/分类/变体 CRUD（均需鉴权；写操作经中间件 CSRF 校验）。
 	protect := func(fn http.HandlerFunc) http.Handler { return h.requireAuth(fn) }
