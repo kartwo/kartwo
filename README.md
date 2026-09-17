@@ -17,6 +17,18 @@
 - 演示店面：[https://www.kartwo.com/](https://www.kartwo.com/)
 - 演示后台：[https://www.kartwo.com/admin/](https://www.kartwo.com/admin/)
 
+### 演示店面
+
+<p align="center">
+  <a href="https://www.kartwo.com/"><img src="assets/readme/demo-storefront.webp" alt="Kartwo 英文演示店面首页" width="760"></a>
+</p>
+
+### 演示后台
+
+<p align="center">
+  <a href="https://www.kartwo.com/admin/"><img src="assets/readme/demo-admin.webp" alt="Kartwo 中文演示后台首页" width="900"></a>
+</p>
+
 演示后台无需账号或密码，打开后点击“进入公开演示”即可体验。每个访客会获得一段相互隔离的 45 分钟会话，可以浏览完整后台，并新建最多 3 个临时草稿商品；示例商品和关键配置受到保护，收款、邮件、备份及顾客资料等敏感信息会被隐藏，修改关键配置、订单操作、导入和导出会由服务端拒绝。退出、手动重置或会话过期后，临时商品及其图片会被自动清理。
 
 公开演示仅用于产品体验，请勿输入真实顾客资料、支付密钥或其他敏感信息。
