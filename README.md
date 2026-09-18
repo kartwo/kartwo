@@ -6,7 +6,7 @@
 
 ## 当前版本
 
-`v0.6.0-beta.1` 是首个公开开源测试版，可完整完成开店、上架、收款、发货与内容运营，但仍是 **beta**，建议先在测试店或小流量店铺验证并保持自动备份。
+当前正式版本：`v0.6.0`。
 
 - Linux x86_64：发布流水线在干净数据目录实跑迁移、20 件演示商品、店面、后台与健康检查。
 - Linux ARM64、macOS Apple Silicon、Windows x86_64：编译产出，尚未逐平台人工实跑。
@@ -48,7 +48,7 @@
 
 ## 下载与快速体验
 
-从 [GitHub Releases](https://github.com/kartwo/kartwo/releases) 下载 `v0.6.0-beta.1` 对应平台文件和 `SHA256SUMS.txt`。
+从 [GitHub Releases](https://github.com/kartwo/kartwo/releases) 下载 `v0.6.0` 对应平台文件和 `SHA256SUMS.txt`。
 
 | 平台 | 文件 | 状态 |
 |---|---|---|
