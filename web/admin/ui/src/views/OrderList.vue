@@ -8,6 +8,7 @@ import { useToast } from '../toast.js'
 
 const router = useRouter()
 const onUnauthorized = inject('onUnauthorized')
+const accountRole = inject('accountRole', ref('owner'))
 const toast = useToast()
 const orders = ref([])
 const err = ref('')
@@ -56,7 +57,7 @@ onMounted(load)
   <div class="container">
     <div class="title-row">
       <h2>订单</h2>
-      <div class="export-actions">
+      <div v-if="accountRole !== 'staff'" class="export-actions">
         <select v-model="exportFilter.status" aria-label="导出订单状态">
           <option value="">全部状态</option><option value="pending">待付款</option><option value="paid">已付款</option><option value="fulfilled">已发货</option><option value="refunded">已退款</option><option value="cancelled">已取消</option>
         </select>

@@ -10,6 +10,8 @@ import ErrorState from '../components/ErrorState.vue'
 const route = useRoute()
 const router = useRouter()
 const onUnauthorized = inject('onUnauthorized')
+const accountRole = inject('accountRole', ref('owner'))
+const accountPermissions = inject('accountPermissions', ref([]))
 const toast = useToast()
 const o = ref(null)
 const err = ref('') // 仅页级：订单加载失败 / 404「订单不存在」的常驻错误（D2 保留 inline）
@@ -96,11 +98,12 @@ onMounted(load)
       </template>
 
       <div class="spacer"></div>
-      <div v-if="o.status === 'paid'" class="panel"><h3>发货与追踪</h3><input v-model="shipment.carrier" placeholder="承运商，例如 DHL"/><input v-model="shipment.tracking_number" placeholder="运单号"/><input v-model="shipment.tracking_url" placeholder="追踪链接（可选，https://）"/><button class="primary" :disabled="busy" @click="fulfill">确认发货</button></div>
-      <button v-if="o.status === 'paid'" class="danger" :disabled="busy" @click="refund">
+      <div v-if="o.status === 'paid' && (accountRole !== 'staff' || accountPermissions.includes('orders.fulfill'))" class="panel"><h3>发货与追踪</h3><input v-model="shipment.carrier" placeholder="承运商，例如 DHL"/><input v-model="shipment.tracking_number" placeholder="运单号"/><input v-model="shipment.tracking_url" placeholder="追踪链接（可选，https://）"/><button class="primary" :disabled="busy" @click="fulfill">确认发货</button></div>
+      <button v-if="o.status === 'paid' && accountRole !== 'staff'" class="danger" :disabled="busy" @click="refund">
         {{ busy ? '退款中…' : '整单全额退款' }}
       </button>
       <p v-else-if="o.status === 'refunded'" class="muted">该订单已退款。</p>
+      <p v-else-if="accountRole === 'staff'" class="muted">退款仅限店主操作。</p>
       <p v-else class="muted">仅「已付款」订单可退款。</p>
     </template>
   </div>

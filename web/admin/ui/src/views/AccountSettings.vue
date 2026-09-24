@@ -15,6 +15,7 @@ const loading = ref(true)
 const busy = ref(false)
 const err = ref('')
 const readonly = ref(false)
+const accountRole = inject('accountRole', ref('owner'))
 const form = ref({ username: '', current_password: '', new_password: '', confirm_password: '' })
 
 async function load() {
@@ -31,16 +32,18 @@ async function load() {
 }
 
 async function save() {
-  if (busy.value || readonly.value) return
+  if (busy.value || (readonly.value && accountRole.value !== 'staff')) return
   const username = form.value.username.trim()
-  if (!username) return toast.error('请输入管理员用户名。')
+  if (accountRole.value === 'owner' && !username) return toast.error('请输入管理员用户名。')
   if (!form.value.current_password) return toast.error('请输入当前密码确认身份。')
+  if (accountRole.value === 'staff' && !form.value.new_password) return toast.error('请输入新密码。')
   if (form.value.new_password && form.value.new_password.length < 8) return toast.error('新密码至少 8 位。')
   if (form.value.new_password !== form.value.confirm_password) return toast.error('两次输入的新密码不一致。')
 
   busy.value = true
   try {
-    await api.updateAccount({
+    if (accountRole.value === 'staff') await api.updateStaffPassword({ current_password: form.value.current_password, new_password: form.value.new_password })
+    else await api.updateAccount({
       username,
       current_password: form.value.current_password,
       new_password: form.value.new_password,
@@ -59,26 +62,26 @@ onMounted(load)
 <template>
   <div class="account-page">
     <h2>账号与安全</h2>
-    <p class="muted">修改后台管理员用户名或密码。保存成功后，所有已登录的后台会话都会退出。</p>
+    <p class="muted">{{ accountRole === 'staff' ? '修改自己的登录密码，不影响店主主口令及收款配置。' : '修改后台管理员用户名或密码。保存成功后，所有已登录的后台会话都会退出。' }}</p>
     <ErrorState v-if="err" :message="err" :retry="load" />
     <section v-else class="panel card">
-      <p v-if="readonly" class="readonly-note">公开演示仅展示账号安全设置，管理员身份信息已隐藏且不可修改。</p>
+      <p v-if="readonly && accountRole === 'demo'" class="readonly-note">公开演示仅展示账号安全设置，管理员身份信息已隐藏且不可修改。</p>
       <label for="account-username">管理员用户名</label>
       <input id="account-username" v-model="form.username" maxlength="64" autocomplete="username" :disabled="loading || readonly" />
 
-      <template v-if="!readonly">
+      <template v-if="!readonly || accountRole === 'staff'">
         <label for="account-current-password">当前密码</label>
         <input id="account-current-password" v-model="form.current_password" type="password" autocomplete="current-password" />
-        <p class="muted hint">修改用户名或密码都必须输入当前密码。</p>
+        <p class="muted hint">{{ accountRole === 'staff' ? '员工只能修改自己的密码。' : '修改用户名或密码都必须输入当前密码。' }}</p>
 
-        <label for="account-new-password">新密码（可选）</label>
+        <label for="account-new-password">新密码{{ accountRole === 'staff' ? '' : '（可选）' }}</label>
         <input id="account-new-password" v-model="form.new_password" type="password" minlength="8" autocomplete="new-password" />
-        <p class="muted hint">留空表示只修改用户名；新密码至少 8 位。</p>
+        <p class="muted hint">{{ accountRole === 'staff' ? '新密码至少 8 位。' : '留空表示只修改用户名；新密码至少 8 位。' }}</p>
 
         <label for="account-confirm-password">确认新密码</label>
         <input id="account-confirm-password" v-model="form.confirm_password" type="password" autocomplete="new-password" @keyup.enter="save" />
 
-        <div class="security-warning">
+        <div v-if="accountRole === 'owner'" class="security-warning">
           <strong>请妥善保存新密码。</strong>
           <span>它同时保护后台登录和收款、邮件等加密配置；遗忘后无法恢复这些加密凭据。</span>
         </div>

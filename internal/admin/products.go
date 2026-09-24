@@ -72,6 +72,10 @@ func (h *HTTP) createProduct(w http.ResponseWriter, r *http.Request) {
 		}
 		in.Status = "draft"
 	}
+	if ac.Role == "staff" && !ac.Permissions["products.publish"] && in.Status != "draft" {
+		writeErr(w, http.StatusForbidden, "当前角色只能创建草稿商品")
+		return
+	}
 	for _, o := range req.Options {
 		in.Options = append(in.Options, catalog.OptionInput{Name: o.Name, Values: o.Values})
 	}
@@ -196,6 +200,17 @@ func (h *HTTP) updateProduct(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req.Status = "draft"
+	}
+	if ac := authFrom(r.Context()); ac.Role == "staff" && !ac.Permissions["products.publish"] {
+		current, err := h.cat.GetProduct(r.Context(), r.PathValue("id"))
+		if err != nil {
+			h.writeCatalogErr(w, err)
+			return
+		}
+		if req.Status != current.Status {
+			writeErr(w, http.StatusForbidden, "当前角色不能更改商品上架状态")
+			return
+		}
 	}
 	if err := h.cat.UpdateProductContentAndCategories(r.Context(), r.PathValue("id"), req.Title, req.TitleZH, req.Description, req.SEODescription, req.SEODescriptionZH, req.Status, req.CategoryPublicIDs); err != nil {
 		h.writeCatalogErr(w, err)

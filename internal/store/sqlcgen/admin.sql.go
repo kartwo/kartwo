@@ -7,11 +7,12 @@ package sqlcgen
 
 import (
 	"context"
+	"database/sql"
 )
 
 const countAdminUsers = `-- name: CountAdminUsers :one
 
-SELECT COUNT(*) FROM admin_user WHERE role = 'owner'
+SELECT COUNT(*) FROM admin_user WHERE account_type = 'owner'
 `
 
 // Admin & Session Queries
@@ -92,7 +93,7 @@ func (q *Queries) DeleteSessionsByAdmin(ctx context.Context, adminID int64) erro
 }
 
 const ensureDemoUser = `-- name: EnsureDemoUser :exec
-INSERT OR IGNORE INTO admin_user (public_id, username, password_hash, role) VALUES (?, ?, ?, 'demo')
+INSERT OR IGNORE INTO admin_user (public_id, username, password_hash, role, account_type) VALUES (?, ?, ?, 'demo', 'demo')
 `
 
 type EnsureDemoUserParams struct {
@@ -107,15 +108,17 @@ func (q *Queries) EnsureDemoUser(ctx context.Context, arg EnsureDemoUserParams) 
 }
 
 const getAdminUserByID = `-- name: GetAdminUserByID :one
-SELECT id, public_id, username, password_hash, role FROM admin_user WHERE id = ?
+SELECT id, public_id, username, password_hash, account_type AS role, role_id, disabled_at FROM admin_user WHERE id = ?
 `
 
 type GetAdminUserByIDRow struct {
-	ID           int64  `db:"id" json:"id"`
-	PublicID     string `db:"public_id" json:"public_id"`
-	Username     string `db:"username" json:"username"`
-	PasswordHash string `db:"password_hash" json:"password_hash"`
-	Role         string `db:"role" json:"role"`
+	ID           int64          `db:"id" json:"id"`
+	PublicID     string         `db:"public_id" json:"public_id"`
+	Username     string         `db:"username" json:"username"`
+	PasswordHash string         `db:"password_hash" json:"password_hash"`
+	Role         string         `db:"role" json:"role"`
+	RoleID       sql.NullInt64  `db:"role_id" json:"role_id"`
+	DisabledAt   sql.NullString `db:"disabled_at" json:"disabled_at"`
 }
 
 func (q *Queries) GetAdminUserByID(ctx context.Context, id int64) (GetAdminUserByIDRow, error) {
@@ -127,20 +130,24 @@ func (q *Queries) GetAdminUserByID(ctx context.Context, id int64) (GetAdminUserB
 		&i.Username,
 		&i.PasswordHash,
 		&i.Role,
+		&i.RoleID,
+		&i.DisabledAt,
 	)
 	return i, err
 }
 
 const getAdminUserByUsername = `-- name: GetAdminUserByUsername :one
-SELECT id, public_id, username, password_hash, role FROM admin_user WHERE username = ?
+SELECT id, public_id, username, password_hash, account_type AS role, role_id, disabled_at FROM admin_user WHERE username = ?
 `
 
 type GetAdminUserByUsernameRow struct {
-	ID           int64  `db:"id" json:"id"`
-	PublicID     string `db:"public_id" json:"public_id"`
-	Username     string `db:"username" json:"username"`
-	PasswordHash string `db:"password_hash" json:"password_hash"`
-	Role         string `db:"role" json:"role"`
+	ID           int64          `db:"id" json:"id"`
+	PublicID     string         `db:"public_id" json:"public_id"`
+	Username     string         `db:"username" json:"username"`
+	PasswordHash string         `db:"password_hash" json:"password_hash"`
+	Role         string         `db:"role" json:"role"`
+	RoleID       sql.NullInt64  `db:"role_id" json:"role_id"`
+	DisabledAt   sql.NullString `db:"disabled_at" json:"disabled_at"`
 }
 
 func (q *Queries) GetAdminUserByUsername(ctx context.Context, username string) (GetAdminUserByUsernameRow, error) {
@@ -152,12 +159,16 @@ func (q *Queries) GetAdminUserByUsername(ctx context.Context, username string) (
 		&i.Username,
 		&i.PasswordHash,
 		&i.Role,
+		&i.RoleID,
+		&i.DisabledAt,
 	)
 	return i, err
 }
 
 const getSessionByToken = `-- name: GetSessionByToken :one
-SELECT s.token, s.admin_id, s.csrf_token, s.expires_at, a.username, a.public_id, a.role FROM session s JOIN admin_user a ON a.id = s.admin_id WHERE s.token = ? AND s.expires_at > ?
+SELECT s.token, s.admin_id, s.csrf_token, s.expires_at, a.username, a.public_id, a.account_type AS role, a.role_id
+FROM session s JOIN admin_user a ON a.id = s.admin_id
+WHERE s.token = ? AND s.expires_at > ? AND a.disabled_at IS NULL
 `
 
 type GetSessionByTokenParams struct {
@@ -166,13 +177,14 @@ type GetSessionByTokenParams struct {
 }
 
 type GetSessionByTokenRow struct {
-	Token     string `db:"token" json:"token"`
-	AdminID   int64  `db:"admin_id" json:"admin_id"`
-	CsrfToken string `db:"csrf_token" json:"csrf_token"`
-	ExpiresAt string `db:"expires_at" json:"expires_at"`
-	Username  string `db:"username" json:"username"`
-	PublicID  string `db:"public_id" json:"public_id"`
-	Role      string `db:"role" json:"role"`
+	Token     string        `db:"token" json:"token"`
+	AdminID   int64         `db:"admin_id" json:"admin_id"`
+	CsrfToken string        `db:"csrf_token" json:"csrf_token"`
+	ExpiresAt string        `db:"expires_at" json:"expires_at"`
+	Username  string        `db:"username" json:"username"`
+	PublicID  string        `db:"public_id" json:"public_id"`
+	Role      string        `db:"role" json:"role"`
+	RoleID    sql.NullInt64 `db:"role_id" json:"role_id"`
 }
 
 func (q *Queries) GetSessionByToken(ctx context.Context, arg GetSessionByTokenParams) (GetSessionByTokenRow, error) {
@@ -186,12 +198,13 @@ func (q *Queries) GetSessionByToken(ctx context.Context, arg GetSessionByTokenPa
 		&i.Username,
 		&i.PublicID,
 		&i.Role,
+		&i.RoleID,
 	)
 	return i, err
 }
 
 const updateOwnerCredentials = `-- name: UpdateOwnerCredentials :execrows
-UPDATE admin_user SET username = ?, password_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND role = 'owner'
+UPDATE admin_user SET username = ?, password_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND account_type = 'owner'
 `
 
 type UpdateOwnerCredentialsParams struct {

@@ -115,6 +115,7 @@ type AuthContext struct {
 	SessionToken  string
 	CSRFToken     string
 	Role          string
+	Permissions   map[string]bool
 	ExpiresAt     time.Time
 }
 
@@ -177,7 +178,7 @@ func (s *Service) Login(ctx context.Context, username, password string) (*Sessio
 	} else if err != nil {
 		return nil, fmt.Errorf("admin: 取管理员失败: %w", err)
 	}
-	if user.Role != "owner" {
+	if user.Role == "demo" || user.DisabledAt.Valid || user.PasswordHash == "invite-pending" {
 		return nil, ErrInvalidCredentials
 	}
 
@@ -189,10 +190,15 @@ func (s *Service) Login(ctx context.Context, username, password string) (*Sessio
 		return nil, ErrInvalidCredentials
 	}
 
-	// 口令正确 → 派生 KEK（证明可解锁配置），仅入内存金库。
-	kek, err := s.deriveKEK(ctx, password)
-	if err != nil {
-		return nil, err
+	// 只有店主口令参与店铺密钥派生。员工口令仅用于登录。
+	var kek []byte
+	if user.Role == "owner" {
+		kek, err = s.deriveKEK(ctx, password)
+		if err != nil {
+			return nil, err
+		}
+	} else if user.Role != "staff" || !user.RoleID.Valid {
+		return nil, ErrInvalidCredentials
 	}
 
 	token, err := randToken()
@@ -209,14 +215,17 @@ func (s *Service) Login(ctx context.Context, username, password string) (*Sessio
 	}); err != nil {
 		return nil, fmt.Errorf("admin: 建会话失败: %w", err)
 	}
-	s.vault.put(token, kek)
+	if user.Role == "owner" {
+		s.vault.put(token, kek)
+	}
 	// 解锁收款密钥 + SMTP 凭证缓存（绑定 KEK 金库生命周期）。失败不阻断登录——各设置页/诊断会提示。
-	if s.keys != nil {
+	if user.Role == "owner" && s.keys != nil {
 		_ = s.keys.Unlock(ctx, kek)
 	}
-	if s.mailKeys != nil {
+	if user.Role == "owner" && s.mailKeys != nil {
 		_ = s.mailKeys.Unlock(ctx, kek)
 	}
+	_, _ = s.db.ExecContext(ctx, "UPDATE admin_user SET last_login_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?", user.ID)
 	return &Session{Token: token, CSRFToken: csrf, ExpiresAt: expires, AdminID: user.ID, AdminPublicID: user.PublicID, Role: user.Role}, nil
 }
 
@@ -265,9 +274,23 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*AuthContext,
 	if err != nil {
 		return nil, fmt.Errorf("admin: 解析会话有效期失败: %w", err)
 	}
+	permissions := map[string]bool{}
+	if row.Role == "staff" {
+		if !row.RoleID.Valid {
+			return nil, ErrUnauthorized
+		}
+		var raw string
+		if err := s.db.QueryRowContext(ctx, "SELECT permissions FROM admin_role WHERE id = ?", row.RoleID.Int64).Scan(&raw); err != nil {
+			return nil, ErrUnauthorized
+		}
+		permissions, err = parsePermissions(raw)
+		if err != nil {
+			return nil, fmt.Errorf("admin: 角色权限格式非法: %w", err)
+		}
+	}
 	return &AuthContext{
 		AdminID: row.AdminID, Username: row.Username, AdminPublicID: row.PublicID,
-		SessionToken: row.Token, CSRFToken: row.CsrfToken, Role: row.Role, ExpiresAt: expires,
+		SessionToken: row.Token, CSRFToken: row.CsrfToken, Role: row.Role, Permissions: permissions, ExpiresAt: expires,
 	}, nil
 }
 

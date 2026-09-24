@@ -8,24 +8,49 @@ import (
 	"database/sql"
 )
 
+type AdminInvite struct {
+	ID         int64          `db:"id" json:"id"`
+	TokenHash  string         `db:"token_hash" json:"token_hash"`
+	AdminID    int64          `db:"admin_id" json:"admin_id"`
+	ExpiresAt  string         `db:"expires_at" json:"expires_at"`
+	ConsumedAt sql.NullString `db:"consumed_at" json:"consumed_at"`
+	CreatedAt  string         `db:"created_at" json:"created_at"`
+}
+
+type AdminRole struct {
+	ID          int64          `db:"id" json:"id"`
+	PublicID    string         `db:"public_id" json:"public_id"`
+	Name        string         `db:"name" json:"name"`
+	Permissions string         `db:"permissions" json:"permissions"`
+	SystemKey   sql.NullString `db:"system_key" json:"system_key"`
+	CreatedAt   string         `db:"created_at" json:"created_at"`
+	UpdatedAt   string         `db:"updated_at" json:"updated_at"`
+}
+
 type AdminUser struct {
-	ID           int64  `db:"id" json:"id"`
-	PublicID     string `db:"public_id" json:"public_id"`
-	Username     string `db:"username" json:"username"`
-	PasswordHash string `db:"password_hash" json:"password_hash"`
-	CreatedAt    string `db:"created_at" json:"created_at"`
-	UpdatedAt    string `db:"updated_at" json:"updated_at"`
-	Role         string `db:"role" json:"role"`
+	ID           int64          `db:"id" json:"id"`
+	PublicID     string         `db:"public_id" json:"public_id"`
+	Username     string         `db:"username" json:"username"`
+	PasswordHash string         `db:"password_hash" json:"password_hash"`
+	CreatedAt    string         `db:"created_at" json:"created_at"`
+	UpdatedAt    string         `db:"updated_at" json:"updated_at"`
+	Role         string         `db:"role" json:"role"`
+	AccountType  string         `db:"account_type" json:"account_type"`
+	RoleID       sql.NullInt64  `db:"role_id" json:"role_id"`
+	DisplayName  string         `db:"display_name" json:"display_name"`
+	DisabledAt   sql.NullString `db:"disabled_at" json:"disabled_at"`
+	LastLoginAt  sql.NullString `db:"last_login_at" json:"last_login_at"`
 }
 
 type AuditEvent struct {
-	ID             int64  `db:"id" json:"id"`
-	PublicID       string `db:"public_id" json:"public_id"`
-	AdminID        int64  `db:"admin_id" json:"admin_id"`
-	Action         string `db:"action" json:"action"`
-	TargetType     string `db:"target_type" json:"target_type"`
-	TargetPublicID string `db:"target_public_id" json:"target_public_id"`
-	CreatedAt      string `db:"created_at" json:"created_at"`
+	ID                    int64  `db:"id" json:"id"`
+	PublicID              string `db:"public_id" json:"public_id"`
+	AdminID               int64  `db:"admin_id" json:"admin_id"`
+	Action                string `db:"action" json:"action"`
+	TargetType            string `db:"target_type" json:"target_type"`
+	TargetPublicID        string `db:"target_public_id" json:"target_public_id"`
+	CreatedAt             string `db:"created_at" json:"created_at"`
+	AdminUsernameSnapshot string `db:"admin_username_snapshot" json:"admin_username_snapshot"`
 }
 
 type Cart struct {

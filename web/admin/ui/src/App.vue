@@ -19,6 +19,8 @@ const paymentStepNeeded = ref(false)
 const domainStepNeeded = ref(false)
 const smtpStepNeeded = ref(false)
 const username = ref('')
+const accountRole = ref('')
+const permissions = ref([])
 const demoAvailable = ref(false)
 const demoSession = ref(false)
 const demoExpiresAt = ref('')
@@ -28,6 +30,17 @@ const toast = useToast()
 let clock = null
 
 provide('demoSession', demoSession)
+provide('accountRole', accountRole)
+provide('accountPermissions', permissions)
+
+const inviteToken = computed(() => route.path === '/accept-invite' ? String(route.query.token || '') : '')
+const inviteForm = ref({ password: '', confirm: '' })
+const inviteDone = ref(false)
+const accessByPath = { '/dashboard': 'dashboard.view', '/diagnostics': 'diagnostics.view', '/audit': 'audit.view', '/products': 'products.view', '/categories': 'products.view', '/merchandising': 'content.manage', '/imports/csv': 'imports.manage', '/orders': 'orders.view', '/shop': 'settings.shop', '/domain': 'settings.domain', '/translation': 'translation.manage', '/shipping': 'settings.shipping', '/policies': 'settings.policy' }
+function can(permission) { return accountRole.value === 'owner' || accountRole.value === 'demo' || permissions.value.includes(permission) }
+const routePermission = computed(() => route.path === '/products/new' ? 'products.create' : route.path.startsWith('/products/') ? 'products.view' : route.path.startsWith('/orders/') ? 'orders.view' : accessByPath[route.path])
+const routeAllowed = computed(() => accountRole.value === 'demo' ? route.path !== '/users' : accountRole.value !== 'staff' || (!routePermission.value ? ['/account'].includes(route.path) : can(routePermission.value)))
+const staffReadonlyRoute = computed(() => accountRole.value === 'staff' && ((route.path.startsWith('/products/') && !can('products.edit')) || (route.path === '/products' && !can('products.edit') && !can('products.create')) || (route.path.startsWith('/orders') && !can('orders.fulfill')) || (route.path === '/categories' && !can('categories.manage'))))
 
 const demoRemaining = computed(() => {
   const seconds = Math.max(0, Math.ceil((new Date(demoExpiresAt.value).getTime() - now.value) / 1000))
@@ -37,13 +50,13 @@ const demoRemaining = computed(() => {
 const demoReadonlyRoute = computed(() => demoSession.value && !!route.meta.demoReadonly)
 
 function guardDemoReadonly(event) {
-	if (!demoReadonlyRoute.value) return
+	if (!demoReadonlyRoute.value && !staffReadonlyRoute.value) return
 	const control = event.target.closest('button, input, textarea, select')
 	if (!control || control.closest('[data-demo-view-control]')) return
 	if (event.type === 'keydown' && event.key === 'Tab') return
 	event.preventDefault()
 	event.stopPropagation()
-	if (event.type === 'click') toast.error('公开演示中此页面仅供查看，修改和执行操作已关闭。')
+	if (event.type === 'click') toast.error('当前账号在此页面没有修改权限。')
 }
 
 // 向导「第 X / N 步」进度：固定三步流，跳过的步骤仍占位、步号不跳变。
@@ -79,8 +92,10 @@ async function refresh() {
         authed.value = true
         username.value = me.username
 		demoSession.value = me.role === 'demo'
+		accountRole.value = me.role || ''
+		permissions.value = me.permissions || []
 		demoExpiresAt.value = me.expires_at || ''
-		if (demoSession.value) {
+		if (demoSession.value || accountRole.value === 'staff') {
 			paymentStepNeeded.value = false
 			domainStepNeeded.value = false
 			smtpStepNeeded.value = false
@@ -144,6 +159,14 @@ async function doDemo() {
   } finally { busy.value = false }
 }
 
+async function acceptInvite() {
+  if (inviteForm.value.password.length < 8) return toast.error('密码至少 8 位。')
+  if (inviteForm.value.password !== inviteForm.value.confirm) return toast.error('两次输入的密码不一致。')
+  busy.value = true; err.value = ''
+  try { await api.acceptInvite(inviteToken.value, inviteForm.value.password); inviteDone.value = true; toast.success('密码已设置，可以登录。') }
+  catch (e) { err.value = e.message } finally { busy.value = false }
+}
+
 async function resetDemo() {
   if (!window.confirm('清空本次演示创建的临时商品与图片？示例数据不会受影响。')) return
   try {
@@ -175,6 +198,8 @@ onUnmounted(() => { if (clock) window.clearInterval(clock) })
   <InsecureNotice />
 
   <div v-if="loading" class="center-screen muted">加载中…</div>
+
+  <div v-else-if="inviteToken" class="center-screen"><div class="panel card"><h2>设置员工密码</h2><p class="muted">此链接一次有效，请设置至少 8 位的独立登录密码。</p><template v-if="!inviteDone"><label>新密码</label><input v-model="inviteForm.password" type="password" autocomplete="new-password" /><label>确认密码</label><input v-model="inviteForm.confirm" type="password" autocomplete="new-password" @keyup.enter="acceptInvite" /><p v-if="err" class="err">{{ err }}</p><button class="primary" :disabled="busy" @click="acceptInvite">设置密码</button></template><RouterLink v-else to="/dashboard">返回登录</RouterLink></div></div>
 
   <!-- 未初始化：建管理员 + 设主口令 -->
   <div v-else-if="!initialized" class="center-screen">
@@ -249,36 +274,38 @@ onUnmounted(() => { if (clock) window.clearInterval(clock) })
     <header class="app-header">
       <div class="brand">Kartwo Admin</div>
       <div class="row" style="gap:1rem; flex: 0;">
-        <RouterLink to="/dashboard">概览</RouterLink>
-				<RouterLink to="/diagnostics">诊断</RouterLink>
-				<RouterLink to="/export">导出</RouterLink>
-				<RouterLink to="/audit">审计</RouterLink>
-        <RouterLink to="/products">商品</RouterLink>
-        <RouterLink to="/categories">分类</RouterLink>
-        <RouterLink to="/merchandising">内容</RouterLink>
-				<RouterLink to="/imports/csv">导入</RouterLink>
-				<RouterLink to="/orders">订单</RouterLink>
+				<RouterLink v-if="can('dashboard.view')" to="/dashboard">概览</RouterLink>
+				<RouterLink v-if="can('diagnostics.view')" to="/diagnostics">诊断</RouterLink>
+				<RouterLink v-if="accountRole !== 'staff'" to="/export">导出</RouterLink>
+				<RouterLink v-if="can('audit.view')" to="/audit">审计</RouterLink>
+        <RouterLink v-if="can('products.view')" to="/products">商品</RouterLink>
+        <RouterLink v-if="can('products.view')" to="/categories">分类</RouterLink>
+        <RouterLink v-if="can('content.manage')" to="/merchandising">内容</RouterLink>
+				<RouterLink v-if="can('imports.manage')" to="/imports/csv">导入</RouterLink>
+				<RouterLink v-if="can('orders.view')" to="/orders">订单</RouterLink>
 				<details class="settings-menu">
           <summary>设置</summary>
           <div class="settings-submenu">
-            <RouterLink to="/shop">店铺</RouterLink>
-            <RouterLink to="/payment">收款</RouterLink>
-            <RouterLink to="/domain">域名</RouterLink>
-            <RouterLink to="/smtp">邮件</RouterLink>
-            <RouterLink to="/translation">翻译</RouterLink>
-            <RouterLink to="/backup">备份</RouterLink>
-            <RouterLink to="/shipping">配送</RouterLink>
-            <RouterLink to="/policies">店铺政策</RouterLink>
+            <RouterLink v-if="can('settings.shop')" to="/shop">店铺</RouterLink>
+            <RouterLink v-if="accountRole !== 'staff'" to="/payment">收款</RouterLink>
+            <RouterLink v-if="can('settings.domain')" to="/domain">域名</RouterLink>
+            <RouterLink v-if="accountRole !== 'staff'" to="/smtp">邮件</RouterLink>
+            <RouterLink v-if="can('translation.manage')" to="/translation">翻译</RouterLink>
+            <RouterLink v-if="accountRole !== 'staff'" to="/backup">备份</RouterLink>
+            <RouterLink v-if="can('settings.shipping')" to="/shipping">配送</RouterLink>
+            <RouterLink v-if="can('settings.policy')" to="/policies">店铺政策</RouterLink>
             <RouterLink to="/account">账号与安全</RouterLink>
+            <RouterLink v-if="accountRole === 'owner'" to="/users">用户与角色</RouterLink>
           </div>
         </details>
         <span class="muted">{{ username }}</span>
         <button @click="doLogout">登出</button>
       </div>
     </header>
-    <main class="container" :class="{ 'demo-readonly-route': demoReadonlyRoute }" @click.capture="guardDemoReadonly" @keydown.capture="guardDemoReadonly">
+    <main class="container" :class="{ 'demo-readonly-route': demoReadonlyRoute || staffReadonlyRoute }" @click.capture="guardDemoReadonly" @keydown.capture="guardDemoReadonly">
 		<div v-if="demoReadonlyRoute" class="demo-readonly-notice">🔒 公开演示只读预览：敏感信息已隐藏，修改、导入、导出及订单操作均不可执行。</div>
-      <RouterView />
+      <div v-if="!routeAllowed" class="panel card">当前账号没有访问此页面的权限。</div>
+      <RouterView v-else />
     </main>
   </template>
 </template>

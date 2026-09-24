@@ -42,15 +42,19 @@ func (h *HTTP) requireAuth(next http.Handler) http.Handler {
 		}
 
 		ctx := context.WithValue(r.Context(), authCtxKey, ac)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		r = r.WithContext(ctx)
+		if !h.allowStaff(w, r, ac) {
+			return
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
 // requireOwner 阻止公开演示身份访问关键配置与不可逆业务动作。
 func (h *HTTP) requireOwner(next http.Handler) http.Handler {
 	return h.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if ac := authFrom(r.Context()); ac == nil || ac.Role != "owner" {
-			writeErr(w, http.StatusForbidden, "公开演示为只读区域，此操作不可用")
+		if ac := authFrom(r.Context()); ac == nil || ac.Role == "demo" {
+			writeErr(w, http.StatusForbidden, "此操作不可用")
 			return
 		}
 		next.ServeHTTP(w, r)

@@ -24,6 +24,7 @@ import CategoryManagement from './views/CategoryManagement.vue'
 import ShippingSettings from './views/ShippingSettings.vue'
 import PolicySettings from './views/PolicySettings.vue'
 import AccountSettings from './views/AccountSettings.vue'
+import UsersRoles from './views/UsersRoles.vue'
 import './style.css'
 
 const router = createRouter({
@@ -52,6 +53,8 @@ const router = createRouter({
     { path: '/shipping', component: ShippingSettings, meta: { demoReadonly: true } },
     { path: '/policies', component: PolicySettings, meta: { demoReadonly: true } },
     { path: '/account', component: AccountSettings, meta: { demoReadonly: true } },
+    { path: '/users', component: UsersRoles },
+    { path: '/accept-invite', component: { template: '<div />' } },
   ],
 })
 

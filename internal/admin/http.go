@@ -112,12 +112,23 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /admin/api/status", h.status)
 	mux.HandleFunc("POST /admin/api/setup", h.setup)
 	mux.HandleFunc("POST /admin/api/login", h.login)
+	mux.HandleFunc("POST /admin/api/invites/accept", h.acceptInvite)
 	mux.HandleFunc("POST /admin/api/demo-session", h.demoSession)
 	mux.Handle("POST /admin/api/logout", h.requireAuth(http.HandlerFunc(h.logout)))
 	mux.Handle("GET /admin/api/me", h.requireAuth(http.HandlerFunc(h.me)))
 	mux.Handle("POST /admin/api/demo/reset", h.requireAuth(http.HandlerFunc(h.resetDemo)))
 	mux.Handle("GET /admin/api/account", h.requireAuth(http.HandlerFunc(h.getAccount)))
 	mux.Handle("PUT /admin/api/account", h.requireOwner(http.HandlerFunc(h.updateAccount)))
+	mux.Handle("PUT /admin/api/account/password", h.requireAuth(http.HandlerFunc(h.updateStaffPassword)))
+	mux.Handle("GET /admin/api/users", h.requireOwner(http.HandlerFunc(h.listUsers)))
+	mux.Handle("POST /admin/api/users", h.requireOwner(http.HandlerFunc(h.createUser)))
+	mux.Handle("PATCH /admin/api/users/{id}", h.requireOwner(http.HandlerFunc(h.updateUser)))
+	mux.Handle("POST /admin/api/users/{id}/reset-password", h.requireOwner(http.HandlerFunc(h.resetUserPassword)))
+	mux.Handle("POST /admin/api/users/{id}/revoke-sessions", h.requireOwner(http.HandlerFunc(h.revokeUserSessions)))
+	mux.Handle("GET /admin/api/roles", h.requireOwner(http.HandlerFunc(h.listRoles)))
+	mux.Handle("POST /admin/api/roles", h.requireOwner(http.HandlerFunc(h.createRole)))
+	mux.Handle("PATCH /admin/api/roles/{id}", h.requireOwner(http.HandlerFunc(h.updateRole)))
+	mux.Handle("DELETE /admin/api/roles/{id}", h.requireOwner(http.HandlerFunc(h.deleteRole)))
 
 	// 商品/分类/变体 CRUD（均需鉴权；写操作经中间件 CSRF 校验）。
 	protect := func(fn http.HandlerFunc) http.Handler { return h.requireAuth(fn) }
@@ -321,7 +332,7 @@ func (h *HTTP) recordAudit(r *http.Request, adminID int64, action, targetType, t
 
 func (h *HTTP) me(w http.ResponseWriter, r *http.Request) {
 	ac := authFrom(r.Context())
-	writeJSON(w, http.StatusOK, map[string]any{"username": ac.Username, "public_id": ac.AdminPublicID, "role": ac.Role, "demo_mode": h.demo.Enabled, "expires_at": ac.ExpiresAt, "demo_max_products": h.demo.MaxProducts, "demo_max_image_bytes": h.demo.MaxImageBytes})
+	writeJSON(w, http.StatusOK, map[string]any{"username": ac.Username, "public_id": ac.AdminPublicID, "role": ac.Role, "permissions": permissionsList(ac.Permissions), "demo_mode": h.demo.Enabled, "expires_at": ac.ExpiresAt, "demo_max_products": h.demo.MaxProducts, "demo_max_image_bytes": h.demo.MaxImageBytes})
 }
 
 // secureFor 判定当前请求是否该发 Secure Cookie。

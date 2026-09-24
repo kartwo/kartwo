@@ -28,8 +28,8 @@ func (h *HTTP) listOrders(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0, len(rows))
 	for _, o := range rows {
 		email := o.Email
-		if isDemoRequest(r) {
-			email = "已隐藏（公开演示）"
+		if orderCustomerDataHidden(r) {
+			email = "已隐藏"
 		}
 		out = append(out, map[string]any{
 			"public_id": o.PublicID, "status": o.Status, "email": email,
@@ -149,7 +149,7 @@ func (h *HTTP) getOrder(w http.ResponseWriter, r *http.Request) {
 	refunds := make([]map[string]any, 0, len(o.Refunds))
 	for _, rf := range o.Refunds {
 		providerRefundID := rf.ProviderRefundID
-		if isDemoRequest(r) {
+		if orderCustomerDataHidden(r) {
 			providerRefundID = "已隐藏"
 		}
 		refunds = append(refunds, map[string]any{
@@ -159,8 +159,8 @@ func (h *HTTP) getOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	email, shipName, shipPhone, shipAddress := o.Email, o.ShipName, o.ShipPhone, o.ShipAddress
 	trackingNumber, trackingURL := o.TrackingNumber, o.TrackingURL
-	if isDemoRequest(r) {
-		email, shipName, shipPhone, shipAddress = "已隐藏（公开演示）", "已隐藏", "已隐藏", "已隐藏"
+	if orderCustomerDataHidden(r) {
+		email, shipName, shipPhone, shipAddress = "已隐藏", "已隐藏", "已隐藏", "已隐藏"
 		trackingNumber, trackingURL = "已隐藏", ""
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -171,6 +171,11 @@ func (h *HTTP) getOrder(w http.ResponseWriter, r *http.Request) {
 		"payment_provider": o.PaymentProvider, "created_at": o.CreatedAt,
 		"lines": lines, "refunds": refunds,
 	})
+}
+
+func orderCustomerDataHidden(r *http.Request) bool {
+	ac := authFrom(r.Context())
+	return ac != nil && (ac.Role == "demo" || ac.Role == "staff" && !ac.Permissions["orders.customer_data"])
 }
 
 func (h *HTTP) refundOrder(w http.ResponseWriter, r *http.Request) {

@@ -40,7 +40,7 @@ func (q *Queries) CreateAuditEvent(ctx context.Context, arg CreateAuditEventPara
 
 const listAuditEvents = `-- name: ListAuditEvents :many
 SELECT e.public_id, e.action, e.target_type, e.target_public_id, e.created_at,
-       a.public_id AS admin_public_id, a.username AS admin_username
+       a.public_id AS admin_public_id, COALESCE(NULLIF(e.admin_username_snapshot, ''), a.username) AS admin_username
 FROM audit_event e
 JOIN admin_user a ON a.id = e.admin_id
 ORDER BY e.created_at DESC, e.id DESC

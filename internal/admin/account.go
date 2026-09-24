@@ -71,6 +71,12 @@ func (s *Service) UpdateOwnerCredentials(ctx context.Context, adminID int64, use
 	} else if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
 		return false, fmt.Errorf("admin: 检查用户名失败: %w", lookupErr)
 	}
+	var sameNameID int64
+	if lookupErr := tx.QueryRowContext(ctx, "SELECT id FROM admin_user WHERE lower(username)=lower(?) AND id<>? LIMIT 1", username, owner.ID).Scan(&sameNameID); lookupErr == nil {
+		return false, ErrUsernameTaken
+	} else if !errors.Is(lookupErr, sql.ErrNoRows) {
+		return false, fmt.Errorf("admin: 检查用户名失败: %w", lookupErr)
+	}
 
 	passwordHash := owner.PasswordHash
 	passwordChanged := newPassword != ""
@@ -164,7 +170,7 @@ func (h *HTTP) getAccount(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"username": "店主账号（已隐藏）", "readonly": true})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"username": ac.Username, "readonly": false})
+	writeJSON(w, http.StatusOK, map[string]any{"username": ac.Username, "readonly": ac.Role != "owner"})
 }
 
 func (h *HTTP) updateAccount(w http.ResponseWriter, r *http.Request) {

@@ -11,6 +11,9 @@ const route = useRoute()
 const router = useRouter()
 const onUnauthorized = inject('onUnauthorized')
 const demoSession = inject('demoSession', ref(false))
+const accountRole = inject('accountRole', ref('owner'))
+const accountPermissions = inject('accountPermissions', ref([]))
+const canStaff = (permission) => accountRole.value !== 'staff' || accountPermissions.value.includes(permission)
 const toast = useToast()
 
 const isNew = computed(() => !props.id)
@@ -236,11 +239,11 @@ onMounted(async () => { try { categories.value = (await api.listCategories()).ca
 
 	<div class="panel" :inert="readOnlyProduct">
     <div class="row">
-			<div><label>中文标题（可选，供翻译与日后维护）</label><input v-model="titleZh" placeholder="例如：速干运动短袖" /><button v-if="!demoSession" class="translate-button" :disabled="busy" @click="translateTitle">翻译为英文标题</button></div>
+			<div><label>中文标题（可选，供翻译与日后维护）</label><input v-model="titleZh" placeholder="例如：速干运动短袖" /><button v-if="!demoSession && accountRole !== 'staff'" class="translate-button" :disabled="busy" @click="translateTitle">翻译为英文标题</button></div>
       <div><label>英文标题（必填，店面正式展示）</label><input v-model="title" @input="suggestSlug" placeholder="例如：Quick-Dry Sports T-Shirt" /></div>
     </div>
     <div v-if="isNew" class="row">
-			<div><label>中文 slug（可选，简短中文 URL 含义）</label><input v-model="slugZh" placeholder="例如：速干运动短袖" /><button v-if="!demoSession" class="translate-button" :disabled="busy" @click="translateSlug">翻译 slug</button></div>
+			<div><label>中文 slug（可选，简短中文 URL 含义）</label><input v-model="slugZh" placeholder="例如：速干运动短袖" /><button v-if="!demoSession && accountRole !== 'staff'" class="translate-button" :disabled="busy" @click="translateSlug">翻译 slug</button></div>
       <div><label>英文 slug（必填，唯一，可修改）</label><input v-model="slug" @input="markSlugCustomized" placeholder="quick-dry-sports-t-shirt" /></div>
     </div>
     <p v-if="translationNeedsSetup" class="translation-warning">
@@ -251,11 +254,11 @@ onMounted(async () => { try { categories.value = (await api.listCategories()).ca
     <textarea v-model="description" rows="2"></textarea>
     <label>中文 SEO 描述（可选，供翻译与日后维护）</label>
     <textarea v-model="seoDescriptionZh" rows="2" placeholder="例如：轻盈透气的运动短袖，适合跑步与日常训练。"></textarea>
-		<button v-if="!demoSession" class="translate-button" :disabled="busy" @click="translateSEODescription">翻译为英文 SEO 描述</button>
+		<button v-if="!demoSession && accountRole !== 'staff'" class="translate-button" :disabled="busy" @click="translateSEODescription">翻译为英文 SEO 描述</button>
     <label>英文 SEO 描述（可选，留空时使用英文描述）</label>
     <textarea v-model="seoDescription" rows="2" placeholder="建议简洁描述商品特点，供搜索结果和社交分享使用。"></textarea>
     <label>状态</label>
-		<select v-model="status" :disabled="demoSession">
+		<select v-model="status" :disabled="demoSession || !canStaff('products.publish')">
       <option value="draft">草稿 draft</option>
       <option value="active">上架 active</option>
       <option value="archived">归档 archived</option>
@@ -310,12 +313,12 @@ onMounted(async () => { try { categories.value = (await api.listCategories()).ca
     </template>
 
     <div class="spacer"></div>
-		<button class="primary" :disabled="busy" @click="saveNew">保存临时草稿商品</button>
+		<button class="primary" :disabled="busy" @click="saveNew">{{ demoSession ? '保存临时草稿商品' : '保存商品' }}</button>
   </div>
 
   <!-- 编辑：保存字段 + 变体库存 + 图片 -->
   <template v-else>
-		<button v-if="!readOnlyProduct" class="primary" :disabled="busy" @click="saveFields">保存基本信息</button>
+		<button v-if="!readOnlyProduct && canStaff('products.edit')" class="primary" :disabled="busy" @click="saveFields">保存基本信息</button>
 
     <div class="spacer"></div>
 		<div class="panel" :inert="readOnlyProduct">
@@ -326,9 +329,9 @@ onMounted(async () => { try { categories.value = (await api.listCategories()).ca
           <tr v-for="v in variants" :key="v.public_id">
             <td>{{ (v.options||[]).map(o => o.name + '=' + o.value).join(' × ') }}</td>
             <td class="muted">{{ v.sku || '—' }}</td>
-            <td style="max-width:120px"><input v-model="v._priceYuan" type="number" min="0" step="0.01" placeholder="元·必填" /></td>
-            <td style="max-width:120px"><input v-model="v._qty" type="number" min="0" /></td>
-            <td style="text-align:right"><button @click="saveVariant(v)">保存</button></td>
+            <td style="max-width:120px"><input v-model="v._priceYuan" type="number" min="0" step="0.01" placeholder="元·必填" :disabled="!canStaff('products.price') || !canStaff('products.inventory')" /></td>
+            <td style="max-width:120px"><input v-model="v._qty" type="number" min="0" :disabled="!canStaff('products.price') || !canStaff('products.inventory')" /></td>
+            <td style="text-align:right"><button v-if="canStaff('products.price') && canStaff('products.inventory')" @click="saveVariant(v)">保存</button></td>
           </tr>
         </tbody>
       </table>
@@ -338,15 +341,15 @@ onMounted(async () => { try { categories.value = (await api.listCategories()).ca
 		<div class="panel" :inert="readOnlyProduct">
       <h3>图片</h3>
 			<p class="upload-note">{{ demoSession ? '演示商品最多 1 张图片，文件不得超过 2MB。' : '建议选择 100KB–8MB 的 JPG、PNG 或 WebP 图片；系统最大支持 10MB。' }}</p>
-      <input ref="fileInput" type="file" :disabled="uploading" accept="image/png,image/jpeg,image/webp" @change="onUpload" />
+      <input v-if="canStaff('products.media')" ref="fileInput" type="file" :disabled="uploading" accept="image/png,image/jpeg,image/webp" @change="onUpload" />
       <p v-if="uploading" class="upload-hint" role="status">正在上传并生成图片，请勿关闭页面。</p>
       <div class="thumbs">
         <figure v-for="m in media" :key="m.public_id">
           <img :src="thumb(m)" :alt="m.public_id" />
           <label>图片 alt（英文）</label>
-          <input v-model="m._altText" :placeholder="title" />
-          <button style="margin-top:.3rem; width:96px" @click="saveMediaAlt(m)">保存 alt</button>
-          <button class="danger" style="margin-top:.3rem; width:96px" @click="removeMedia(m)">删除</button>
+          <input v-model="m._altText" :placeholder="title" :disabled="!canStaff('products.media')" />
+          <button v-if="canStaff('products.media')" style="margin-top:.3rem; width:96px" @click="saveMediaAlt(m)">保存 alt</button>
+          <button v-if="canStaff('products.media')" class="danger" style="margin-top:.3rem; width:96px" @click="removeMedia(m)">删除</button>
         </figure>
       </div>
       <p v-if="!media.length && !uploading" class="muted">还没有图片，选一张上传。</p>
