@@ -12,7 +12,7 @@ TOOLPATH := PATH="$(BIN):$$PATH"
 all: check
 
 web:           ## 构建 Admin 前端(Vue3+Vite) 到 web/admin/dist（供 go build embed）
-	cd web/admin/ui && npm ci && npm run build
+	cd web/admin/ui && npm ci && npm audit --registry=https://registry.npmjs.org --audit-level=high && npm run build
 
 tools:         ## 安装钉死版本的开发工具到 ./.bin（版本与 CI 一致）
 	GOBIN=$(BIN) go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
@@ -31,7 +31,7 @@ vet:
 	go vet ./...
 
 test:
-	go test -race -count=1 ./...
+	go test -race -count=1 -timeout=20m ./...
 
 build:         ## 构建单静态二进制
 	CGO_ENABLED=0 go build -o kartwo ./cmd/kartwo

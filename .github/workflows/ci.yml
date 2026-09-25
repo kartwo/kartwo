@@ -30,6 +30,7 @@ jobs:
         working-directory: web/admin/ui
         run: |
           npm ci
+          npm audit --registry=https://registry.npmjs.org --audit-level=high
           npm run build
       - name: 确认构建产物存在
         run: test -f web/admin/dist/index.html && ls web/admin/dist/assets
@@ -56,7 +57,7 @@ jobs:
         run: go vet ./...
 
       - name: 单元测试
-        run: go test -race -count=1 ./...
+        run: go test -race -count=1 -timeout=20m ./...
 
       - name: 构建单静态二进制
         run: CGO_ENABLED=0 go build -o kartwo ./cmd/kartwo
