@@ -25,6 +25,8 @@ async function load() {
   }
 }
 
+onMounted(load)
+
 function bytes(value) {
   const n = Number(value || 0)
   if (n < 1024) return n + ' B'
