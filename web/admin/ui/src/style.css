@@ -1,4 +1,8 @@
-/* Admin 样式 / Admin Styles. 作者：仗键天涯(daxing) 3442535897@qq.com */
+/* Admin 样式 / Admin Styles
+ * 功能：后台通用设计 token 与基础元素样式
+ * 作者：仗键天涯(daxing)
+ * 邮箱：3442535897@qq.com
+ * 时间：2026-06-18 10:43:28 */
 /* M4.2.3b-① 基调：浅色 Stripe 风（白底 / 细冷灰边框 / 单一靛蓝主色 / 大留白 / 弱阴影分层） */
 :root {
   /* —— 色板 —— */
@@ -26,6 +30,7 @@
   /* —— 阴影（弱分层） —— */
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, .06);
   --shadow-md: 0 2px 8px rgba(16, 24, 40, .08);
+  --nav-overlay: rgba(16, 24, 40, .35);
   /* —— 字阶 —— */
   --fs-xs: .75rem; --fs-sm: .8125rem; --fs-base: .875rem; --fs-md: 1rem; --fs-lg: 1.25rem; --fs-xl: 1.75rem;
   /* —— 旧 token 名别名：使既有组件的 var(--panel/--line/--muted/--ok) 自动吃新浅色值，无需逐页改 —— */
