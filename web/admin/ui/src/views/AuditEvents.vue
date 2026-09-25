@@ -1,4 +1,4 @@
-<!-- 审计日志页 / Audit Events View. 作者：仗键天涯(daxing) 3442535897@qq.com -->
+<!-- 操作日志页 / Audit Events View. 作者：仗键天涯(daxing) 3442535897@qq.com -->
 <!-- 功能：展示最近后台关键操作；只读且不显示口令、密钥、会话令牌或请求正文 -->
 <script setup>
 import { inject, onMounted, ref } from 'vue'
@@ -65,14 +65,14 @@ onMounted(load)
   <div class="audit-page">
     <div class="page-title-row">
       <div>
-        <h2>审计日志</h2>
+        <h2>日志</h2>
         <p class="muted">最近 100 条关键后台操作；不记录口令、密钥、会话令牌或请求内容。</p>
       </div>
       <span data-demo-view-control><button :disabled="loading" @click="load">刷新</button></span>
     </div>
     <section class="panel card">
       <p v-if="loading" class="muted">加载中…</p>
-      <p v-else-if="!events.length" class="muted">尚无审计记录。</p>
+      <p v-else-if="!events.length" class="muted">尚无日志记录。</p>
       <div v-else class="audit-table-wrap">
         <table class="audit-table">
           <thead><tr><th>时间</th><th>操作人</th><th>操作</th><th>对象</th></tr></thead>

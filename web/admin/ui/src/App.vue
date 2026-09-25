@@ -277,7 +277,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock) })
 				<RouterLink v-if="can('dashboard.view')" to="/dashboard">概览</RouterLink>
 				<RouterLink v-if="can('diagnostics.view')" to="/diagnostics">诊断</RouterLink>
 				<RouterLink v-if="accountRole !== 'staff'" to="/export">导出</RouterLink>
-				<RouterLink v-if="can('audit.view')" to="/audit">审计</RouterLink>
+				<RouterLink v-if="can('audit.view')" to="/audit">日志</RouterLink>
         <RouterLink v-if="can('products.view')" to="/products">商品</RouterLink>
         <RouterLink v-if="can('products.view')" to="/categories">分类</RouterLink>
         <RouterLink v-if="can('content.manage')" to="/merchandising">内容</RouterLink>

@@ -19,7 +19,7 @@ const inviteURL = ref('')
 const userForm = ref({ username: '', display_name: '', role_id: '' })
 const roleForm = ref({ name: '', permissions: [] })
 const permissionGroups = [
-  ['概览与诊断', [['dashboard.view', '查看概览'], ['diagnostics.view', '查看诊断'], ['audit.view', '查看审计']]],
+  ['概览与诊断', [['dashboard.view', '查看概览'], ['diagnostics.view', '查看诊断'], ['audit.view', '查看日志']]],
   ['商品与内容', [['products.view', '查看商品'], ['products.create', '新建商品'], ['products.edit', '编辑商品'], ['products.publish', '上下架商品'], ['products.delete', '删除商品'], ['products.inventory', '修改库存'], ['products.price', '修改价格'], ['products.media', '管理商品图片'], ['categories.manage', '管理分类'], ['content.manage', '管理内容页']]],
   ['订单', [['orders.view', '查看订单'], ['orders.customer_data', '查看客户信息'], ['orders.fulfill', '发货']]],
   ['其他', [['imports.manage', '导入商品'], ['settings.shop', '店铺设置'], ['settings.shipping', '配送设置'], ['settings.domain', '域名设置'], ['settings.policy', '政策设置']]],
