@@ -92,6 +92,7 @@ onMounted(load)
 
 <style scoped>
 .audit-page { display: grid; gap: var(--sp-4); }
+.audit-page .panel.card { width: 100%; max-width: none; }
 .audit-page h2 { margin: 0; }
 .page-title-row { display: flex; align-items: start; justify-content: space-between; gap: var(--sp-3); }
 .page-title-row p { margin: var(--sp-1) 0 0; }

@@ -3,20 +3,28 @@
  * 作者：仗键天涯(daxing)
  * 邮箱：3442535897@qq.com
  * 时间：2026-06-18 10:43:28 */
-/* M4.2.3b-① 基调：浅色 Stripe 风（白底 / 细冷灰边框 / 单一靛蓝主色 / 大留白 / 弱阴影分层） */
+/* 后台基调：深色导航 + 浅灰工作区 + 白色内容卡片。 */
 :root {
   /* —— 色板 —— */
-  --bg: #f6f8fb;            /* 页面底（极浅冷灰） */
+  --bg: #f5f7fa;            /* 页面底（极浅冷灰） */
   --surface: #ffffff;      /* 卡片/面板 */
   --surface-2: #f7fafc;    /* 输入底/内嵌区/次级底 */
-  --border: #e3e8ee;       /* 细边框 */
-  --border-strong: #cfd7df;/* hover/强调边 */
-  --text: #1a1f36;         /* 主文字（近黑藏青） */
-  --text-muted: #697386;   /* 次要文字 */
+  --border: #e4e7ed;       /* 细边框 */
+  --border-strong: #cdd3dc;/* hover/强调边 */
+  --text: #303133;         /* 主文字 */
+  --text-muted: #606266;   /* 次要文字 */
   --text-subtle: #8792a2;  /* 占位/辅助 */
-  --accent: #635bff;       /* 主色（靛蓝） */
-  --accent-hover: #524dd6; /* 主色 hover */
+  --accent: #409eff;       /* 主色（明蓝） */
+  --accent-hover: #337ecc; /* 主色 hover */
   --on-accent: #ffffff;    /* 主色上文字 */
+  --focus-ring: rgba(64, 158, 255, .18);
+  --sidebar-bg: #223041;
+  --sidebar-hover: #2c3c50;
+  --sidebar-active: #1c2938;
+  --sidebar-text: #e9eef5;
+  --sidebar-muted: #b8c4d2;
+  --sidebar-border: #344357;
+  --sidebar-focus: #8fc7ff;
   --success: #0e7c4a;      /* 成功文字 */
   --success-bg: #e3f6ec;   /* 成功底 */
   --danger: #df1b41;       /* 危险/错误文字 */
@@ -77,7 +85,7 @@ input, select, textarea {
   transition: border-color .12s ease, box-shadow .12s ease;
 }
 input:focus, select:focus, textarea:focus {
-  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99, 91, 255, .15);
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring);
 }
 input::placeholder, textarea::placeholder { color: var(--text-subtle); }
 label { display: block; font-size: var(--fs-sm); color: var(--text-muted); margin: .6rem 0 .2rem; font-weight: 500; }

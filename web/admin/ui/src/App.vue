@@ -45,24 +45,24 @@ const inviteDone = ref(false)
 const accessByPath = { '/dashboard': 'dashboard.view', '/diagnostics': 'diagnostics.view', '/audit': 'audit.view', '/products': 'products.view', '/categories': 'products.view', '/merchandising': 'content.manage', '/imports/csv': 'imports.manage', '/orders': 'orders.view', '/shop': 'settings.shop', '/domain': 'settings.domain', '/translation': 'translation.manage', '/shipping': 'settings.shipping', '/policies': 'settings.policy' }
 function can(permission) { return accountRole.value === 'owner' || accountRole.value === 'demo' || permissions.value.includes(permission) }
 const navGroups = computed(() => [
-  { id: 'business', label: '经营', items: [
+  { id: 'business', label: '经营', icon: '⌂', items: [
     { path: '/dashboard', label: '概览', visible: can('dashboard.view') },
     { path: '/orders', label: '订单', visible: can('orders.view') },
   ] },
-  { id: 'catalog', label: '商品与内容', items: [
+  { id: 'catalog', label: '商品与内容', icon: '▣', items: [
     { path: '/products', label: '商品', visible: can('products.view') },
     { path: '/categories', label: '分类', visible: can('products.view') },
     { path: '/merchandising', label: '内容', visible: can('content.manage') },
   ] },
-  { id: 'data', label: '数据', items: [
+  { id: 'data', label: '数据', icon: '⇄', items: [
     { path: '/imports/csv', label: '导入', visible: can('imports.manage') },
     { path: '/export', label: '导出', visible: accountRole.value !== 'staff' },
   ] },
-  { id: 'system', label: '系统', items: [
+  { id: 'system', label: '系统', icon: '◷', items: [
     { path: '/diagnostics', label: '诊断', visible: can('diagnostics.view') },
     { path: '/audit', label: '日志', visible: can('audit.view') },
   ] },
-  { id: 'settings', label: '设置', items: [
+  { id: 'settings', label: '设置', icon: '⚙', items: [
     { path: '/shop', label: '店铺', visible: can('settings.shop') },
     { path: '/payment', label: '收款', visible: accountRole.value !== 'staff' },
     { path: '/domain', label: '域名', visible: can('settings.domain') },
@@ -78,6 +78,14 @@ const navGroups = computed(() => [
 function navItemActive(path) {
   return route.path === path || (path === '/products' && route.path.startsWith('/products/')) || (path === '/orders' && route.path.startsWith('/orders/'))
 }
+const currentNav = computed(() => {
+  const group = navGroups.value.find(section => section.items.some(item => navItemActive(item.path)))
+  const item = group?.items.find(entry => navItemActive(entry.path))
+  if (route.path === '/products/new') return { group: group?.label || '商品与内容', label: '新建商品' }
+  if (route.path.startsWith('/products/')) return { group: group?.label || '商品与内容', label: '编辑商品' }
+  if (route.path.startsWith('/orders/')) return { group: group?.label || '经营', label: '订单详情' }
+  return { group: group?.label || '后台', label: item?.label || '概览' }
+})
 watch([() => route.path, navGroups], () => {
   mobileNavOpen.value = false
   const group = navGroups.value.find(section => section.items.some(item => navItemActive(item.path)))
@@ -317,21 +325,14 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); window.removeEventLi
 			<span><strong>公开演示模式</strong>　可查看后台并新建 3 个临时草稿商品；示例商品和关键配置受保护。</span>
 			<span class="demo-actions">剩余 {{ demoRemaining }} <button @click="resetDemo">重置本次演示</button></span>
 		</div>
-    <header class="app-header admin-header">
-      <div class="admin-header-start">
-        <button class="nav-toggle" type="button" :aria-expanded="mobileNavOpen" aria-controls="admin-sidebar" aria-label="切换菜单" @click="mobileNavOpen = !mobileNavOpen">☰</button>
-        <div class="brand">Kartwo Admin</div>
-      </div>
-      <div class="admin-header-end"><span class="muted">{{ username }}</span><button @click="doLogout">登出</button></div>
-    </header>
     <div class="admin-layout">
       <button v-if="mobileNavOpen" class="nav-backdrop" type="button" aria-label="关闭菜单" @click="mobileNavOpen = false"></button>
       <aside id="admin-sidebar" class="admin-sidebar" :class="{ 'is-open': mobileNavOpen }" aria-label="后台导航">
-        <div class="mobile-nav-heading"><strong>菜单</strong><button type="button" aria-label="关闭菜单" @click="mobileNavOpen = false">×</button></div>
+        <div class="sidebar-brand"><span class="brand-mark" aria-hidden="true">K</span><strong>Kartwo 后台</strong><button class="sidebar-close" type="button" aria-label="关闭菜单" @click="mobileNavOpen = false">×</button></div>
         <nav class="side-nav">
           <section v-for="group in navGroups" :key="group.id" class="nav-section">
             <button class="nav-group" :class="{ 'has-active': group.items.some(item => navItemActive(item.path)) }" type="button" :aria-expanded="!!expandedGroups[group.id]" @click="expandedGroups[group.id] = !expandedGroups[group.id]">
-              <span>{{ group.label }}</span><span class="nav-chevron" aria-hidden="true">⌄</span>
+              <span class="nav-group-label"><span class="nav-icon" aria-hidden="true">{{ group.icon }}</span>{{ group.label }}</span><span class="nav-chevron" aria-hidden="true">⌄</span>
             </button>
             <div v-if="expandedGroups[group.id]" class="nav-items">
               <RouterLink v-for="item in group.items" :key="item.path" :to="item.path" class="nav-item" :class="{ 'is-active': navItemActive(item.path) }" :aria-current="navItemActive(item.path) ? 'page' : undefined" @click="mobileNavOpen = false">{{ item.label }}</RouterLink>
@@ -339,34 +340,52 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); window.removeEventLi
           </section>
         </nav>
       </aside>
-      <main class="container admin-content" :class="{ 'demo-readonly-route': demoReadonlyRoute || staffReadonlyRoute }" @click.capture="guardDemoReadonly" @keydown.capture="guardDemoReadonly">
-        <div v-if="demoReadonlyRoute" class="demo-readonly-notice">🔒 公开演示只读预览：敏感信息已隐藏，修改、导入、导出及订单操作均不可执行。</div>
-        <div v-if="!routeAllowed" class="panel card">当前账号没有访问此页面的权限。</div>
-        <RouterView v-else />
-      </main>
+      <div class="admin-workspace">
+        <header class="app-header admin-header">
+          <div class="admin-header-start">
+            <button class="nav-toggle" type="button" :aria-expanded="mobileNavOpen" aria-controls="admin-sidebar" aria-label="切换菜单" @click="mobileNavOpen = !mobileNavOpen">☰</button>
+            <div class="page-location"><span class="page-parent">{{ currentNav.group }} / </span><strong>{{ currentNav.label }}</strong></div>
+          </div>
+          <div class="admin-header-end"><span class="account-avatar" aria-hidden="true">{{ username.slice(0, 1).toUpperCase() }}</span><span class="account-name">{{ username }}</span><button @click="doLogout">登出</button></div>
+        </header>
+        <main class="container admin-content" :class="{ 'demo-readonly-route': demoReadonlyRoute || staffReadonlyRoute }" @click.capture="guardDemoReadonly" @keydown.capture="guardDemoReadonly">
+          <div v-if="demoReadonlyRoute" class="demo-readonly-notice">🔒 公开演示只读预览：敏感信息已隐藏，修改、导入、导出及订单操作均不可执行。</div>
+          <div v-if="!routeAllowed" class="panel card">当前账号没有访问此页面的权限。</div>
+          <RouterView v-else />
+        </main>
+      </div>
     </div>
   </template>
 </template>
 
 <style scoped>
-.admin-header{min-height:64px;gap:var(--sp-4)}
-.admin-header-start,.admin-header-end{display:flex;align-items:center;gap:var(--sp-4)}
-.admin-layout{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:calc(100vh - 64px)}
-.admin-sidebar{border-right:1px solid var(--border);background:var(--surface);min-width:0}
-.side-nav{position:sticky;top:0;max-height:100vh;overflow-y:auto;padding:var(--sp-4) var(--sp-3)}
-.nav-section+.nav-section{margin-top:var(--sp-2)}
-.nav-group{width:100%;display:flex;align-items:center;justify-content:space-between;padding:var(--sp-2) var(--sp-3);border:0;box-shadow:none;background:transparent;color:var(--text-muted);font-size:var(--fs-sm);font-weight:600;text-align:left}
-.nav-group:hover{background:var(--surface-2);border:0}
-.nav-group[aria-expanded="true"]{color:var(--text)}
-.nav-group.has-active{color:var(--accent)}
+.admin-layout{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:100vh}
+.admin-sidebar{position:sticky;top:0;align-self:start;height:100vh;min-width:0;background:var(--sidebar-bg);color:var(--sidebar-text)}
+.sidebar-brand{display:flex;align-items:center;gap:var(--sp-3);min-height:66px;padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--sidebar-border);font-size:var(--fs-md);white-space:nowrap}
+.brand-mark{display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:var(--radius-md);background:var(--accent);color:var(--on-accent);font-weight:700}
+.side-nav{max-height:calc(100vh - 66px);overflow-y:auto;padding:var(--sp-3) var(--sp-2)}
+.nav-section+.nav-section{margin-top:var(--sp-1)}
+.nav-group{width:100%;display:flex;align-items:center;justify-content:space-between;min-height:46px;padding:var(--sp-2) var(--sp-3);border:0;border-radius:var(--radius-sm);box-shadow:none;background:transparent;color:var(--sidebar-muted);font-size:var(--fs-base);font-weight:600;text-align:left}
+.nav-group:hover,.nav-group[aria-expanded="true"]{background:var(--sidebar-hover);border:0;color:var(--sidebar-text)}
+.nav-group.has-active{color:var(--sidebar-text)}
+.nav-group-label{display:flex;align-items:center;gap:var(--sp-3)}
+.nav-icon{display:inline-flex;align-items:center;justify-content:center;width:20px;font-size:var(--fs-lg);font-weight:400;line-height:1}
 .nav-chevron{font-size:var(--fs-md);transition:transform .15s ease}
 .nav-group[aria-expanded="true"] .nav-chevron{transform:rotate(180deg)}
 .nav-items{display:grid;gap:var(--sp-1);padding:var(--sp-1) 0 var(--sp-2)}
-.nav-item{display:block;padding:var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-6);border-radius:var(--radius-md);color:var(--text);font-size:var(--fs-sm);white-space:nowrap}
-.nav-item:hover{background:var(--surface-2);text-decoration:none}
-.nav-item.is-active{background:var(--surface-2);color:var(--accent);font-weight:600}
-.admin-content{width:100%;max-width:1120px;margin:0 auto;padding:var(--sp-6) var(--sp-6) var(--sp-8);min-width:0}
-.nav-toggle,.nav-backdrop,.mobile-nav-heading{display:none}
+.nav-item{display:block;min-height:39px;padding:var(--sp-2) var(--sp-3) var(--sp-2) 44px;border-radius:var(--radius-sm);color:var(--sidebar-muted);font-size:var(--fs-sm);white-space:nowrap}
+.nav-item:hover{background:var(--sidebar-hover);color:var(--sidebar-text);text-decoration:none}
+.nav-item.is-active{background:var(--sidebar-active);color:var(--on-accent);font-weight:600;box-shadow:inset 3px 0 var(--accent)}
+.nav-group:focus-visible,.nav-item:focus-visible{outline:2px solid var(--sidebar-focus);outline-offset:-2px}
+.admin-workspace{min-width:0}
+.admin-header{position:sticky;top:0;z-index:20;min-height:66px;gap:var(--sp-4);box-shadow:var(--shadow-sm)}
+.admin-header-start,.admin-header-end{display:flex;align-items:center;gap:var(--sp-3);min-width:0}
+.page-location{font-size:var(--fs-md);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.page-parent{color:var(--text-muted);font-weight:400}
+.account-avatar{display:grid;place-items:center;width:32px;height:32px;flex:none;border-radius:var(--radius-pill);background:var(--accent);color:var(--on-accent);font-weight:600}
+.account-name{color:var(--text-muted);max-width:12rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.admin-content{width:100%;max-width:1280px;margin:0 auto;padding:var(--sp-6) var(--sp-6) var(--sp-8);min-width:0}
+.nav-toggle,.nav-backdrop,.sidebar-close{display:none}
 .demo-banner{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);padding:var(--sp-2) var(--sp-4);color:#713f12;background:#fef3c7;border-bottom:1px solid #f59e0b;font-size:var(--fs-sm)}
 .demo-actions{display:flex;align-items:center;gap:var(--sp-3);white-space:nowrap;font-variant-numeric:tabular-nums}
 .demo-actions button{padding:.3rem .65rem;background:#fff}
@@ -379,14 +398,15 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); window.removeEventLi
 @media(max-width:960px){
   .demo-banner{align-items:flex-start;flex-direction:column}.demo-actions{width:100%;justify-content:space-between}
   .admin-layout{display:block}.admin-header{min-height:60px}.admin-header-start,.admin-header-end{gap:var(--sp-2)}
-  .admin-header-start{flex-shrink:0}.admin-header-end .muted{display:none}
+  .admin-header-start{min-width:0}.account-name{display:none}
   .nav-toggle{display:block;padding:var(--sp-1) var(--sp-2);box-shadow:none;font-size:var(--fs-lg)}
   .admin-sidebar{position:fixed;z-index:30;top:0;bottom:0;left:0;width:min(280px,85vw);visibility:hidden;transform:translateX(-100%);transition:transform .2s ease,visibility .2s ease;box-shadow:var(--shadow-md)}
   .admin-sidebar.is-open{visibility:visible;transform:translateX(0)}
-  .mobile-nav-heading{display:flex;align-items:center;justify-content:space-between;padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border)}
-  .mobile-nav-heading button{font-size:var(--fs-lg);padding:0 var(--sp-2);border:0;box-shadow:none}
-  .side-nav{max-height:calc(100vh - 60px)}
+  .sidebar-close{display:block;margin-left:auto;padding:0 var(--sp-2);border:0;box-shadow:none;background:transparent;color:var(--sidebar-text);font-size:var(--fs-lg)}
+  .sidebar-close:hover{background:var(--sidebar-hover);color:var(--sidebar-text)}
+  .side-nav{max-height:calc(100vh - 66px)}
   .nav-backdrop,.nav-backdrop:hover{display:block;position:fixed;z-index:29;inset:0;width:100%;height:100%;padding:0;border:0;border-radius:0;background:var(--nav-overlay)}
   .admin-content{padding:var(--sp-4)}
 }
+@media(max-width:520px){.page-parent,.account-avatar{display:none}.admin-header{gap:var(--sp-2)}}
 </style>
