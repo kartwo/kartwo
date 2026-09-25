@@ -45,8 +45,7 @@ const inviteDone = ref(false)
 const accessByPath = { '/dashboard': 'dashboard.view', '/diagnostics': 'diagnostics.view', '/audit': 'audit.view', '/products': 'products.view', '/categories': 'products.view', '/merchandising': 'content.manage', '/imports/csv': 'imports.manage', '/orders': 'orders.view', '/shop': 'settings.shop', '/domain': 'settings.domain', '/translation': 'translation.manage', '/shipping': 'settings.shipping', '/policies': 'settings.policy' }
 function can(permission) { return accountRole.value === 'owner' || accountRole.value === 'demo' || permissions.value.includes(permission) }
 const navGroups = computed(() => [
-  { id: 'business', label: '经营', icon: '⌂', items: [
-    { path: '/dashboard', label: '概览', visible: can('dashboard.view') },
+  { id: 'business', label: '经营', icon: '▤', items: [
     { path: '/orders', label: '订单', visible: can('orders.view') },
   ] },
   { id: 'catalog', label: '商品与内容', icon: '▣', items: [
@@ -79,6 +78,7 @@ function navItemActive(path) {
   return route.path === path || (path === '/products' && route.path.startsWith('/products/')) || (path === '/orders' && route.path.startsWith('/orders/'))
 }
 const currentNav = computed(() => {
+  if (route.path === '/dashboard') return { group: '', label: '概览' }
   const group = navGroups.value.find(section => section.items.some(item => navItemActive(item.path)))
   const item = group?.items.find(entry => navItemActive(entry.path))
   if (route.path === '/products/new') return { group: group?.label || '商品与内容', label: '新建商品' }
@@ -330,6 +330,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); window.removeEventLi
       <aside id="admin-sidebar" class="admin-sidebar" :class="{ 'is-open': mobileNavOpen }" aria-label="后台导航">
         <div class="sidebar-brand"><span class="brand-mark" aria-hidden="true">K</span><strong>Kartwo 后台</strong><button class="sidebar-close" type="button" aria-label="关闭菜单" @click="mobileNavOpen = false">×</button></div>
         <nav class="side-nav">
+          <RouterLink v-if="can('dashboard.view')" to="/dashboard" class="nav-home" :class="{ 'is-active': route.path === '/dashboard' }" :aria-current="route.path === '/dashboard' ? 'page' : undefined" @click="mobileNavOpen = false"><span class="nav-icon" aria-hidden="true">⌂</span>概览</RouterLink>
           <section v-for="group in navGroups" :key="group.id" class="nav-section">
             <button class="nav-group" :class="{ 'has-active': group.items.some(item => navItemActive(item.path)) }" type="button" :aria-expanded="!!expandedGroups[group.id]" @click="expandedGroups[group.id] = !expandedGroups[group.id]">
               <span class="nav-group-label"><span class="nav-icon" aria-hidden="true">{{ group.icon }}</span>{{ group.label }}</span><span class="nav-chevron" aria-hidden="true">⌄</span>
@@ -344,7 +345,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); window.removeEventLi
         <header class="app-header admin-header">
           <div class="admin-header-start">
             <button class="nav-toggle" type="button" :aria-expanded="mobileNavOpen" aria-controls="admin-sidebar" aria-label="切换菜单" @click="mobileNavOpen = !mobileNavOpen">☰</button>
-            <div class="page-location"><span class="page-parent">{{ currentNav.group }} / </span><strong>{{ currentNav.label }}</strong></div>
+            <div class="page-location"><span v-if="currentNav.group" class="page-parent">{{ currentNav.group }} / </span><strong>{{ currentNav.label }}</strong></div>
           </div>
           <div class="admin-header-end"><span class="account-avatar" aria-hidden="true">{{ username.slice(0, 1).toUpperCase() }}</span><span class="account-name">{{ username }}</span><button @click="doLogout">登出</button></div>
         </header>
@@ -364,6 +365,9 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); window.removeEventLi
 .sidebar-brand{display:flex;align-items:center;gap:var(--sp-3);min-height:66px;padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--sidebar-border);font-size:var(--fs-md);white-space:nowrap}
 .brand-mark{display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:var(--radius-md);background:var(--accent);color:var(--on-accent);font-weight:700}
 .side-nav{max-height:calc(100vh - 66px);overflow-y:auto;padding:var(--sp-3) var(--sp-2)}
+.nav-home{display:flex;align-items:center;gap:var(--sp-3);min-height:46px;margin-bottom:var(--sp-2);padding:var(--sp-2) var(--sp-3);border-radius:var(--radius-sm);color:var(--sidebar-muted);font-size:var(--fs-base);font-weight:600;white-space:nowrap}
+.nav-home:hover{background:var(--sidebar-hover);color:var(--sidebar-text);text-decoration:none}
+.nav-home.is-active{background:var(--sidebar-active);color:var(--on-accent);box-shadow:inset 3px 0 var(--accent)}
 .nav-section+.nav-section{margin-top:var(--sp-1)}
 .nav-group{width:100%;display:flex;align-items:center;justify-content:space-between;min-height:46px;padding:var(--sp-2) var(--sp-3);border:0;border-radius:var(--radius-sm);box-shadow:none;background:transparent;color:var(--sidebar-muted);font-size:var(--fs-base);font-weight:600;text-align:left}
 .nav-group:hover,.nav-group[aria-expanded="true"]{background:var(--sidebar-hover);border:0;color:var(--sidebar-text)}
@@ -376,7 +380,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); window.removeEventLi
 .nav-item{display:block;min-height:39px;padding:var(--sp-2) var(--sp-3) var(--sp-2) 44px;border-radius:var(--radius-sm);color:var(--sidebar-muted);font-size:var(--fs-sm);white-space:nowrap}
 .nav-item:hover{background:var(--sidebar-hover);color:var(--sidebar-text);text-decoration:none}
 .nav-item.is-active{background:var(--sidebar-active);color:var(--on-accent);font-weight:600;box-shadow:inset 3px 0 var(--accent)}
-.nav-group:focus-visible,.nav-item:focus-visible{outline:2px solid var(--sidebar-focus);outline-offset:-2px}
+.nav-home:focus-visible,.nav-group:focus-visible,.nav-item:focus-visible{outline:2px solid var(--sidebar-focus);outline-offset:-2px}
 .admin-workspace{min-width:0}
 .admin-header{position:sticky;top:0;z-index:20;min-height:66px;gap:var(--sp-4);box-shadow:var(--shadow-sm)}
 .admin-header-start,.admin-header-end{display:flex;align-items:center;gap:var(--sp-3);min-width:0}
