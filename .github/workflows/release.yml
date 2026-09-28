@@ -35,6 +35,7 @@ jobs:
         working-directory: web/admin/ui
         run: |
           npm ci
+          npm audit --registry=https://registry.npmjs.org --audit-level=high
           npm run build
 
       - name: 确认 dist 产物就位（缺失即失败，绝不 embed 空壳）

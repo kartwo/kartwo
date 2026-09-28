@@ -6,7 +6,7 @@
 
 ## 当前版本
 
-当前正式版本：`v0.6.0`。
+当前正式版本：`v0.7.0`。
 
 - Linux x86_64：发布流水线在干净数据目录实跑迁移、20 件演示商品、店面、后台与健康检查。
 - Linux ARM64、macOS Apple Silicon、Windows x86_64：编译产出，尚未逐平台人工实跑。
@@ -43,12 +43,13 @@
 - Shopify CSV 导入与旧链接 301、本机诊断、审计、全量导出/恢复、自动备份
 - 内嵌自动 HTTPS、初始化向导、单二进制升级保护
 - 显式命令装入 5 个分类 × 4 件商品及可选原创封面，不会在启动或升级时污染真实店铺
+- 后台多用户与角色权限：店主邀请员工、分配权限、停用账号；敏感配置仍限店主
 
 版本变更和已知边界见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 下载与快速体验
 
-从 [GitHub Releases](https://github.com/kartwo/kartwo/releases) 下载 `v0.6.0` 对应平台文件和 `SHA256SUMS.txt`。
+从 [GitHub Releases](https://github.com/kartwo/kartwo/releases) 下载 `v0.7.0` 对应平台文件和 `SHA256SUMS.txt`。
 
 | 平台 | 文件 | 状态 |
 |---|---|---|
