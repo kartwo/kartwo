@@ -56,11 +56,12 @@ func TestContactLifecycleAndRetention(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetStatus(ctx, id, "closed"); err != nil {
+	owner := Actor{PublicID: "owner-id", Username: "admin"}
+	if err := s.SetStatus(ctx, id, "closed", owner); err != nil {
 		t.Fatal(err)
 	}
 	m, err := s.Get(ctx, id)
-	if err != nil || m.Status != "closed" || m.IP != in.IP {
+	if err != nil || m.Status != "closed" || m.IP != in.IP || m.ClosedByID != owner.PublicID || m.ClosedByName != owner.Username {
 		t.Fatalf("closed: %+v %v", m, err)
 	}
 	old := time.Now().UTC().AddDate(-2, 0, 0).Format(timeLayout)
@@ -74,12 +75,67 @@ func TestContactLifecycleAndRetention(t *testing.T) {
 	if err != nil || m.Name != "" || m.Email != "" || m.Body != "" || m.OrderRef != "" || m.IP != "" || m.Country != "" || m.AnonymizedAt == "" || m.Status != "closed" || m.Topic != "order" {
 		t.Fatalf("anonymized: %+v %v", m, err)
 	}
-	if err := s.SetStatus(ctx, id, "new"); !errors.Is(err, ErrNotFound) {
+	if err := s.SetStatus(ctx, id, "new", owner); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("anonymized immutable: %v", err)
 	}
 	list, err := s.List(ctx, "", 100)
 	if err != nil || len(list) != 1 {
 		t.Fatalf("metadata kept: %d %v", len(list), err)
+	}
+}
+
+func TestContactActorsTrackLastProcessingAndClosure(t *testing.T) {
+	s, _ := testService(t)
+	ctx := context.Background()
+	c := DefaultConfig()
+	c.Enabled = true
+	if err := s.SaveConfig(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.Submit(ctx, Input{Name: "Customer", Email: "customer@example.com", Topic: "other", Body: "Please help with this"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	alice := Actor{PublicID: "alice-id", Username: "alice"}
+	bob := Actor{PublicID: "bob-id", Username: "bob"}
+	if err := s.SetStatus(ctx, id, "processing", alice); err != nil {
+		t.Fatal(err)
+	}
+	m, err := s.Get(ctx, id)
+	if err != nil || m.ProcessingByID != alice.PublicID || m.ProcessingByName != alice.Username || m.ProcessingAt == "" || m.ClosedByName != "" {
+		t.Fatalf("processing actor: %+v %v", m, err)
+	}
+	if err := s.SetStatus(ctx, id, "processing", bob); !errors.Is(err, ErrUnchanged) {
+		t.Fatalf("duplicate status: %v", err)
+	}
+	if err := s.SetStatus(ctx, id, "closed", bob); err != nil {
+		t.Fatal(err)
+	}
+	m, err = s.Get(ctx, id)
+	if err != nil || m.ProcessingByName != "alice" || m.ClosedByID != bob.PublicID || m.ClosedByName != "bob" || m.ClosedAt == "" {
+		t.Fatalf("closure actor: %+v %v", m, err)
+	}
+	firstClose := m.ClosedAt
+	if err := s.SetStatus(ctx, id, "new", alice); err != nil {
+		t.Fatal(err)
+	}
+	m, err = s.Get(ctx, id)
+	if err != nil || m.Status != "new" || m.ClosedByName != "bob" || m.ClosedAt != firstClose {
+		t.Fatalf("reopened history: %+v %v", m, err)
+	}
+	if err := s.SetStatus(ctx, id, "processing", bob); err != nil {
+		t.Fatal(err)
+	}
+	m, err = s.Get(ctx, id)
+	if err != nil || m.ProcessingByName != "bob" || m.ProcessingByID != bob.PublicID {
+		t.Fatalf("new handler: %+v %v", m, err)
+	}
+	if err := s.SetStatus(ctx, id, "closed", alice); err != nil {
+		t.Fatal(err)
+	}
+	m, err = s.Get(ctx, id)
+	if err != nil || m.ClosedByName != "alice" || m.ClosedByID != alice.PublicID {
+		t.Fatalf("new closer: %+v %v", m, err)
 	}
 }
 

@@ -69,6 +69,8 @@ onMounted(load)
       <button v-for="m in messages" :key="m.public_id" class="contact-row" @click="open(m)">
         <strong>{{ topics[m.topic] || m.topic }} · {{ statuses[m.status] || m.status }}</strong>
         <span>{{ m.name || '已匿名化' }} · {{ m.created_at }}</span>
+        <span v-if="m.status === 'processing' && m.processing_by_name">处理人：{{ m.processing_by_name }}</span>
+        <span v-if="m.status === 'closed' && m.closed_by_name">结案人：{{ m.closed_by_name }}</span>
       </button>
     </section>
     <section class="panel">
@@ -76,6 +78,8 @@ onMounted(load)
         <h3>留言详情</h3>
         <dl class="contact-detail">
           <dt>状态</dt><dd>{{ statuses[selected.status] || selected.status }}</dd>
+          <dt>{{ selected.status === 'processing' ? '处理人' : '最近处理人' }}</dt><dd>{{ selected.processing_by_name || '尚无记录（或为升级前操作）' }}<template v-if="selected.processing_at"> · {{ selected.processing_at }}</template></dd>
+          <dt>{{ selected.status === 'closed' ? '结案人' : '上次结案人' }}</dt><dd>{{ selected.closed_by_name || '尚无记录（或为升级前操作）' }}<template v-if="selected.closed_at"> · {{ selected.closed_at }}</template></dd>
           <dt>姓名</dt><dd>{{ selected.name || '已匿名化' }}</dd>
           <dt>邮箱</dt><dd>{{ selected.email || '已匿名化' }}</dd>
           <dt>主题</dt><dd>{{ topics[selected.topic] || selected.topic }}</dd>

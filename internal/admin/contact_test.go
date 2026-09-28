@@ -68,9 +68,20 @@ func TestContactAdminOwnerAndDemoIsolation(t *testing.T) {
 	if got := doJSON(t, mux, "PUT", "/admin/api/settings/contact", settingsBody, demo, demoCSRF); got.StatusCode != http.StatusForbidden {
 		t.Fatalf("demo config=%d", got.StatusCode)
 	}
+	if forged := doJSON(t, mux, "PATCH", "/admin/api/contact/messages/"+id, `{"status":"processing","processing_by_name":"forged"}`, owner, csrf); forged.StatusCode != http.StatusBadRequest {
+		t.Fatalf("actor spoof should be rejected: %d %s", forged.StatusCode, forged.Body)
+	}
+	processing := doJSON(t, mux, "PATCH", "/admin/api/contact/messages/"+id, `{"status":"processing"}`, owner, csrf)
+	var processingMessage contact.Message
+	if processing.StatusCode != http.StatusOK || json.Unmarshal(processing.Body, &processingMessage) != nil || processingMessage.ProcessingByName != "admin" || processingMessage.ProcessingByID == "" {
+		t.Fatalf("owner processing=%d %s", processing.StatusCode, processing.Body)
+	}
 	updated := doJSON(t, mux, "PATCH", "/admin/api/contact/messages/"+id, `{"status":"closed"}`, owner, csrf)
 	var m contact.Message
-	if updated.StatusCode != http.StatusOK || json.Unmarshal(updated.Body, &m) != nil || m.Status != "closed" {
+	if updated.StatusCode != http.StatusOK || json.Unmarshal(updated.Body, &m) != nil || m.Status != "closed" || m.ClosedByName != "admin" || m.ClosedByID == "" {
 		t.Fatalf("owner close=%d %s", updated.StatusCode, updated.Body)
+	}
+	if again := doJSON(t, mux, "PATCH", "/admin/api/contact/messages/"+id, `{"status":"closed"}`, owner, csrf); again.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate closure=%d %s", again.StatusCode, again.Body)
 	}
 }

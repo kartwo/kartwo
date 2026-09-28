@@ -23,9 +23,10 @@ import (
 const timeLayout = "2006-01-02T15:04:05.000Z"
 
 var (
-	ErrDisabled = errors.New("contact: 留言未开启")
-	ErrInvalid  = errors.New("contact: 留言内容不合法")
-	ErrNotFound = errors.New("contact: 留言不存在")
+	ErrDisabled  = errors.New("contact: 留言未开启")
+	ErrInvalid   = errors.New("contact: 留言内容不合法")
+	ErrNotFound  = errors.New("contact: 留言不存在")
+	ErrUnchanged = errors.New("contact: 留言状态未变化")
 )
 
 type Config struct {
@@ -47,19 +48,30 @@ type Input struct {
 }
 
 type Message struct {
-	PublicID     string `json:"public_id"`
-	Name         string `json:"name"`
-	Email        string `json:"email"`
-	Topic        string `json:"topic"`
-	Body         string `json:"body"`
-	OrderRef     string `json:"order_ref"`
-	IP           string `json:"ip_address"`
-	Country      string `json:"country_code"`
-	Status       string `json:"status"`
-	CreatedAt    string `json:"created_at"`
-	UpdatedAt    string `json:"updated_at"`
-	ClosedAt     string `json:"closed_at"`
-	AnonymizedAt string `json:"anonymized_at"`
+	PublicID         string `json:"public_id"`
+	Name             string `json:"name"`
+	Email            string `json:"email"`
+	Topic            string `json:"topic"`
+	Body             string `json:"body"`
+	OrderRef         string `json:"order_ref"`
+	IP               string `json:"ip_address"`
+	Country          string `json:"country_code"`
+	Status           string `json:"status"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
+	ClosedAt         string `json:"closed_at"`
+	AnonymizedAt     string `json:"anonymized_at"`
+	ProcessingByID   string `json:"processing_by_id"`
+	ProcessingByName string `json:"processing_by_name"`
+	ProcessingAt     string `json:"processing_at"`
+	ClosedByID       string `json:"closed_by_id"`
+	ClosedByName     string `json:"closed_by_name"`
+}
+
+// Actor 仅由后台已鉴权会话构造；用户名保存为操作时快照，账号改名不改历史。
+type Actor struct {
+	PublicID string
+	Username string
 }
 
 type Service struct {
@@ -179,11 +191,11 @@ func (s *Service) Submit(ctx context.Context, in Input) (string, error) {
 
 func scanMessage(rows interface{ Scan(...any) error }) (Message, error) {
 	var m Message
-	err := rows.Scan(&m.PublicID, &m.Name, &m.Email, &m.Topic, &m.Body, &m.OrderRef, &m.IP, &m.Country, &m.Status, &m.CreatedAt, &m.UpdatedAt, &m.ClosedAt, &m.AnonymizedAt)
+	err := rows.Scan(&m.PublicID, &m.Name, &m.Email, &m.Topic, &m.Body, &m.OrderRef, &m.IP, &m.Country, &m.Status, &m.CreatedAt, &m.UpdatedAt, &m.ClosedAt, &m.AnonymizedAt, &m.ProcessingByID, &m.ProcessingByName, &m.ProcessingAt, &m.ClosedByID, &m.ClosedByName)
 	return m, err
 }
 
-const columns = `public_id,name,email,topic,body,order_ref,ip_address,country_code,status,created_at,updated_at,COALESCE(closed_at,''),COALESCE(anonymized_at,'')`
+const columns = `public_id,name,email,topic,body,order_ref,ip_address,country_code,status,created_at,updated_at,COALESCE(closed_at,''),COALESCE(anonymized_at,''),processing_by_id,processing_by_name,COALESCE(processing_at,''),closed_by_id,closed_by_name`
 
 func (s *Service) List(ctx context.Context, status string, limit int) ([]Message, error) {
 	if status != "" && status != "new" && status != "processing" && status != "closed" {
@@ -216,16 +228,38 @@ func (s *Service) Get(ctx context.Context, publicID string) (Message, error) {
 	return m, err
 }
 
-func (s *Service) SetStatus(ctx context.Context, publicID, status string) error {
-	if status != "new" && status != "processing" && status != "closed" {
+func (s *Service) SetStatus(ctx context.Context, publicID, status string, actor Actor) error {
+	if (status != "new" && status != "processing" && status != "closed") || actor.PublicID == "" || actor.Username == "" {
 		return ErrInvalid
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE contact_message SET status=?,closed_at=CASE WHEN ?='closed' THEN COALESCE(closed_at,strftime('%Y-%m-%dT%H:%M:%fZ','now')) ELSE NULL END,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id=? AND anonymized_at IS NULL`, status, status, publicID)
+	var query string
+	var args []any
+	switch status {
+	case "processing":
+		query = `UPDATE contact_message SET status='processing',processing_by_id=?,processing_by_name=?,processing_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id=? AND anonymized_at IS NULL AND status<>'processing'`
+		args = []any{actor.PublicID, actor.Username, publicID}
+	case "closed":
+		query = `UPDATE contact_message SET status='closed',closed_by_id=?,closed_by_name=?,closed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id=? AND anonymized_at IS NULL AND status<>'closed'`
+		args = []any{actor.PublicID, actor.Username, publicID}
+	case "new":
+		query = `UPDATE contact_message SET status='new',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id=? AND anonymized_at IS NULL AND status<>'new'`
+		args = []any{publicID}
+	}
+	result, err := s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return err
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
+		var current string
+		var anonymized sql.NullString
+		err := s.db.QueryRowContext(ctx, `SELECT status,anonymized_at FROM contact_message WHERE public_id=?`, publicID).Scan(&current, &anonymized)
+		if err == nil && !anonymized.Valid && current == status {
+			return ErrUnchanged
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
 		return ErrNotFound
 	}
 	return nil

@@ -83,9 +83,14 @@ func (h *HTTP) setContactMessageStatus(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if err := h.contact.SetStatus(r.Context(), r.PathValue("id"), req.Status); err != nil {
+	ac := authFrom(r.Context())
+	if err := h.contact.SetStatus(r.Context(), r.PathValue("id"), req.Status, contact.Actor{PublicID: ac.AdminPublicID, Username: ac.Username}); err != nil {
 		if errors.Is(err, contact.ErrInvalid) {
 			writeErr(w, 400, "留言状态无效")
+			return
+		}
+		if errors.Is(err, contact.ErrUnchanged) {
+			writeErr(w, 409, "留言已是该状态，请刷新页面")
 			return
 		}
 		if errors.Is(err, contact.ErrNotFound) {
@@ -95,6 +100,6 @@ func (h *HTTP) setContactMessageStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "更新留言失败")
 		return
 	}
-	h.recordAudit(r, authFrom(r.Context()).AdminID, "contact.status_update", "contact_message", r.PathValue("id"))
+	h.recordAudit(r, ac.AdminID, "contact.status_update", "contact_message", r.PathValue("id"))
 	h.getContactMessage(w, r)
 }
