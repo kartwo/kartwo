@@ -85,3 +85,30 @@ func TestContactAdminOwnerAndDemoIsolation(t *testing.T) {
 		t.Fatalf("duplicate closure=%d %s", again.StatusCode, again.Body)
 	}
 }
+
+func TestContactPresetRolePermissionsAndCustomRoleValidation(t *testing.T) {
+	h, _ := newHTTP(t)
+	for _, role := range []string{"administrator", "operator"} {
+		var raw string
+		if err := h.svc.db.QueryRow(`SELECT permissions FROM admin_role WHERE system_key=?`, role).Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		var permissions []string
+		if err := json.Unmarshal([]byte(raw), &permissions); err != nil {
+			t.Fatal(err)
+		}
+		found := map[string]bool{}
+		for _, permission := range permissions {
+			found[permission] = true
+		}
+		if !found["contact.view"] || !found["contact.manage"] {
+			t.Fatalf("preset %s lacks contact permission: %v", role, permissions)
+		}
+	}
+	if _, _, err := cleanRoleInput("客服", []string{"contact.manage"}); err == nil {
+		t.Fatal("manage without view must be rejected")
+	}
+	if _, _, err := cleanRoleInput("客服", []string{"contact.view", "contact.manage"}); err != nil {
+		t.Fatalf("valid contact role: %v", err)
+	}
+}
