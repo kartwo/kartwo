@@ -29,6 +29,7 @@ import (
 	"github.com/kartwo/kartwo/internal/cart"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/config"
+	"github.com/kartwo/kartwo/internal/contact"
 	"github.com/kartwo/kartwo/internal/importer"
 	"github.com/kartwo/kartwo/internal/mail"
 	"github.com/kartwo/kartwo/internal/media"
@@ -337,6 +338,8 @@ func runServe(logger *slog.Logger) error {
 	adminHTTP := admin.NewHTTP(adminSvc, catalogSvc, importer.New(st.DB, catalogSvc, mediaSvc, redirectSvc), mediaSvc, settingsSvc, orderSvc, paySvc, mailCache, exporter, backupCfg, cfg.Domain, cfg.Env == "prod", cfg.TrustedProxies, shopNameOverride)
 	adminHTTP.ConfigureDemo(admin.DemoConfig{Enabled: cfg.DemoMode, SessionTTL: cfg.DemoSessionTTL, MaxProducts: cfg.DemoMaxProducts, MaxImageBytes: cfg.DemoMaxImageBytes, CleanupInterval: cfg.DemoCleanupInterval})
 	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, redirectSvc, cfg.ShopName, cfg.BaseURL, cfg.TrustedProxies, shopNameOverride)
+	contactSvc := contact.New(st.DB, settingsSvc)
+	storeHTTP.ConfigureContact(contactSvc)
 	payHTTP := payment.NewHTTP(paySvc)
 	// 解析"当前生效域名"（env 覆盖 DB），决定是否启用 HTTPS（仅 prod）。
 	baseCtx := context.Background()
@@ -358,6 +361,7 @@ func runServe(logger *slog.Logger) error {
 	// 本地全量备份走独立 goroutine，不阻塞 HTTP 服务启动；首次启动即生成一份。
 	go backup.NewScheduler(exporter, cfg.BackupInterval, cfg.BackupRetention, logger, remoteUploader).Run(ctx)
 	go adminHTTP.RunDemoCleanup(ctx, logger)
+	go contactSvc.RunRetention(ctx, logger)
 
 	var servers []*http.Server
 	errCh := make(chan error, 1)

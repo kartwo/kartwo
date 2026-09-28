@@ -25,6 +25,9 @@ import ShippingSettings from './views/ShippingSettings.vue'
 import PolicySettings from './views/PolicySettings.vue'
 import AccountSettings from './views/AccountSettings.vue'
 import UsersRoles from './views/UsersRoles.vue'
+import ContactInbox from './views/ContactInbox.vue'
+import ContactSettings from './views/ContactSettings.vue'
+import About from './views/About.vue'
 import './style.css'
 
 const router = createRouter({
@@ -47,6 +50,9 @@ const router = createRouter({
     { path: '/smtp', component: SmtpSettings, meta: { demoReadonly: true } },
     { path: '/translation', component: TranslationSettings, meta: { demoReadonly: true } },
     { path: '/orders', component: OrderList, meta: { demoReadonly: true } },
+    { path: '/contact', component: ContactInbox, meta: { demoReadonly: true } },
+    { path: '/contact-settings', component: ContactSettings, meta: { demoReadonly: true } },
+    { path: '/about', component: About },
     { path: '/orders/:id', component: OrderDetail, props: true, meta: { demoReadonly: true } },
     { path: '/merchandising', component: Merchandising },
     { path: '/categories', component: CategoryManagement },

@@ -18,6 +18,7 @@ import (
 	"github.com/kartwo/kartwo/internal/audit"
 	"github.com/kartwo/kartwo/internal/backup"
 	"github.com/kartwo/kartwo/internal/catalog"
+	"github.com/kartwo/kartwo/internal/contact"
 	"github.com/kartwo/kartwo/internal/httpx"
 	"github.com/kartwo/kartwo/internal/importer"
 	"github.com/kartwo/kartwo/internal/mail"
@@ -52,6 +53,7 @@ type HTTP struct {
 	media       *media.Service
 	settings    *settings.Service
 	policy      *policy.Service
+	contact     *contact.Service
 	orders      *order.Service // 后台订单页（M3.3a 起）
 	pay         refundService  // 退款编排（M3.3a 起），可为 nil
 	stripeTest  stripeConnectionTester
@@ -80,7 +82,7 @@ type DemoConfig struct {
 // 注意 cookie 的 Secure 标记按**每次请求**是否走 TLS 决定（决策 D8-A），与此参数无关。
 // envDomain=KARTWO_DOMAIN，非空时域名由 env 提供、后台只读（决策 C：env 覆盖 DB、不双写）。
 func NewHTTP(svc *Service, cat *catalog.Service, importSvc *importer.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc refundService, mailCache *mail.Cache, exporter *backup.Exporter, backupCfg BackupConfig, envDomain string, secure bool, trusted []*net.IPNet, envShopName ...string) *HTTP {
-	h := &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, policy: policy.New(settingsSvc, cat), orders: orderSvc, pay: paySvc, mailCache: mailCache, exporter: exporter, audit: audit.New(svc.db), backupCfg: backupCfg, envDomain: envDomain, secure: secure, trusted: trusted, limiter: newLoginLimiter(5, time.Minute)}
+	h := &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, policy: policy.New(settingsSvc, cat), contact: contact.New(svc.db, settingsSvc), orders: orderSvc, pay: paySvc, mailCache: mailCache, exporter: exporter, audit: audit.New(svc.db), backupCfg: backupCfg, envDomain: envDomain, secure: secure, trusted: trusted, limiter: newLoginLimiter(5, time.Minute)}
 	if tester, ok := paySvc.(stripeConnectionTester); ok {
 		h.stripeTest = tester
 	}
@@ -205,6 +207,11 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("POST /admin/api/settings/backup/test", owner(h.testBackupRemote))
 	mux.Handle("GET /admin/api/export", owner(h.exportData))
 	mux.Handle("GET /admin/api/audit-events", protect(h.listAuditEvents))
+	mux.Handle("GET /admin/api/contact/messages", protect(h.listContactMessages))
+	mux.Handle("GET /admin/api/contact/messages/{id}", protect(h.getContactMessage))
+	mux.Handle("PATCH /admin/api/contact/messages/{id}", protect(h.setContactMessageStatus))
+	mux.Handle("GET /admin/api/settings/contact", protect(h.getContactSettings))
+	mux.Handle("PUT /admin/api/settings/contact", owner(h.setContactSettings))
 
 	// 订单 + 退款（M3.3a）。
 	mux.Handle("GET /admin/api/orders", protect(h.listOrders))

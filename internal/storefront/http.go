@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/kartwo/kartwo/internal/cart"
+	"github.com/kartwo/kartwo/internal/contact"
 	"github.com/kartwo/kartwo/internal/httpx"
 	"github.com/kartwo/kartwo/internal/order"
 	"github.com/kartwo/kartwo/internal/payment"
@@ -52,6 +53,9 @@ type HTTP struct {
 	ckoutTmpl        *template.Template
 	orderTmpl        *template.Template
 	pageTmpl         *template.Template
+	contactTmpl      *template.Template
+	contact          *contact.Service
+	contactLimit     *contactLimiter
 }
 
 // secureFor 判定本次响应的 Cookie 是否该带 Secure：直连 TLS 始终安全；
@@ -73,14 +77,16 @@ func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, setti
 	h := &HTTP{
 		trusted: trusted,
 		svc:     svc, cart: cartSvc, order: orderSvc, settings: settingsSvc, pay: pay, redirect: redirectSvc, shopNameFallback: shopName,
-		baseURL:     strings.TrimRight(baseURL, "/"),
-		homeTmpl:    parse("templates/home.html"),
-		catalogTmpl: parse("templates/catalog.html"),
-		prodTmpl:    parse("templates/product.html"),
-		cartTmpl:    parse("templates/cart.html"),
-		ckoutTmpl:   parse("templates/checkout.html"),
-		orderTmpl:   parse("templates/order.html"),
-		pageTmpl:    parse("templates/content_page.html"),
+		baseURL:      strings.TrimRight(baseURL, "/"),
+		homeTmpl:     parse("templates/home.html"),
+		catalogTmpl:  parse("templates/catalog.html"),
+		prodTmpl:     parse("templates/product.html"),
+		cartTmpl:     parse("templates/cart.html"),
+		ckoutTmpl:    parse("templates/checkout.html"),
+		orderTmpl:    parse("templates/order.html"),
+		pageTmpl:     parse("templates/content_page.html"),
+		contactTmpl:  parse("templates/contact.html"),
+		contactLimit: newContactLimiter(),
 	}
 	if len(shopNameOverride) > 0 {
 		if fallback := strings.TrimSpace(shopNameOverride[0]); fallback != "" {
@@ -89,6 +95,9 @@ func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, setti
 	}
 	return h
 }
+
+// ConfigureContact 注入可选的客服留言服务；未注入时公开表单保持关闭。
+func (h *HTTP) ConfigureContact(svc *contact.Service) { h.contact = svc }
 
 // cur 解析当前请求的货币代码（按主攻市场）。
 func (h *HTTP) cur(ctx context.Context) string { return h.settings.Currency(ctx) }
@@ -109,6 +118,8 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /collections/{slug}", h.categoryPage)
 	mux.HandleFunc("GET /search", h.searchPage)
 	mux.HandleFunc("GET /pages/{slug}", h.contentPage)
+	mux.HandleFunc("GET /contact", h.contactPage)
+	mux.HandleFunc("POST /contact", h.contactSubmit)
 	mux.HandleFunc("GET /products/{handle}", h.shopifyProductRedirect)
 	mux.HandleFunc("GET /sitemap.xml", h.sitemap)
 	mux.HandleFunc("GET /robots.txt", h.robots)
@@ -426,6 +437,12 @@ func (h *HTTP) render(w http.ResponseWriter, r *http.Request, t *template.Templa
 	}
 	data["NavigationCategories"] = categories
 	data["FooterPages"] = pages
+	for _, page := range pages {
+		if page.Slug == "privacy-policy" {
+			data["PrivacyPolicyAvailable"] = true
+			break
+		}
+	}
 	data["ShopLogoURL"] = h.settings.ShopLogoURL(r.Context())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.ExecuteTemplate(w, "base", data); err != nil {

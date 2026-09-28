@@ -43,6 +43,8 @@ function describe(event) {
     'shipping_zone.update': '更新特殊配送规则',
     'shipping_zone.delete': '删除特殊配送规则',
     'account.credentials_update': '更新管理员账号',
+    'contact.settings_update': '更新客服留言设置',
+    'contact.status_update': '更新客服留言状态',
   }
   return labels[event.action] || event.action
 }

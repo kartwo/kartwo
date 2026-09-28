@@ -42,11 +42,12 @@ provide('accountPermissions', permissions)
 const inviteToken = computed(() => route.path === '/accept-invite' ? String(route.query.token || '') : '')
 const inviteForm = ref({ password: '', confirm: '' })
 const inviteDone = ref(false)
-const accessByPath = { '/dashboard': 'dashboard.view', '/diagnostics': 'diagnostics.view', '/audit': 'audit.view', '/products': 'products.view', '/categories': 'products.view', '/merchandising': 'content.manage', '/imports/csv': 'imports.manage', '/orders': 'orders.view', '/shop': 'settings.shop', '/domain': 'settings.domain', '/translation': 'translation.manage', '/shipping': 'settings.shipping', '/policies': 'settings.policy' }
+const accessByPath = { '/dashboard': 'dashboard.view', '/diagnostics': 'diagnostics.view', '/audit': 'audit.view', '/products': 'products.view', '/categories': 'products.view', '/merchandising': 'content.manage', '/imports/csv': 'imports.manage', '/orders': 'orders.view', '/contact': 'contact.view', '/contact-settings': 'contact.view', '/shop': 'settings.shop', '/domain': 'settings.domain', '/translation': 'translation.manage', '/shipping': 'settings.shipping', '/policies': 'settings.policy' }
 function can(permission) { return accountRole.value === 'owner' || accountRole.value === 'demo' || permissions.value.includes(permission) }
 const navGroups = computed(() => [
   { id: 'business', label: '经营', icon: '▤', items: [
     { path: '/orders', label: '订单', visible: can('orders.view') },
+    { path: '/contact', label: '客服留言', visible: can('contact.view') },
   ] },
   { id: 'catalog', label: '商品与内容', icon: '▣', items: [
     { path: '/products', label: '商品', visible: can('products.view') },
@@ -60,6 +61,7 @@ const navGroups = computed(() => [
   { id: 'system', label: '系统', icon: '◷', items: [
     { path: '/diagnostics', label: '诊断', visible: can('diagnostics.view') },
     { path: '/audit', label: '日志', visible: can('audit.view') },
+    { path: '/about', label: '关于', visible: true },
   ] },
   { id: 'settings', label: '设置', icon: '⚙', items: [
     { path: '/shop', label: '店铺', visible: can('settings.shop') },
@@ -70,6 +72,7 @@ const navGroups = computed(() => [
     { path: '/backup', label: '备份', visible: accountRole.value !== 'staff' },
     { path: '/shipping', label: '配送', visible: can('settings.shipping') },
     { path: '/policies', label: '店铺政策', visible: can('settings.policy') },
+    { path: '/contact-settings', label: '客服留言设置', visible: can('contact.view') },
     { path: '/account', label: '账号与安全', visible: true },
     { path: '/users', label: '用户与角色', visible: accountRole.value === 'owner' },
   ] },
@@ -93,8 +96,14 @@ watch([() => route.path, navGroups], () => {
 }, { immediate: true })
 function closeMobileNavOnEscape(event) { if (event.key === 'Escape') mobileNavOpen.value = false }
 const routePermission = computed(() => route.path === '/products/new' ? 'products.create' : route.path.startsWith('/products/') ? 'products.view' : route.path.startsWith('/orders/') ? 'orders.view' : accessByPath[route.path])
-const routeAllowed = computed(() => accountRole.value === 'demo' ? route.path !== '/users' : accountRole.value !== 'staff' || (!routePermission.value ? ['/account'].includes(route.path) : can(routePermission.value)))
-const staffReadonlyRoute = computed(() => accountRole.value === 'staff' && ((route.path.startsWith('/products/') && !can('products.edit')) || (route.path === '/products' && !can('products.edit') && !can('products.create')) || (route.path.startsWith('/orders') && !can('orders.fulfill')) || (route.path === '/categories' && !can('categories.manage'))))
+const routeAllowed = computed(() => accountRole.value === 'demo' ? route.path !== '/users' : accountRole.value !== 'staff' || (!routePermission.value ? ['/account', '/about'].includes(route.path) : can(routePermission.value)))
+const staffReadonlyRoute = computed(() => accountRole.value === 'staff' && (
+  (route.path.startsWith('/products/') && !can('products.edit')) ||
+  (route.path === '/products' && !can('products.edit') && !can('products.create')) ||
+  (route.path.startsWith('/orders') && !can('orders.fulfill')) ||
+  (route.path === '/categories' && !can('categories.manage')) ||
+  (route.path === '/contact' && !can('contact.manage'))
+))
 
 const demoRemaining = computed(() => {
   const seconds = Math.max(0, Math.ceil((new Date(demoExpiresAt.value).getTime() - now.value) / 1000))

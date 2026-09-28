@@ -133,6 +133,11 @@ export const api = {
   setBackupSettings: (payload) => request('PUT', '/settings/backup', payload),
   testBackup: () => request('POST', '/settings/backup/test'),
   auditEvents: () => request('GET', '/audit-events'),
+  contactSettings: () => request('GET', '/settings/contact'),
+  saveContactSettings: (payload) => request('PUT', '/settings/contact', payload),
+  contactMessages: (status = '') => request('GET', '/contact/messages' + (status ? '?status=' + encodeURIComponent(status) : '')),
+  contactMessage: (id) => request('GET', '/contact/messages/' + encodeURIComponent(id)),
+  updateContactStatus: (id, status) => request('PATCH', '/contact/messages/' + encodeURIComponent(id), { status }),
 
   listOrders: () => request('GET', '/orders'),
   exportOrdersCSV: async (filter = {}) => {

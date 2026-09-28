@@ -1,0 +1,28 @@
+{{/* 客服联系页 / Contact Page
+功能：英文店面私密客服留言表单
+作者：仗键天涯(daxing)
+邮箱：3442535897@qq.com
+时间：2026-09-28 15:00:00 */}}
+{{define "content"}}
+<section class="contact-layout">
+  <span class="eyebrow">Customer support</span><h1>Contact Us</h1>
+  {{if .SupportEmail}}<p>Prefer email? Reach us at <a href="mailto:{{.SupportEmail}}">{{.SupportEmail}}</a>.</p>{{end}}
+  {{if .Sent}}<p class="contact-alert" role="status">Thanks—your message has been received. We will reply by email.</p>{{end}}
+  {{if .Enabled}}
+  <form class="contact-card" action="/contact" method="post">
+    <h2>Send us a message</h2>
+    {{if .Error}}<p class="contact-error" role="alert">{{.Error}}</p>{{end}}
+    <label for="contact-name">Name *</label><input id="contact-name" name="name" required maxlength="80" autocomplete="name" value="{{.Name}}" />
+    <label for="contact-email">Email *</label><input id="contact-email" name="email" type="email" required maxlength="254" autocomplete="email" value="{{.Email}}" />
+    <label for="contact-topic">Topic *</label><select id="contact-topic" name="topic" required>
+      <option value="">Choose a topic</option><option value="product" {{if eq .Topic "product"}}selected{{end}}>Product question</option><option value="shipping" {{if eq .Topic "shipping"}}selected{{end}}>Shipping</option><option value="order" {{if eq .Topic "order"}}selected{{end}}>Order</option><option value="returns" {{if eq .Topic "returns"}}selected{{end}}>Returns</option><option value="other" {{if eq .Topic "other"}}selected{{end}}>Other</option>
+    </select>
+    <label for="contact-order">Order number (optional)</label><input id="contact-order" name="order_ref" maxlength="60" value="{{.OrderRef}}" />
+    <label for="contact-body">Message *</label><textarea id="contact-body" name="body" required minlength="10" maxlength="4000">{{.Body}}</textarea>
+    <div class="trap" aria-hidden="true"><label for="contact-website">Leave this empty</label><input id="contact-website" name="website" tabindex="-1" autocomplete="off" /></div>
+    <p class="contact-note">We use your details to respond and protect this form from abuse. Message details are anonymized {{.RetentionMonths}} months after closure, and IP addresses are removed after {{.IPRetentionDays}} days. {{if .PrivacyPolicyAvailable}}See our <a href="/pages/privacy-policy">Privacy Policy</a>. {{end}}Please do not include payment card details or passwords.</p>
+    <button class="btn" type="submit">Send message</button>
+  </form>
+  {{else}}<p>Online messages are currently unavailable. Please contact us by email.</p>{{end}}
+</section>
+{{end}}
