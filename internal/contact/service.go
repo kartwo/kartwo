@@ -145,7 +145,7 @@ func validText(s string, min, max int, multiline bool) bool {
 		return false
 	}
 	for _, r := range s {
-		if unicode.IsControl(r) && !(multiline && (r == '\n' || r == '\r' || r == '\t')) {
+		if unicode.IsControl(r) && (!multiline || (r != '\n' && r != '\r' && r != '\t')) {
 			return false
 		}
 	}
