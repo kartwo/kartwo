@@ -13,8 +13,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/kartwo/kartwo/internal/mail"
+	"github.com/kartwo/kartwo/internal/order"
 	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/internal/store/sqlcgen"
 )
@@ -81,8 +83,36 @@ func (s *Service) TestStripeConnection(ctx context.Context) error {
 	return s.stripe.TestConnection(ctx)
 }
 
+// ErrOrderExpired 表示订单的 30 分钟库存预留已过期，禁止发起新的收款。
+var ErrOrderExpired = errors.New("payment: 订单库存预留已到期")
+
 // StartCheckout 用指定通道为订单发起一次收款，返回托管收银台/审批跳转 URL。
 func (s *Service) StartCheckout(ctx context.Context, provider string, ord OrderForPayment) (string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	var orderID int64
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM "order" WHERE public_id=?`, ord.PublicID).Scan(&orderID); err != nil {
+		_ = tx.Rollback()
+		return "", err
+	}
+	expired, err := order.ExpirePendingTx(ctx, tx, orderID, time.Now())
+	if err != nil {
+		_ = tx.Rollback()
+		return "", err
+	}
+	var status string
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM "order" WHERE id=?`, orderID).Scan(&status); err != nil {
+		_ = tx.Rollback()
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	if expired || status != "pending" {
+		return "", ErrOrderExpired
+	}
 	prov := s.providerByName(provider)
 	if prov == nil || !s.providerReady(ctx, provider) {
 		return "", fmt.Errorf("payment: 支付方式 %q 不可用", provider)
@@ -129,6 +159,23 @@ func (s *Service) CapturePayPal(ctx context.Context, paypalOrderID string) (stri
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := s.q.WithTx(tx)
+	if _, err := order.ExpirePendingTx(ctx, tx, ord.ID, time.Now()); err != nil {
+		return res.OrderRef, fmt.Errorf("payment: 检查订单预留期限: %w", err)
+	}
+	var currentStatus string
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM "order" WHERE id=?`, ord.ID).Scan(&currentStatus); err != nil {
+		return res.OrderRef, err
+	}
+	if currentStatus == "cancelled" {
+		if _, err := tx.ExecContext(ctx, `UPDATE "order" SET status='payment_review',payment_provider='paypal',payment_ref=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`, res.CaptureID, ord.ID); err != nil {
+			return res.OrderRef, err
+		}
+		if err := tx.Commit(); err != nil {
+			return res.OrderRef, err
+		}
+		slog.Error("已取消订单收到迟到付款，需人工退款；禁止发货", "provider", "paypal", "order_ref", res.OrderRef, "payment_ref", res.CaptureID)
+		return res.OrderRef, nil
+	}
 	n, err := q.MarkOrderPaidByPublicID(ctx, sqlcgen.MarkOrderPaidByPublicIDParams{
 		PaymentProvider: "paypal", PaymentRef: res.CaptureID, PublicID: res.OrderRef,
 	})
@@ -137,6 +184,9 @@ func (s *Service) CapturePayPal(ctx context.Context, paypalOrderID string) (stri
 	}
 	// 仅在真正发生 pending->paid（n>0）时入队确认信；已付/已取消单不再入队。best-effort 不阻断。
 	if n > 0 {
+		if err := order.FinalizePaidReservationTx(ctx, tx, ord.ID); err != nil {
+			return res.OrderRef, err
+		}
 		if err := mail.EnqueueOrderConfirmation(ctx, q, mail.OrderInfo{
 			ID: ord.ID, PublicID: ord.PublicID, Email: ord.Email, Currency: ord.Currency, TotalCents: ord.TotalCents,
 		}); err != nil {
@@ -146,7 +196,9 @@ func (s *Service) CapturePayPal(ctx context.Context, paypalOrderID string) (stri
 	if err := tx.Commit(); err != nil {
 		return res.OrderRef, fmt.Errorf("payment: 提交事务失败: %w", err)
 	}
-	slog.Info("PayPal 订单已付", "order_ref", res.OrderRef, "capture_id", res.CaptureID)
+	if n > 0 {
+		slog.Info("PayPal 订单已付", "order_ref", res.OrderRef, "capture_id", res.CaptureID)
+	}
 	return res.OrderRef, nil
 }
 
@@ -223,6 +275,23 @@ func (s *Service) markPaid(ctx context.Context, provider string, ev WebhookEvent
 	if ord.TotalCents != ev.AmountCents || !strings.EqualFold(ord.Currency, ev.Currency) {
 		return ErrMismatch
 	}
+	if _, err := order.ExpirePendingTx(ctx, tx, ord.ID, time.Now()); err != nil {
+		return fmt.Errorf("payment: 检查订单预留期限: %w", err)
+	}
+	var currentStatus string
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM "order" WHERE id=?`, ord.ID).Scan(&currentStatus); err != nil {
+		return err
+	}
+	if currentStatus == "cancelled" {
+		if _, err := tx.ExecContext(ctx, `UPDATE "order" SET status='payment_review',payment_provider=?,payment_ref=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`, provider, ev.PaymentRef, ord.ID); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		slog.Error("已取消订单收到迟到付款，需人工退款；禁止发货", "provider", provider, "order_ref", ev.OrderRef, "payment_ref", ev.PaymentRef, "event_id", ev.ID)
+		return nil
+	}
 
 	// 3) pending->paid（条件更新；非 pending 则 0 行，天然幂等、不回退已取消单）。同时落支付引用供退款。
 	n, err := q.MarkOrderPaidByPublicID(ctx, sqlcgen.MarkOrderPaidByPublicIDParams{
@@ -235,6 +304,9 @@ func (s *Service) markPaid(ctx context.Context, provider string, ev WebhookEvent
 	// 4) 仅在真正 pending->paid（n>0）时入队确认信（同事务原子；INSERT OR IGNORE 幂等，
 	//    含 PayPal 同步 capture 已入队的情形）。best-effort 不阻断已付。
 	if n > 0 {
+		if err := order.FinalizePaidReservationTx(ctx, tx, ord.ID); err != nil {
+			return fmt.Errorf("payment: 结算订单库存: %w", err)
+		}
 		if err := mail.EnqueueOrderConfirmation(ctx, q, mail.OrderInfo{
 			ID: ord.ID, PublicID: ord.PublicID, Email: ord.Email, Currency: ord.Currency, TotalCents: ord.TotalCents,
 		}); err != nil {
@@ -246,8 +318,10 @@ func (s *Service) markPaid(ctx context.Context, provider string, ev WebhookEvent
 		return fmt.Errorf("payment: 提交事务失败: %w", err)
 	}
 	// webhook 落 paid 成功路记 INFO：Stripe 与 PayPal（webhook 备份路）观测性对齐。
-	slog.Info("订单已付（webhook）", "provider", provider, "order_ref", ev.OrderRef,
-		"payment_ref", ev.PaymentRef, "amount_cents", ev.AmountCents, "event_id", ev.ID)
+	if n > 0 {
+		slog.Info("订单已付（webhook）", "provider", provider, "order_ref", ev.OrderRef,
+			"payment_ref", ev.PaymentRef, "amount_cents", ev.AmountCents, "event_id", ev.ID)
+	}
 	return nil
 }
 
@@ -273,7 +347,7 @@ func (s *Service) markRefundedFromWebhook(ctx context.Context, provider string, 
 		return fmt.Errorf("payment: 记录事件失败: %w", err)
 	}
 	// 条件更新：仅 paid->refunded；非 paid（含已 refunded）则 0 行、天然幂等。
-	if _, err := q.MarkOrderRefundedByPaymentRef(ctx, ev.PaymentRef); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE "order" SET status='refunded',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE payment_ref=? AND status IN ('paid','payment_review')`, ev.PaymentRef); err != nil {
 		return fmt.Errorf("payment: 更新退款状态失败: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -284,7 +358,7 @@ func (s *Service) markRefundedFromWebhook(ctx context.Context, provider string, 
 	return nil
 }
 
-// ErrNotRefundable 订单当前状态不可退款（非 paid）。
+// ErrNotRefundable 订单当前状态不可退款。
 var ErrNotRefundable = errors.New("payment: 订单当前状态不可退款")
 
 // Refund 后台手动整单全额退款：校验可退 → 调网关退款 → 事务内写退款记录 + 订单 paid->refunded。
@@ -295,7 +369,7 @@ func (s *Service) Refund(ctx context.Context, orderPublicID string) error {
 	} else if err != nil {
 		return fmt.Errorf("payment: 取订单失败: %w", err)
 	}
-	if ord.Status != "paid" {
+	if ord.Status != "paid" && ord.Status != "payment_review" {
 		return ErrNotRefundable
 	}
 	if ord.PaymentRef == "" {
@@ -327,7 +401,7 @@ func (s *Service) Refund(ctx context.Context, orderPublicID string) error {
 		}
 		return fmt.Errorf("payment: 写退款记录失败: %w", err)
 	}
-	if _, err := q.MarkOrderRefundedByPublicID(ctx, orderPublicID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE "order" SET status='refunded',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id=? AND status IN ('paid','payment_review')`, orderPublicID); err != nil {
 		return fmt.Errorf("payment: 更新订单状态失败: %w", err)
 	}
 	if err := tx.Commit(); err != nil {

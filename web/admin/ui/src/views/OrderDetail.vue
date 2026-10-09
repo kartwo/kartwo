@@ -20,7 +20,7 @@ const shipment = ref({ carrier:'', tracking_number:'', tracking_url:'' })
 
 function money(cents, cur) { return (cents / 100).toFixed(2) + ' ' + (cur || '') }
 function statusText(s) {
-  return { pending: '待付款', paid: '已付款', refunded: '已退款', cancelled: '已取消', fulfilled: '已发货' }[s] || s
+  return { pending: '待付款', paid: '已付款', refunded: '已退款', cancelled: '已取消', fulfilled: '已发货', payment_review: '收款异常待处理' }[s] || s
 }
 
 async function load() {
@@ -75,6 +75,10 @@ onMounted(load)
         <p><strong>支付通道：</strong>{{ o.payment_provider || '—' }}</p>
         <p class="muted">{{ (o.created_at || '').slice(0, 19).replace('T', ' ') }}</p>
       </div>
+	  <div v-if="o.status === 'payment_review'" class="panel payment-warning">
+	    <strong>已收到超时订单的付款，请勿发货。</strong>
+	    <p>该订单的库存预留已释放。请核对支付平台交易，并由店主在这里办理整单退款。</p>
+	  </div>
 
       <h3>商品</h3>
       <table class="lines">
@@ -99,12 +103,12 @@ onMounted(load)
 
       <div class="spacer"></div>
       <div v-if="o.status === 'paid' && (accountRole !== 'staff' || accountPermissions.includes('orders.fulfill'))" class="panel"><h3>发货与追踪</h3><input v-model="shipment.carrier" placeholder="承运商，例如 DHL"/><input v-model="shipment.tracking_number" placeholder="运单号"/><input v-model="shipment.tracking_url" placeholder="追踪链接（可选，https://）"/><button class="primary" :disabled="busy" @click="fulfill">确认发货</button></div>
-      <button v-if="o.status === 'paid' && accountRole !== 'staff'" class="danger" :disabled="busy" @click="refund">
+      <button v-if="(o.status === 'paid' || o.status === 'payment_review') && accountRole !== 'staff'" class="danger" :disabled="busy" @click="refund">
         {{ busy ? '退款中…' : '整单全额退款' }}
       </button>
       <p v-else-if="o.status === 'refunded'" class="muted">该订单已退款。</p>
       <p v-else-if="accountRole === 'staff'" class="muted">退款仅限店主操作。</p>
-      <p v-else class="muted">仅「已付款」订单可退款。</p>
+      <p v-else class="muted">仅「已付款」或「收款异常待处理」订单可退款。</p>
     </template>
   </div>
 </template>
@@ -116,4 +120,6 @@ onMounted(load)
 .badge{font-size:var(--fs-sm);border-radius:var(--radius-pill);padding:.15rem .6rem;border:1px solid var(--border)}
 .badge.paid{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}
 .badge.refunded{color:var(--danger);background:var(--danger-bg);border-color:var(--danger-bg)}
+.badge.payment_review{color:var(--danger);background:var(--danger-bg);border-color:var(--danger-bg)}
+.payment-warning{margin-top:var(--sp-3);color:var(--danger);border-color:var(--danger)}
 </style>

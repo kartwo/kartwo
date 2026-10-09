@@ -206,6 +206,9 @@ func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo)
 	if err != nil {
 		return "", fmt.Errorf("order: 建订单失败: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `UPDATE "order" SET reservation_expires_at=? WHERE id=?`, reservationTimestamp(time.Now().Add(ReservationTTL)), orderID); err != nil {
+		return "", fmt.Errorf("order: 写预留期限: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, "UPDATE \"order\" SET shipping_cents=?, shipping_rule_name=? WHERE id=?", shipping, rule, orderID); err != nil {
 		return "", fmt.Errorf("order: 写配送快照: %w", err)
 	}

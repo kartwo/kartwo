@@ -2,8 +2,12 @@
 {{$o := .Order}}
 {{if eq $o.Status "paid"}}<h1>Payment received ✓</h1>
 {{else if eq $o.Status "refunded"}}<h1>Order refunded</h1>
+{{else if eq $o.Status "cancelled"}}<h1>Order expired</h1>
+{{else if eq $o.Status "payment_review"}}<h1>Payment under review</h1>
 {{else}}<h1>Order placed ✓</h1>{{end}}
 <p class="muted">Order <strong>{{$o.PublicID}}</strong> — status: {{$o.Status}}.</p>
+{{if eq $o.Status "payment_review"}}<p>We received your payment after the order expired. Please do not place another payment for this order. Contact the store for a refund.</p>{{end}}
+{{if eq $o.Status "cancelled"}}<p>This order was not paid within 30 minutes, so its stock hold has ended. Please place a new order if you still want these items.</p>{{end}}
 
 {{if eq $o.Status "pending"}}
 <div class="panel" style="border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin:1rem 0">

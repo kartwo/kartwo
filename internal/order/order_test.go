@@ -9,9 +9,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io/fs"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/fstest"
+	"time"
 
 	"github.com/kartwo/kartwo/internal/cart"
 	"github.com/kartwo/kartwo/internal/catalog"
@@ -37,6 +40,65 @@ func setup(t *testing.T) (*sql.DB, *Service, *cart.Service, *catalog.Service) {
 		t.Fatal(err)
 	}
 	return db, New(db, settings.New(db)), cart.New(db), catalog.New(db)
+}
+
+func TestReservationMigrationPreservesAvailableStock(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+t.TempDir()+"/old.db?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	defer func() { _ = db.Close() }()
+	old := fstest.MapFS{}
+	files, err := fs.ReadDir(migrations.FS, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if file.Name() >= "0025" || file.IsDir() {
+			continue
+		}
+		body, err := fs.ReadFile(migrations.FS, file.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		old[file.Name()] = &fstest.MapFile{Data: body}
+	}
+	if _, err := migrate.Run(ctx, db, old); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`INSERT INTO product(id,public_id,title,slug) VALUES(1,'p','Old product','old')`,
+		`INSERT INTO variant(id,public_id,product_id,option_key) VALUES(1,'v',1,'')`,
+		`INSERT INTO inventory(variant_id,quantity,reserved) VALUES(1,10,4)`,
+		`INSERT INTO customer(id,public_id,email) VALUES(1,'c','old@example.com')`,
+		`INSERT INTO "order"(id,public_id,customer_id,status,email,ship_name,ship_address,subtotal_cents,total_cents,created_at) VALUES(1,'pending',1,'pending','old@example.com','A','B',100,100,'2026-10-09T00:00:00.000Z')`,
+		`INSERT INTO "order"(id,public_id,customer_id,status,email,ship_name,ship_address,subtotal_cents,total_cents) VALUES(2,'paid',1,'paid','old@example.com','A','B',300,300)`,
+		`INSERT INTO order_item(order_id,variant_id,product_title,unit_cents,quantity,line_cents) VALUES(1,1,'Old product',100,1,100)`,
+		`INSERT INTO order_item(order_id,variant_id,product_title,unit_cents,quantity,line_cents) VALUES(2,1,'Old product',100,3,300)`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("造旧数据失败: %v: %s", err, statement)
+		}
+	}
+	if applied, err := migrate.Run(ctx, db, migrations.FS); err != nil || applied != 1 {
+		t.Fatalf("升级迁移失败: applied=%d err=%v", applied, err)
+	}
+	var quantity, reserved int
+	if err := db.QueryRow(`SELECT quantity,reserved FROM inventory WHERE variant_id=1`).Scan(&quantity, &reserved); err != nil {
+		t.Fatal(err)
+	}
+	if quantity != 7 || reserved != 1 || quantity-reserved != 6 {
+		t.Fatalf("升级后可售量须保持 6: quantity=%d reserved=%d", quantity, reserved)
+	}
+	var deadline string
+	if err := db.QueryRow(`SELECT reservation_expires_at FROM "order" WHERE id=1`).Scan(&deadline); err != nil || deadline != "2026-10-09T00:30:00.000Z" {
+		t.Fatalf("旧订单期限回填失败: %q err=%v", deadline, err)
+	}
+	if applied, err := migrate.Run(ctx, db, migrations.FS); err != nil || applied != 0 {
+		t.Fatalf("重复迁移应幂等: applied=%d err=%v", applied, err)
+	}
 }
 
 // seedVariant 建一个单变体商品，库存 stock，返回变体 public_id。
@@ -97,6 +159,63 @@ func TestCheckout_Success(t *testing.T) {
 	// 库存预留 = 2。
 	if _, res := reservedOf(t, db, "tee"); res != 2 {
 		t.Fatalf("预留 = %d，期望 2", res)
+	}
+}
+
+func TestReservationExpiresOnceAndReleasesStock(t *testing.T) {
+	db, ord, crt, cat := setup(t)
+	ctx := context.Background()
+	v := seedVariant(t, cat, "expiring-tee", 1000, 1)
+	cid, _, err := crt.GetOrCreate(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := crt.AddItem(ctx, cid, v, 1); err != nil {
+		t.Fatal(err)
+	}
+	id, err := ord.Checkout(ctx, cid, info())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var until string
+	if err := db.QueryRow(`SELECT reservation_expires_at FROM "order" WHERE public_id=?`, id).Scan(&until); err != nil {
+		t.Fatal(err)
+	}
+	deadline, err := time.Parse(reservationTimeLayout, until)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := time.Until(deadline); diff < 29*time.Minute || diff > ReservationTTL {
+		t.Fatalf("预留期限应为约 30 分钟，剩余 %s", diff)
+	}
+	if n, err := ord.ExpireDue(ctx, deadline.Add(-time.Millisecond)); err != nil || n != 0 {
+		t.Fatalf("期限前不可释放: n=%d err=%v", n, err)
+	}
+	if n, err := ord.ExpireDue(ctx, deadline); err != nil || n != 1 {
+		t.Fatalf("期限到达应释放: n=%d err=%v", n, err)
+	}
+	if n, err := ord.ExpireDue(ctx, deadline.Add(time.Minute)); err != nil || n != 0 {
+		t.Fatalf("重复执行应幂等: n=%d err=%v", n, err)
+	}
+	got, err := ord.Get(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "cancelled" {
+		t.Fatalf("状态=%s", got.Status)
+	}
+	if qty, reserved := reservedOf(t, db, "expiring-tee"); qty != 1 || reserved != 0 {
+		t.Fatalf("释放后 quantity=%d reserved=%d", qty, reserved)
+	}
+	newCart, _, err := crt.GetOrCreate(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := crt.AddItem(ctx, newCart, v, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ord.Checkout(ctx, newCart, info()); err != nil {
+		t.Fatalf("释放后应可重新下单: %v", err)
 	}
 }
 

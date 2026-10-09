@@ -62,6 +62,7 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, ord OrderForPayment)
 
 	form := url.Values{}
 	form.Set("mode", "payment")
+	form.Set("expires_at", strconv.FormatInt(p.now().Add(30*time.Minute).Unix(), 10))
 	form.Set("success_url", ord.SuccessURL)
 	form.Set("cancel_url", ord.CancelURL)
 	form.Set("client_reference_id", ord.PublicID)

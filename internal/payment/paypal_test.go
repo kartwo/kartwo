@@ -89,7 +89,8 @@ func TestAvailableMethodsPayPalOnly(t *testing.T) {
 }
 
 func TestPayPalStartCheckout(t *testing.T) {
-	svc, _, _ := newPayPalSvc(t, paypalMock(""))
+	svc, db, _ := newPayPalSvc(t, paypalMock(""))
+	seedOrder(t, db, "ORD-PP", 9900, "USD")
 	url, err := svc.StartCheckout(context.Background(), "paypal", OrderForPayment{
 		PublicID: "ORD-PP", Currency: "USD", AmountCents: 9900,
 		SuccessURL: "http://shop/paypal/return", CancelURL: "http://shop/order/ORD-PP",

@@ -140,6 +140,21 @@ func eventCount(t *testing.T, db *sql.DB) int {
 	return n
 }
 
+func TestStartCheckoutRejectsExpiredOrderBeforeCallingProvider(t *testing.T) {
+	svc, db, _ := newTestSvc(t)
+	seedOrder(t, db, "ORD-EXPIRED-START", 1200, "USD")
+	if _, err := db.Exec(`UPDATE "order" SET reservation_expires_at='2020-01-01T00:00:00.000Z' WHERE public_id='ORD-EXPIRED-START'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err := svc.StartCheckout(context.Background(), "stripe", OrderForPayment{PublicID: "ORD-EXPIRED-START", Currency: "USD", AmountCents: 1200})
+	if err != ErrOrderExpired {
+		t.Fatalf("过期订单应在调用支付平台前被拒: %v", err)
+	}
+	if status := orderStatus(t, db, "ORD-EXPIRED-START"); status != "cancelled" {
+		t.Fatalf("过期订单应已取消，得到 %s", status)
+	}
+}
+
 func TestWebhookHappyPathAndIdempotent(t *testing.T) {
 	svc, db, _ := newTestSvc(t)
 	ctx := context.Background()
@@ -169,6 +184,62 @@ func TestWebhookHappyPathAndIdempotent(t *testing.T) {
 	}
 	if st := orderStatus(t, db, ref); st != "paid" {
 		t.Fatalf("重投后订单仍应 paid，得 %s", st)
+	}
+}
+
+func TestWebhookFinalizesReservedStock(t *testing.T) {
+	svc, db, _ := newTestSvc(t)
+	seedOrder(t, db, "ORD-STOCK", 2500, "USD")
+	for _, stmt := range []string{
+		`INSERT INTO product(public_id,title,slug,status) VALUES('prod-stock','Test','stock-test','active')`,
+		`INSERT INTO variant(public_id,product_id,price_cents,option_key) VALUES('var-stock',1,2500,'stock')`,
+		`INSERT INTO inventory(variant_id,quantity,reserved) VALUES(1,2,1)`,
+		`INSERT INTO order_item(order_id,variant_id,product_title,unit_cents,quantity,line_cents) VALUES(1,1,'Test',2500,1,2500)`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	body := eventBody("evt_stock", "ORD-STOCK", "paid", 2500, "usd")
+	if err := svc.HandleWebhook(context.Background(), body, signStripe(testWhsec, time.Now().Unix(), body)); err != nil {
+		t.Fatal(err)
+	}
+	var quantity, reserved int
+	if err := db.QueryRow(`SELECT quantity,reserved FROM inventory WHERE variant_id=1`).Scan(&quantity, &reserved); err != nil {
+		t.Fatal(err)
+	}
+	if quantity != 1 || reserved != 0 {
+		t.Fatalf("已付款库存 quantity=%d reserved=%d", quantity, reserved)
+	}
+	if err := svc.HandleWebhook(context.Background(), body, signStripe(testWhsec, time.Now().Unix(), body)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT quantity,reserved FROM inventory WHERE variant_id=1`).Scan(&quantity, &reserved); err != nil {
+		t.Fatal(err)
+	}
+	if quantity != 1 || reserved != 0 {
+		t.Fatalf("重复回调不能再次扣库存: %d/%d", quantity, reserved)
+	}
+}
+
+func TestLatePaidWebhookNeedsReview(t *testing.T) {
+	svc, db, _ := newTestSvc(t)
+	seedOrder(t, db, "ORD-LATE", 2500, "USD")
+	if _, err := db.Exec(`UPDATE "order" SET reservation_expires_at='2020-01-01T00:00:00.000Z' WHERE public_id='ORD-LATE'`); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"id":"evt_late","type":"checkout.session.completed","data":{"object":{"client_reference_id":"ORD-LATE","payment_status":"paid","amount_total":2500,"currency":"usd","payment_intent":"pi_late"}}}`)
+	if err := svc.HandleWebhook(context.Background(), body, signStripe(testWhsec, time.Now().Unix(), body)); err != nil {
+		t.Fatal(err)
+	}
+	if st := orderStatus(t, db, "ORD-LATE"); st != "payment_review" {
+		t.Fatalf("迟到付款应待人工处理: %s", st)
+	}
+	if err := svc.HandleWebhook(context.Background(), body, signStripe(testWhsec, time.Now().Unix(), body)); err != nil {
+		t.Fatal(err)
+	}
+	if st := orderStatus(t, db, "ORD-LATE"); st != "payment_review" {
+		t.Fatalf("重投后状态不应变化: %s", st)
 	}
 }
 
@@ -549,10 +620,17 @@ func TestStripeVersionHeaderPinned(t *testing.T) {
 	ctx := context.Background()
 
 	seen := map[string]string{} // path -> Stripe-Version 头
+	checkoutExpiry := make(chan string, 1)
+	svc.stripe.now = func() time.Time { return time.Unix(1_700_000_000, 0) }
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen[r.URL.Path] = r.Header.Get("Stripe-Version")
 		switch r.URL.Path {
 		case "/v1/checkout/sessions":
+			expiry := ""
+			if err := r.ParseForm(); err == nil {
+				expiry = r.PostForm.Get("expires_at")
+			}
+			checkoutExpiry <- expiry
 			_, _ = w.Write([]byte(`{"id":"cs_test_1","url":"https://checkout.stripe.test/x"}`))
 		case "/v1/refunds":
 			_, _ = w.Write([]byte(`{"id":"re_test_1"}`))
@@ -577,6 +655,9 @@ func TestStripeVersionHeaderPinned(t *testing.T) {
 
 	if stripeAPIVersion == "" {
 		t.Fatal("stripeAPIVersion 常量不应为空")
+	}
+	if expiry := <-checkoutExpiry; expiry != "1700001800" {
+		t.Fatalf("Stripe 收银会话应在 30 分钟后过期，实际 %q", expiry)
 	}
 	for _, path := range []string{"/v1/checkout/sessions", "/v1/refunds"} {
 		got, ok := seen[path]

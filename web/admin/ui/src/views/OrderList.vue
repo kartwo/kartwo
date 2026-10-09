@@ -17,7 +17,7 @@ const exportFilter = ref({ status: '', from: '', to: '' })
 
 function money(cents, cur) { return (cents / 100).toFixed(2) + ' ' + cur }
 function statusText(s) {
-  return { pending: '待付款', paid: '已付款', refunded: '已退款', cancelled: '已取消', fulfilled: '已发货' }[s] || s
+  return { pending: '待付款', paid: '已付款', refunded: '已退款', cancelled: '已取消', fulfilled: '已发货', payment_review: '收款异常待处理' }[s] || s
 }
 
 async function load() {
@@ -59,7 +59,7 @@ onMounted(load)
       <h2>订单</h2>
       <div v-if="accountRole !== 'staff'" class="export-actions">
         <select v-model="exportFilter.status" aria-label="导出订单状态">
-          <option value="">全部状态</option><option value="pending">待付款</option><option value="paid">已付款</option><option value="fulfilled">已发货</option><option value="refunded">已退款</option><option value="cancelled">已取消</option>
+          <option value="">全部状态</option><option value="pending">待付款</option><option value="paid">已付款</option><option value="fulfilled">已发货</option><option value="refunded">已退款</option><option value="cancelled">已取消</option><option value="payment_review">收款异常待处理</option>
         </select>
         <label>从<input v-model="exportFilter.from" type="date" /></label>
         <label>至<input v-model="exportFilter.to" type="date" /></label>
@@ -100,5 +100,6 @@ onMounted(load)
 .badge{font-size:var(--fs-xs);border-radius:var(--radius-pill);padding:.1rem .5rem;border:1px solid var(--border)}
 .badge.paid{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}
 .badge.refunded{color:var(--danger);background:var(--danger-bg);border-color:var(--danger-bg)}
+.badge.payment_review{color:var(--danger);background:var(--danger-bg);border-color:var(--danger-bg)}
 .badge.pending{color:var(--text-muted)}
 </style>

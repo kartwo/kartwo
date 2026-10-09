@@ -89,7 +89,7 @@ func parseOrderExportFilter(r *http.Request) (order.OrderExportFilter, error) {
 	filter := order.OrderExportFilter{Status: strings.TrimSpace(r.URL.Query().Get("status"))}
 	if filter.Status != "" {
 		switch filter.Status {
-		case "pending", "paid", "refunded", "cancelled", "fulfilled":
+		case "pending", "paid", "refunded", "cancelled", "fulfilled", "payment_review":
 		default:
 			return order.OrderExportFilter{}, errors.New("订单状态筛选值无效")
 		}
