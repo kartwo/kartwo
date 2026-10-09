@@ -266,6 +266,7 @@ func runServe(logger *slog.Logger) error {
 	// 收款密钥内存缓存（绑定 KEK 金库：登录解锁/登出销毁）+ 支付编排服务。
 	payCache := payment.NewKeyCache(settingsSvc)
 	adminSvc := admin.New(st.DB)
+	adminSvc.SetRuntimeKeyPath(cfg.RuntimeKeyPath)
 	if cfg.DemoMode {
 		initialized, err := adminSvc.IsInitialized(context.Background())
 		if err != nil {
@@ -298,6 +299,11 @@ func runServe(logger *slog.Logger) error {
 	// SMTP 凭证内存缓存（绑定 KEK 金库：登录解锁/登出销毁）+ env 覆盖旁路（D1）。
 	mailCache := mail.NewCache(settingsSvc)
 	adminSvc.SetMailKeys(mailCache)
+	if unlocked, unlockErr := adminSvc.AutoUnlockBusinessKeys(context.Background()); unlockErr != nil {
+		logger.Warn("业务密钥启动自动解锁失败；店主登录可重新配对", "err", unlockErr)
+	} else if unlocked {
+		logger.Info("收款和邮件凭证已在启动时自动解锁")
+	}
 	mailStatus := mailCache.Status(context.Background())
 	logger.Info("SMTP 配置来源", "source", mailStatus.Source, "configured", mailStatus.Configured, "encryption", mailStatus.Encryption)
 
@@ -362,6 +368,7 @@ func runServe(logger *slog.Logger) error {
 	go backup.NewScheduler(exporter, cfg.BackupInterval, cfg.BackupRetention, logger, remoteUploader).Run(ctx)
 	go adminHTTP.RunDemoCleanup(ctx, logger)
 	go contactSvc.RunRetention(ctx, logger)
+	go orderSvc.RunReservationExpiry(ctx, logger)
 
 	var servers []*http.Server
 	errCh := make(chan error, 1)

@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"unicode"
@@ -80,6 +81,8 @@ func (s *Service) UpdateOwnerCredentials(ctx context.Context, adminID int64, use
 
 	passwordHash := owner.PasswordHash
 	passwordChanged := newPassword != ""
+	var rotatedKEK []byte
+	defer func() { clearBytes(rotatedKEK) }()
 	if passwordChanged {
 		if newPassword == currentPassword {
 			return false, ErrPasswordUnchanged
@@ -105,6 +108,7 @@ func (s *Service) UpdateOwnerCredentials(ctx context.Context, adminID int64, use
 		if deriveErr != nil {
 			return false, deriveErr
 		}
+		rotatedKEK = newKEK
 		rows, listErr := q.ListEncryptedSettings(ctx)
 		if listErr != nil {
 			return false, fmt.Errorf("admin: 读取加密设置失败: %w", listErr)
@@ -126,6 +130,9 @@ func (s *Service) UpdateOwnerCredentials(ctx context.Context, adminID int64, use
 				return false, fmt.Errorf("admin: 写回加密设置 %q 失败: 记录不存在", row.Key)
 			}
 		}
+		if err := s.rotateRuntimeKeyTx(ctx, tx, newKEK); err != nil {
+			return false, fmt.Errorf("admin: 同步无人值守钥匙失败: %w", err)
+		}
 	}
 
 	updated, err := q.UpdateOwnerCredentials(ctx, sqlcgen.UpdateOwnerCredentialsParams{Username: username, PasswordHash: passwordHash, ID: owner.ID})
@@ -143,11 +150,28 @@ func (s *Service) UpdateOwnerCredentials(ctx context.Context, adminID int64, use
 	}
 
 	s.vault.clear()
-	if s.keys != nil {
-		s.keys.Lock()
-	}
-	if s.mailKeys != nil {
-		s.mailKeys.Lock()
+	if s.unattended.Load() {
+		if passwordChanged {
+			if s.keys != nil {
+				s.keys.Lock()
+				if err := s.keys.Unlock(ctx, rotatedKEK); err != nil {
+					slog.Error("轮换主密码后收款缓存重载失败", "err", err)
+				}
+			}
+			if s.mailKeys != nil {
+				s.mailKeys.Lock()
+				if err := s.mailKeys.Unlock(ctx, rotatedKEK); err != nil {
+					slog.Error("轮换主密码后邮件缓存重载失败", "err", err)
+				}
+			}
+		}
+	} else {
+		if s.keys != nil {
+			s.keys.Lock()
+		}
+		if s.mailKeys != nil {
+			s.mailKeys.Lock()
+		}
 	}
 	return passwordChanged, nil
 }

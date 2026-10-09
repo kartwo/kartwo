@@ -12,7 +12,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -55,11 +57,13 @@ type MailKeys interface {
 
 // Service 承载 Admin 鉴权逻辑。
 type Service struct {
-	db       *sql.DB
-	q        *sqlcgen.Queries
-	vault    *kekVault   // 内存中持有已解锁会话的 KEK，绝不落盘
-	keys     PaymentKeys // 可选：收款密钥缓存，随登录/登出解锁/销毁
-	mailKeys MailKeys    // 可选：SMTP 凭证缓存，随登录/登出解锁/销毁
+	db             *sql.DB
+	q              *sqlcgen.Queries
+	vault          *kekVault   // 内存中持有已解锁会话的 KEK，绝不落盘
+	keys           PaymentKeys // 可选：收款密钥缓存，随登录/登出解锁/销毁
+	mailKeys       MailKeys    // 可选：SMTP 凭证缓存，随登录/登出解锁/销毁
+	runtimeKeyPath string
+	unattended     atomic.Bool
 }
 
 // New 构建 Admin 服务。
@@ -167,7 +171,20 @@ func (s *Service) Initialize(ctx context.Context, username, password string) err
 	}); err != nil {
 		return fmt.Errorf("admin: 存 KEK 盐失败: %w", err)
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if s.runtimeKeyPath != "" {
+		kek, err := auth.NewMasterPasswordKeySource(salt).DeriveKey(password)
+		if err == nil {
+			err = s.pairRuntimeKey(ctx, kek)
+			clearBytes(kek)
+		}
+		if err != nil {
+			slog.Warn("无人值守收款钥匙尚未建立；请检查数据目录父目录权限", "err", err)
+		}
+	}
+	return nil
 }
 
 // Login 校验口令，派生 KEK 并入内存金库，建会话。返回会话凭据。
@@ -216,6 +233,9 @@ func (s *Service) Login(ctx context.Context, username, password string) (*Sessio
 		return nil, fmt.Errorf("admin: 建会话失败: %w", err)
 	}
 	if user.Role == "owner" {
+		if err := s.pairRuntimeKey(ctx, kek); err != nil {
+			slog.Warn("无人值守收款钥匙配对失败；本次登录期间仍可收款", "err", err)
+		}
 		s.vault.put(token, kek)
 	}
 	// 解锁收款密钥 + SMTP 凭证缓存（绑定 KEK 金库生命周期）。失败不阻断登录——各设置页/诊断会提示。
@@ -294,13 +314,13 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*AuthContext,
 	}, nil
 }
 
-// Logout 删除会话并清内存 KEK；同时销毁收款密钥缓存（退出即销毁）。
+// Logout 删除会话并清内存 KEK；已配无人值守钥匙时保留业务缓存，避免店主退出后停收款。
 func (s *Service) Logout(ctx context.Context, token string) error {
 	if s.vault.delete(token) {
-		if s.keys != nil {
+		if s.keys != nil && !s.unattended.Load() {
 			s.keys.Lock()
 		}
-		if s.mailKeys != nil {
+		if s.mailKeys != nil && !s.unattended.Load() {
 			s.mailKeys.Lock()
 		}
 	}

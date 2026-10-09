@@ -169,6 +169,7 @@ Environment=KARTWO_BASE_URL=https://www.example.com
 Environment=KARTWO_HTTP_ADDR=:80
 Environment=KARTWO_HTTPS_ADDR=:443
 Environment=KARTWO_DATA_DIR=/data/kartwo-data
+Environment=KARTWO_RUNTIME_KEY_PATH=/var/lib/kartwo/unlock-key
 Environment="KARTWO_SHOP_NAME=My Store"
 ExecStart=/opt/kartwo/kartwo serve
 Restart=on-failure
@@ -180,6 +181,7 @@ UMask=0077
 PrivateTmp=true
 ProtectHome=true
 ReadWritePaths=/data/kartwo-data
+StateDirectory=kartwo
 
 [Install]
 WantedBy=multi-user.target
@@ -380,7 +382,7 @@ journalctl -u kartwo -n 80 --no-pager
 curl -s https://www.example.com/health
 ```
 
-若新版本含数据库迁移，Kartwo 会在有待执行迁移时先创建升级快照。仍应在升级前保留独立备份，不要只依赖服务器单块磁盘。
+若新版本含数据库迁移，Kartwo 会在有待执行迁移时先创建升级快照。仍应在升级前保留独立备份，不要只依赖服务器单块磁盘。`StateDirectory=kartwo` 会建立服务账户可写的 `/var/lib/kartwo`；`KARTWO_RUNTIME_KEY_PATH` 指向其中的受限钥匙文件，必须留在数据目录外。旧店升级后，店主需登录后台一次完成配对；之后服务重启可自动恢复收款。备份与迁店时保留店主主密码，新机器首次登录可重新配对。
 
 ## 8. 十分钟录屏分镜与讲稿
 

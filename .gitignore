@@ -33,6 +33,7 @@
 config.enc
 *.pem
 *.key
+*.unlock-key
 
 # 本地文档：人工测试说明 docs/test、完成报告 docs/reports（不进 git）
 /docs/

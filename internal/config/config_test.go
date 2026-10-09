@@ -7,9 +7,24 @@ package config
 
 import (
 	"net"
+	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestLoadRuntimeKeyOutsideDataDirectory(t *testing.T) {
+	dataDir := filepath.Join(t.TempDir(), "shop")
+	t.Setenv("KARTWO_DATA_DIR", dataDir)
+	t.Setenv("KARTWO_RUNTIME_KEY_PATH", filepath.Join(dataDir, "unlock-key"))
+	if _, err := Load(); err == nil {
+		t.Fatal("无人值守钥匙不得保存在可导出的数据目录内")
+	}
+	t.Setenv("KARTWO_RUNTIME_KEY_PATH", filepath.Join(t.TempDir(), "unlock-key"))
+	cfg, err := Load()
+	if err != nil || cfg.RuntimeKeyPath == "" {
+		t.Fatalf("数据目录外的钥匙路径应可用: path=%q err=%v", cfg.RuntimeKeyPath, err)
+	}
+}
 
 func TestLoadBackupDefaultsAndOverrides(t *testing.T) {
 	t.Setenv("KARTWO_BACKUP_INTERVAL", "90m")

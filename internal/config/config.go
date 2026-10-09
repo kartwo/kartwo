@@ -19,15 +19,16 @@ import (
 // Config 为内核运行所需的最小配置（M0）。
 // 注意：支付/SMTP/会话等密钥不在此结构中——它们后续加密存库（见 ARCHITECTURE §14/§15），绝不走环境明文。
 type Config struct {
-	Env         string // 运行环境：dev | prod
-	Addr        string // dev HTTP 监听地址，如 :8080（prod 用 HTTPAddr/HTTPSAddr）
-	DataDir     string // 数据目录，默认 ./data（数据即文件夹）
-	DBEngine    string // 数据库引擎：sqlite（默认）| postgres（升级项，M0 未实现）
-	DBPath      string // SQLite 数据库文件路径（由 DataDir 派生）
-	ShopName    string // 店铺名回退值；后台设置始终可修改并优先
-	ShopNameEnv bool   // KARTWO_SHOP_NAME 是否显式提供；仅标记回退值来源，不锁定后台
-	Currency    string // 币种代码（CNY/USD/EUR…），默认 CNY
-	BaseURL     string // 站点基址（用于 canonical/sitemap 绝对 URL）；空则按请求推导
+	Env            string // 运行环境：dev | prod
+	Addr           string // dev HTTP 监听地址，如 :8080（prod 用 HTTPAddr/HTTPSAddr）
+	DataDir        string // 数据目录，默认 ./data（数据即文件夹）
+	RuntimeKeyPath string // 无人值守业务钥匙路径，必须在数据目录外；默认数据目录同级 .unlock-key
+	DBEngine       string // 数据库引擎：sqlite（默认）| postgres（升级项，M0 未实现）
+	DBPath         string // SQLite 数据库文件路径（由 DataDir 派生）
+	ShopName       string // 店铺名回退值；后台设置始终可修改并优先
+	ShopNameEnv    bool   // KARTWO_SHOP_NAME 是否显式提供；仅标记回退值来源，不锁定后台
+	Currency       string // 币种代码（CNY/USD/EUR…），默认 CNY
+	BaseURL        string // 站点基址（用于 canonical/sitemap 绝对 URL）；空则按请求推导
 	// TrustedProxies 为可采信 X-Forwarded-Proto 的上游代理 CIDR/IP 白名单。
 	TrustedProxies []*net.IPNet
 
@@ -96,6 +97,7 @@ func Load() (*Config, error) {
 		Env:                 getEnv("KARTWO_ENV", "dev"),
 		Addr:                getEnv("KARTWO_ADDR", ":8080"),
 		DataDir:             getEnv("KARTWO_DATA_DIR", "./data"),
+		RuntimeKeyPath:      strings.TrimSpace(os.Getenv("KARTWO_RUNTIME_KEY_PATH")),
 		DBEngine:            getEnv("KARTWO_DB_ENGINE", "sqlite"),
 		ShopName:            "Kartwo Store",
 		Currency:            getEnv("KARTWO_CURRENCY", "CNY"),
@@ -167,6 +169,25 @@ func Load() (*Config, error) {
 	if strings.TrimSpace(cfg.Addr) == "" {
 		return nil, fmt.Errorf("KARTWO_ADDR 不能为空")
 	}
+	if cfg.RuntimeKeyPath == "" {
+		cfg.RuntimeKeyPath = filepath.Clean(cfg.DataDir) + ".unlock-key"
+	}
+	dataPath, err := filepath.Abs(cfg.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("解析数据目录失败: %w", err)
+	}
+	keyPath, err := filepath.Abs(cfg.RuntimeKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("解析无人值守钥匙路径失败: %w", err)
+	}
+	rel, err := filepath.Rel(dataPath, keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("校验无人值守钥匙路径失败: %w", err)
+	}
+	if rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
+		return nil, fmt.Errorf("KARTWO_RUNTIME_KEY_PATH 必须位于数据目录外")
+	}
+	cfg.RuntimeKeyPath = keyPath
 	if raw, ok := os.LookupEnv("KARTWO_BACKUP_INTERVAL"); ok && raw != "" {
 		interval, err := ParseBackupInterval(raw)
 		if err != nil {
