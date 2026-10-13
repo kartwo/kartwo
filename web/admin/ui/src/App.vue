@@ -282,16 +282,19 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); window.removeEventLi
   </div>
 
   <!-- 已初始化未登录：登录 -->
-  <div v-else-if="!authed" class="center-screen">
-    <div class="panel card">
-      <h2>登录 Kartwo Admin</h2>
-      <label>用户名</label>
-      <input v-model="form.user" autocomplete="username" />
-      <label>口令</label>
-      <input v-model="form.pass" type="password" autocomplete="current-password" @keyup.enter="doLogin" />
+  <div v-else-if="!authed" class="center-screen login-screen">
+    <div class="panel card login-card">
+      <div class="login-brand"><span class="brand-mark" aria-hidden="true">K</span><span>Kartwo</span></div>
+      <p class="login-overline">KARTWO · STORE ADMIN</p>
+      <h1>欢迎回来，<br />继续经营你的店铺。</h1>
+      <p class="login-intro">登录后台，管理商品、订单和店面内容。</p>
+      <label for="login-user">用户名</label>
+      <input id="login-user" v-model="form.user" autocomplete="username" />
+      <label for="login-password">口令</label>
+      <input id="login-password" v-model="form.pass" type="password" autocomplete="current-password" @keyup.enter="doLogin" />
       <p v-if="err" class="err">{{ err }}</p>
       <div class="spacer"></div>
-      <button class="primary" :disabled="busy" @click="doLogin">登录</button>
+      <button class="primary login-submit" :disabled="busy" @click="doLogin">登录后台</button>
 			<template v-if="demoAvailable">
 				<div class="demo-divider"><span>或</span></div>
 				<button class="demo-enter" :disabled="busy" @click="doDemo">一键进入公开演示</button>
@@ -339,9 +342,11 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); window.removeEventLi
     <div class="admin-layout">
       <button v-if="mobileNavOpen" class="nav-backdrop" type="button" aria-label="关闭菜单" @click="mobileNavOpen = false"></button>
       <aside id="admin-sidebar" class="admin-sidebar" :class="{ 'is-open': mobileNavOpen }" aria-label="后台导航">
-        <div class="sidebar-brand"><span class="brand-mark" aria-hidden="true">K</span><strong>Kartwo 后台</strong><button class="sidebar-close" type="button" aria-label="关闭菜单" @click="mobileNavOpen = false">×</button></div>
+        <div class="sidebar-brand"><span class="brand-mark" aria-hidden="true">K</span><span class="sidebar-brand-copy"><strong>Kartwo</strong><small>店铺运营后台</small></span><button class="sidebar-close" type="button" aria-label="关闭菜单" @click="mobileNavOpen = false">×</button></div>
         <nav class="side-nav">
+          <div class="side-label">工作台</div>
           <RouterLink v-if="can('dashboard.view')" to="/dashboard" class="nav-home" :class="{ 'is-active': route.path === '/dashboard' }" :aria-current="route.path === '/dashboard' ? 'page' : undefined" @click="mobileNavOpen = false"><span class="nav-icon" aria-hidden="true">⌂</span>概览</RouterLink>
+          <div class="side-label side-label-menu">功能菜单</div>
           <section v-for="group in navGroups" :key="group.id" class="nav-section">
             <button class="nav-group" :class="{ 'has-active': group.items.some(item => navItemActive(item.path)) }" type="button" :aria-expanded="!!expandedGroups[group.id]" @click="expandedGroups[group.id] = !expandedGroups[group.id]">
               <span class="nav-group-label"><span class="nav-icon" aria-hidden="true">{{ group.icon }}</span>{{ group.label }}</span><span class="nav-chevron" aria-hidden="true">⌄</span>
@@ -356,7 +361,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); window.removeEventLi
         <header class="app-header admin-header">
           <div class="admin-header-start">
             <button class="nav-toggle" type="button" :aria-expanded="mobileNavOpen" aria-controls="admin-sidebar" aria-label="切换菜单" @click="mobileNavOpen = !mobileNavOpen">☰</button>
-            <div class="page-location"><span v-if="currentNav.group" class="page-parent">{{ currentNav.group }} / </span><strong>{{ currentNav.label }}</strong></div>
+            <div class="page-location"><span class="page-parent">{{ currentNav.group || '工作台' }}</span><strong>{{ currentNav.label }}</strong></div>
           </div>
           <div class="admin-header-end"><span class="account-avatar" aria-hidden="true">{{ username.slice(0, 1).toUpperCase() }}</span><span class="account-name">{{ username }}</span><button @click="doLogout">登出</button></div>
         </header>
@@ -371,35 +376,49 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); window.removeEventLi
 </template>
 
 <style scoped>
-.admin-layout{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:100vh}
-.admin-sidebar{position:sticky;top:0;align-self:start;height:100vh;min-width:0;background:var(--sidebar-bg);color:var(--sidebar-text)}
-.sidebar-brand{display:flex;align-items:center;gap:var(--sp-3);min-height:66px;padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--sidebar-border);font-size:var(--fs-md);white-space:nowrap}
-.brand-mark{display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:var(--radius-md);background:var(--accent);color:var(--on-accent);font-weight:700}
-.side-nav{max-height:calc(100vh - 66px);overflow-y:auto;padding:var(--sp-3) var(--sp-2)}
-.nav-home{display:flex;align-items:center;gap:var(--sp-3);min-height:46px;margin-bottom:var(--sp-2);padding:var(--sp-2) var(--sp-3);border-radius:var(--radius-sm);color:var(--sidebar-muted);font-size:var(--fs-base);font-weight:600;white-space:nowrap}
+.login-screen{padding:var(--sp-6);background:radial-gradient(circle at 76% 14%,var(--login-glow),transparent 34%),linear-gradient(135deg,var(--login-start),var(--login-middle) 58%,var(--login-end))}
+.login-card{width:min(460px,100%);max-width:none;padding:var(--sp-8);border:0;border-radius:calc(var(--radius-lg) + 8px);box-shadow:var(--shadow-login)}
+.login-brand{display:flex;align-items:center;gap:var(--sp-3);font-size:var(--fs-lg);font-weight:700}
+.login-overline{margin:var(--sp-8) 0 var(--sp-3);color:var(--accent);font-size:var(--fs-xs);font-weight:700;letter-spacing:.16em}
+.login-card h1{margin:0;font-size:clamp(1.7rem,4vw,2.15rem);line-height:1.25;letter-spacing:-.025em}
+.login-intro{margin:var(--sp-3) 0 var(--sp-6);color:var(--text-muted);line-height:1.6}
+.login-card label{margin-top:var(--sp-4)}
+.login-card input{min-height:44px;background:var(--surface-2)}
+.login-submit{width:100%;min-height:46px}
+.admin-layout{display:grid;grid-template-columns:244px minmax(0,1fr);min-height:100vh}
+.admin-sidebar{position:sticky;top:0;align-self:start;height:100vh;min-width:0;background:var(--sidebar-bg);color:var(--sidebar-text);padding:var(--sp-6) var(--sp-3);display:flex;flex-direction:column}
+.sidebar-brand{display:flex;align-items:center;gap:var(--sp-3);padding:0 var(--sp-3) var(--sp-6);font-size:var(--fs-lg);white-space:nowrap}
+.sidebar-brand-copy{display:grid;gap:var(--sp-1);line-height:1.1}
+.sidebar-brand-copy small{color:var(--sidebar-subtle);font-size:var(--fs-xs);font-weight:400}
+.brand-mark{display:grid;place-items:center;width:42px;height:42px;flex:none;border-radius:var(--radius-lg);background:var(--accent);color:var(--on-accent);font-size:var(--fs-lg);font-weight:700}
+.side-nav{min-height:0;overflow-y:auto;padding:0 var(--sp-1);scrollbar-width:thin}
+.side-label{padding:var(--sp-2) var(--sp-3);color:var(--sidebar-subtle);font-size:var(--fs-xs);font-weight:700;letter-spacing:.1em}
+.side-label-menu{margin-top:var(--sp-4);padding-top:var(--sp-4);border-top:1px solid var(--sidebar-border)}
+.nav-home{display:flex;align-items:center;gap:var(--sp-3);min-height:44px;padding:var(--sp-2) var(--sp-3);border-radius:var(--radius-md);color:var(--sidebar-muted);font-size:var(--fs-base);font-weight:600;white-space:nowrap}
 .nav-home:hover{background:var(--sidebar-hover);color:var(--sidebar-text);text-decoration:none}
-.nav-home.is-active{background:var(--sidebar-active);color:var(--on-accent);box-shadow:inset 3px 0 var(--accent)}
+.nav-home.is-active{background:var(--sidebar-active);color:var(--on-accent)}
 .nav-section+.nav-section{margin-top:var(--sp-1)}
-.nav-group{width:100%;display:flex;align-items:center;justify-content:space-between;min-height:46px;padding:var(--sp-2) var(--sp-3);border:0;border-radius:var(--radius-sm);box-shadow:none;background:transparent;color:var(--sidebar-muted);font-size:var(--fs-base);font-weight:600;text-align:left}
+.nav-group{width:100%;display:flex;align-items:center;justify-content:space-between;min-height:44px;padding:var(--sp-2) var(--sp-3);border:0;border-radius:var(--radius-md);box-shadow:none;background:transparent;color:var(--sidebar-muted);font-size:var(--fs-base);font-weight:600;text-align:left}
 .nav-group:hover,.nav-group[aria-expanded="true"]{background:var(--sidebar-hover);border:0;color:var(--sidebar-text)}
 .nav-group.has-active{color:var(--sidebar-text)}
 .nav-group-label{display:flex;align-items:center;gap:var(--sp-3)}
 .nav-icon{display:inline-flex;align-items:center;justify-content:center;width:20px;font-size:var(--fs-lg);font-weight:400;line-height:1}
 .nav-chevron{font-size:var(--fs-md);transition:transform .15s ease}
 .nav-group[aria-expanded="true"] .nav-chevron{transform:rotate(180deg)}
-.nav-items{display:grid;gap:var(--sp-1);padding:var(--sp-1) 0 var(--sp-2)}
-.nav-item{display:block;min-height:39px;padding:var(--sp-2) var(--sp-3) var(--sp-2) 44px;border-radius:var(--radius-sm);color:var(--sidebar-muted);font-size:var(--fs-sm);white-space:nowrap}
+.nav-items{display:grid;gap:var(--sp-1);padding:var(--sp-1) 0 var(--sp-2) var(--sp-3)}
+.nav-item{display:block;min-height:38px;padding:var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-8);border-radius:var(--radius-sm);color:var(--sidebar-muted);font-size:var(--fs-sm);white-space:nowrap}
 .nav-item:hover{background:var(--sidebar-hover);color:var(--sidebar-text);text-decoration:none}
-.nav-item.is-active{background:var(--sidebar-active);color:var(--on-accent);font-weight:600;box-shadow:inset 3px 0 var(--accent)}
+.nav-item.is-active{background:var(--sidebar-active);color:var(--on-accent);font-weight:600}
 .nav-home:focus-visible,.nav-group:focus-visible,.nav-item:focus-visible{outline:2px solid var(--sidebar-focus);outline-offset:-2px}
 .admin-workspace{min-width:0}
-.admin-header{position:sticky;top:0;z-index:20;min-height:66px;gap:var(--sp-4);box-shadow:var(--shadow-sm)}
+.admin-header{min-height:86px;gap:var(--sp-4);border-bottom:0;background:transparent;padding:var(--sp-6) clamp(var(--sp-6),3vw,var(--sp-8)) var(--sp-2);box-shadow:none}
 .admin-header-start,.admin-header-end{display:flex;align-items:center;gap:var(--sp-3);min-width:0}
-.page-location{font-size:var(--fs-md);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.page-parent{color:var(--text-muted);font-weight:400}
-.account-avatar{display:grid;place-items:center;width:32px;height:32px;flex:none;border-radius:var(--radius-pill);background:var(--accent);color:var(--on-accent);font-weight:600}
+.page-location{display:grid;gap:var(--sp-1);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.page-location strong{font-size:var(--fs-xl);line-height:1.2;letter-spacing:-.025em}
+.page-parent{color:var(--accent);font-size:var(--fs-xs);font-weight:700;letter-spacing:.1em}
+.account-avatar{display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:var(--radius-pill);background:var(--intro-end);color:var(--accent);font-weight:700}
 .account-name{color:var(--text-muted);max-width:12rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.admin-content{width:100%;max-width:1280px;margin:0 auto;padding:var(--sp-6) var(--sp-6) var(--sp-8);min-width:0}
+.admin-content{width:100%;max-width:1500px;margin:0 auto;padding:var(--sp-4) clamp(var(--sp-6),3vw,var(--sp-8)) var(--sp-8);min-width:0}
 .nav-toggle,.nav-backdrop,.sidebar-close{display:none}
 .demo-banner{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);padding:var(--sp-2) var(--sp-4);color:#713f12;background:#fef3c7;border-bottom:1px solid #f59e0b;font-size:var(--fs-sm)}
 .demo-actions{display:flex;align-items:center;gap:var(--sp-3);white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -412,16 +431,16 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); window.removeEventLi
 .demo-readonly-route :is(input,textarea,select,button):not([data-demo-view-control] *){cursor:not-allowed}
 @media(max-width:960px){
   .demo-banner{align-items:flex-start;flex-direction:column}.demo-actions{width:100%;justify-content:space-between}
-  .admin-layout{display:block}.admin-header{min-height:60px}.admin-header-start,.admin-header-end{gap:var(--sp-2)}
+  .admin-layout{display:block}.admin-header{min-height:74px}.admin-header-start,.admin-header-end{gap:var(--sp-2)}
   .admin-header-start{min-width:0}.account-name{display:none}
   .nav-toggle{display:block;padding:var(--sp-1) var(--sp-2);box-shadow:none;font-size:var(--fs-lg)}
   .admin-sidebar{position:fixed;z-index:30;top:0;bottom:0;left:0;width:min(280px,85vw);visibility:hidden;transform:translateX(-100%);transition:transform .2s ease,visibility .2s ease;box-shadow:var(--shadow-md)}
   .admin-sidebar.is-open{visibility:visible;transform:translateX(0)}
   .sidebar-close{display:block;margin-left:auto;padding:0 var(--sp-2);border:0;box-shadow:none;background:transparent;color:var(--sidebar-text);font-size:var(--fs-lg)}
   .sidebar-close:hover{background:var(--sidebar-hover);color:var(--sidebar-text)}
-  .side-nav{max-height:calc(100vh - 66px)}
+  .side-nav{max-height:calc(100vh - 90px)}
   .nav-backdrop,.nav-backdrop:hover{display:block;position:fixed;z-index:29;inset:0;width:100%;height:100%;padding:0;border:0;border-radius:0;background:var(--nav-overlay)}
   .admin-content{padding:var(--sp-4)}
 }
-@media(max-width:520px){.page-parent,.account-avatar{display:none}.admin-header{gap:var(--sp-2)}}
+@media(max-width:520px){.account-avatar{display:none}.admin-header{gap:var(--sp-2);padding:var(--sp-4)}.page-location strong{font-size:var(--fs-lg)}.login-card{padding:var(--sp-6)}}
 </style>
