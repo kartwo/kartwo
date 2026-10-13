@@ -53,7 +53,6 @@ const navGroups = computed(() => [
     { path: '/products', label: '商品', visible: can('products.view') },
     { path: '/categories', label: '分类', visible: can('products.view') },
     { path: '/merchandising', label: '内容', visible: can('content.manage') },
-    { path: '/blog', label: '博客文章', visible: can('blog.view') },
   ] },
   { id: 'data', label: '数据', icon: '⇄', items: [
     { path: '/imports/csv', label: '导入', visible: can('imports.manage') },
@@ -79,11 +78,22 @@ const navGroups = computed(() => [
     { path: '/users', label: '用户与角色', visible: accountRole.value === 'owner' },
   ] },
 ].map(group => ({ ...group, items: group.items.filter(item => item.visible) })).filter(group => group.items.length))
+const navEntries = computed(() => {
+  const entries = navGroups.value.map(group => ({ ...group, type: 'group' }))
+  if (can('blog.view')) {
+    const catalogIndex = entries.findIndex(entry => entry.id === 'catalog')
+    const businessIndex = entries.findIndex(entry => entry.id === 'business')
+    const after = catalogIndex >= 0 ? catalogIndex : businessIndex
+    entries.splice(after + 1, 0, { id: 'blog', type: 'link', path: '/blog', label: '博客文章', icon: '✎' })
+  }
+  return entries
+})
 function navItemActive(path) {
   return route.path === path || (path === '/products' && route.path.startsWith('/products/')) || (path === '/orders' && route.path.startsWith('/orders/'))
 }
 const currentNav = computed(() => {
   if (route.path === '/dashboard') return { group: '', label: '概览' }
+  if (route.path === '/blog') return { group: '功能菜单', label: '博客文章' }
   const group = navGroups.value.find(section => section.items.some(item => navItemActive(item.path)))
   const item = group?.items.find(entry => navItemActive(entry.path))
   if (route.path === '/products/new') return { group: group?.label || '商品与内容', label: '新建商品' }
@@ -347,14 +357,17 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); window.removeEventLi
           <div class="side-label">工作台</div>
           <RouterLink v-if="can('dashboard.view')" to="/dashboard" class="nav-home" :class="{ 'is-active': route.path === '/dashboard' }" :aria-current="route.path === '/dashboard' ? 'page' : undefined" @click="mobileNavOpen = false"><span class="nav-icon" aria-hidden="true">⌂</span>概览</RouterLink>
           <div class="side-label side-label-menu">功能菜单</div>
-          <section v-for="group in navGroups" :key="group.id" class="nav-section">
-            <button class="nav-group" :class="{ 'has-active': group.items.some(item => navItemActive(item.path)) }" type="button" :aria-expanded="!!expandedGroups[group.id]" @click="expandedGroups[group.id] = !expandedGroups[group.id]">
-              <span class="nav-group-label"><span class="nav-icon" aria-hidden="true">{{ group.icon }}</span>{{ group.label }}</span><span class="nav-chevron" aria-hidden="true">⌄</span>
-            </button>
-            <div v-if="expandedGroups[group.id]" class="nav-items">
-              <RouterLink v-for="item in group.items" :key="item.path" :to="item.path" class="nav-item" :class="{ 'is-active': navItemActive(item.path) }" :aria-current="navItemActive(item.path) ? 'page' : undefined" @click="mobileNavOpen = false">{{ item.label }}</RouterLink>
-            </div>
-          </section>
+          <template v-for="entry in navEntries" :key="entry.id">
+            <section v-if="entry.type === 'group'" class="nav-section">
+              <button class="nav-group" :class="{ 'has-active': entry.items.some(item => navItemActive(item.path)) }" type="button" :aria-expanded="!!expandedGroups[entry.id]" @click="expandedGroups[entry.id] = !expandedGroups[entry.id]">
+                <span class="nav-group-label"><span class="nav-icon" aria-hidden="true">{{ entry.icon }}</span>{{ entry.label }}</span><span class="nav-chevron" aria-hidden="true">⌄</span>
+              </button>
+              <div v-if="expandedGroups[entry.id]" class="nav-items">
+                <RouterLink v-for="item in entry.items" :key="item.path" :to="item.path" class="nav-item" :class="{ 'is-active': navItemActive(item.path) }" :aria-current="navItemActive(item.path) ? 'page' : undefined" @click="mobileNavOpen = false">{{ item.label }}</RouterLink>
+              </div>
+            </section>
+            <RouterLink v-else :to="entry.path" class="nav-home nav-standalone" :class="{ 'is-active': route.path === entry.path }" :aria-current="route.path === entry.path ? 'page' : undefined" @click="mobileNavOpen = false"><span class="nav-icon" aria-hidden="true">{{ entry.icon }}</span>{{ entry.label }}</RouterLink>
+          </template>
         </nav>
       </aside>
       <div class="admin-workspace">
@@ -399,6 +412,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); window.removeEventLi
 .nav-home{display:flex;align-items:center;gap:var(--sp-3);min-height:44px;padding:var(--sp-2) var(--sp-3);border-radius:var(--radius-md);color:var(--sidebar-muted);font-size:var(--fs-base);font-weight:600;white-space:nowrap}
 .nav-home:hover{background:var(--sidebar-hover);color:var(--sidebar-text);text-decoration:none}
 .nav-home.is-active{background:var(--sidebar-active);color:var(--on-accent)}
+.nav-standalone{margin:var(--sp-1) 0}
 .nav-section+.nav-section{margin-top:var(--sp-1)}
 .nav-group{width:100%;display:flex;align-items:center;justify-content:space-between;min-height:44px;padding:var(--sp-2) var(--sp-3);border:0;border-radius:var(--radius-md);box-shadow:none;background:transparent;color:var(--sidebar-muted);font-size:var(--fs-base);font-weight:600;text-align:left}
 .nav-group:hover,.nav-group[aria-expanded="true"]{background:var(--sidebar-hover);border:0;color:var(--sidebar-text)}
