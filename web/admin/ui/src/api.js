@@ -51,7 +51,7 @@ function contentPagePayload(page) {
 }
 
 function blogPostPayload(post) {
-  return { title: post.title, slug: post.slug, excerpt: post.excerpt, body_markdown: post.body_markdown, cover_path: post.cover_path, seo_description: post.seo_description, status: post.status }
+  return { title: post.title, slug: post.slug, excerpt: post.excerpt, body_markdown: post.body_markdown, body_html: post.body_html, cover_path: post.cover_path, seo_description: post.seo_description, status: post.status }
 }
 
 export const api = {
