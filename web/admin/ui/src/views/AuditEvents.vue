@@ -45,6 +45,11 @@ function describe(event) {
     'account.credentials_update': '更新管理员账号',
     'contact.settings_update': '更新客服留言设置',
     'contact.status_update': '更新客服留言状态',
+    'blog.create': '新建博客文章',
+    'blog.update': '更新博客文章',
+    'blog.delete': '删除博客文章',
+    'blog.image_upload': '上传博客图片',
+    'blog.settings_update': '更新博客设置',
   }
   return labels[event.action] || event.action
 }

@@ -125,6 +125,9 @@ func cleanRoleInput(name string, permissions []string) (string, string, error) {
 	if set["contact.manage"] && !set["contact.view"] {
 		return "", "", errors.New("处理客服留言需要同时勾选「查看客服留言」")
 	}
+	if set["blog.manage"] && !set["blog.view"] {
+		return "", "", errors.New("管理博客文章需要同时勾选「查看博客文章」")
+	}
 	raw, err := json.Marshal(permissionsList(set))
 	return name, string(raw), err
 }

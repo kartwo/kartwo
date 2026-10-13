@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/kartwo/kartwo/internal/blog"
 	"github.com/kartwo/kartwo/internal/cart"
 	"github.com/kartwo/kartwo/internal/contact"
 	"github.com/kartwo/kartwo/internal/httpx"
@@ -53,6 +54,9 @@ type HTTP struct {
 	ckoutTmpl        *template.Template
 	orderTmpl        *template.Template
 	pageTmpl         *template.Template
+	blogListTmpl     *template.Template
+	blogPostTmpl     *template.Template
+	blog             *blog.Service
 	contactTmpl      *template.Template
 	contact          *contact.Service
 	contactLimit     *contactLimiter
@@ -85,6 +89,9 @@ func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, setti
 		ckoutTmpl:    parse("templates/checkout.html"),
 		orderTmpl:    parse("templates/order.html"),
 		pageTmpl:     parse("templates/content_page.html"),
+		blogListTmpl: parse("templates/blog_list.html"),
+		blogPostTmpl: parse("templates/blog_post.html"),
+		blog:         blog.New(svc.db, settingsSvc),
 		contactTmpl:  parse("templates/contact.html"),
 		contactLimit: newContactLimiter(),
 	}
@@ -118,6 +125,8 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /collections/{slug}", h.categoryPage)
 	mux.HandleFunc("GET /search", h.searchPage)
 	mux.HandleFunc("GET /pages/{slug}", h.contentPage)
+	mux.HandleFunc("GET /blog", h.blogList)
+	mux.HandleFunc("GET /blog/{slug}", h.blogPost)
 	mux.HandleFunc("GET /contact", h.contactPage)
 	mux.HandleFunc("POST /contact", h.contactSubmit)
 	mux.HandleFunc("GET /products/{handle}", h.shopifyProductRedirect)
@@ -168,6 +177,7 @@ type seo struct {
 	OGType      string
 	OGImage     string
 	JSONLD      template.HTML
+	NoIndex     bool
 }
 
 func (h *HTTP) base(r *http.Request) string {
@@ -402,6 +412,24 @@ func (h *HTTP) sitemap(w http.ResponseWriter, r *http.Request) {
 	for _, page := range pages {
 		b.WriteString("  <url><loc>" + xmlEsc(base+"/pages/"+page.Slug) + "</loc></url>\n")
 	}
+	blogEnabled, err := h.blog.Enabled(r.Context())
+	if err != nil {
+		http.Error(w, "Something went wrong", 500)
+		return
+	}
+	if blogEnabled {
+		posts, err := h.blog.PublishedSitemap(r.Context())
+		if err != nil {
+			http.Error(w, "Something went wrong", 500)
+			return
+		}
+		if len(posts) > 0 {
+			b.WriteString("  <url><loc>" + xmlEsc(base+"/blog") + "</loc></url>\n")
+		}
+		for _, slug := range posts {
+			b.WriteString("  <url><loc>" + xmlEsc(base+"/blog/"+slug) + "</loc></url>\n")
+		}
+	}
 	b.WriteString("</urlset>\n")
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	_, _ = w.Write([]byte(b.String()))
@@ -444,6 +472,19 @@ func (h *HTTP) render(w http.ResponseWriter, r *http.Request, t *template.Templa
 		}
 	}
 	data["ShopLogoURL"] = h.settings.ShopLogoURL(r.Context())
+	blogEnabled, err := h.blog.Enabled(r.Context())
+	if err != nil {
+		http.Error(w, "Something went wrong", 500)
+		return
+	}
+	if blogEnabled {
+		visible, err := h.blog.HasPublished(r.Context())
+		if err != nil {
+			http.Error(w, "Something went wrong", 500)
+			return
+		}
+		data["BlogVisible"] = visible
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.ExecuteTemplate(w, "base", data); err != nil {
 		http.Error(w, "Render error", http.StatusInternalServerError)

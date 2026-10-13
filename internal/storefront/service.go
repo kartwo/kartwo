@@ -19,11 +19,12 @@ var ErrNotFound = errors.New("storefront: 商品不存在")
 
 // Service 承载店面只读数据组装。
 type Service struct {
-	q *sqlcgen.Queries
+	db *sql.DB
+	q  *sqlcgen.Queries
 }
 
 // New 构造店面服务。
-func New(db *sql.DB) *Service { return &Service{q: sqlcgen.New(db)} }
+func New(db *sql.DB) *Service { return &Service{db: db, q: sqlcgen.New(db)} }
 
 // CatalogItem 是目录列表中的一项。
 type CatalogItem struct {

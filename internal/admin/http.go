@@ -17,6 +17,7 @@ import (
 
 	"github.com/kartwo/kartwo/internal/audit"
 	"github.com/kartwo/kartwo/internal/backup"
+	"github.com/kartwo/kartwo/internal/blog"
 	"github.com/kartwo/kartwo/internal/catalog"
 	"github.com/kartwo/kartwo/internal/contact"
 	"github.com/kartwo/kartwo/internal/httpx"
@@ -54,6 +55,7 @@ type HTTP struct {
 	settings    *settings.Service
 	policy      *policy.Service
 	contact     *contact.Service
+	blog        *blog.Service
 	orders      *order.Service // 后台订单页（M3.3a 起）
 	pay         refundService  // 退款编排（M3.3a 起），可为 nil
 	stripeTest  stripeConnectionTester
@@ -82,7 +84,7 @@ type DemoConfig struct {
 // 注意 cookie 的 Secure 标记按**每次请求**是否走 TLS 决定（决策 D8-A），与此参数无关。
 // envDomain=KARTWO_DOMAIN，非空时域名由 env 提供、后台只读（决策 C：env 覆盖 DB、不双写）。
 func NewHTTP(svc *Service, cat *catalog.Service, importSvc *importer.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc refundService, mailCache *mail.Cache, exporter *backup.Exporter, backupCfg BackupConfig, envDomain string, secure bool, trusted []*net.IPNet, envShopName ...string) *HTTP {
-	h := &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, policy: policy.New(settingsSvc, cat), contact: contact.New(svc.db, settingsSvc), orders: orderSvc, pay: paySvc, mailCache: mailCache, exporter: exporter, audit: audit.New(svc.db), backupCfg: backupCfg, envDomain: envDomain, secure: secure, trusted: trusted, limiter: newLoginLimiter(5, time.Minute)}
+	h := &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, policy: policy.New(settingsSvc, cat), contact: contact.New(svc.db, settingsSvc), blog: blog.New(svc.db, settingsSvc), orders: orderSvc, pay: paySvc, mailCache: mailCache, exporter: exporter, audit: audit.New(svc.db), backupCfg: backupCfg, envDomain: envDomain, secure: secure, trusted: trusted, limiter: newLoginLimiter(5, time.Minute)}
 	if tester, ok := paySvc.(stripeConnectionTester); ok {
 		h.stripeTest = tester
 	}
@@ -153,6 +155,15 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("PATCH /admin/api/content-pages/{id}", owner(h.updateContentPage))
 	mux.Handle("DELETE /admin/api/content-pages/{id}", owner(h.deleteContentPage))
 	mux.Handle("POST /admin/api/content-pages/generate-footer", owner(h.generateFooterPages))
+	mux.Handle("GET /admin/api/blog/posts", protect(h.listBlogPosts))
+	mux.Handle("GET /admin/api/blog/posts/{id}", protect(h.getBlogPost))
+	mux.Handle("POST /admin/api/blog/posts", protect(h.createBlogPost))
+	mux.Handle("PUT /admin/api/blog/posts/{id}", protect(h.updateBlogPost))
+	mux.Handle("DELETE /admin/api/blog/posts/{id}", protect(h.deleteBlogPost))
+	mux.Handle("POST /admin/api/blog/images", protect(h.uploadBlogImage))
+	mux.Handle("POST /admin/api/blog/preview", protect(h.previewBlog))
+	mux.Handle("GET /admin/api/settings/blog", protect(h.getBlogSettings))
+	mux.Handle("PUT /admin/api/settings/blog", owner(h.setBlogSettings))
 	mux.Handle("POST /admin/api/imports/csv/preview", owner(h.previewCSVImport))
 	mux.Handle("POST /admin/api/imports/{id}/execute", owner(h.executeImport))
 	mux.Handle("GET /admin/api/imports/{id}", owner(h.getImport))
