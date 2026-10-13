@@ -116,6 +116,31 @@ func TestStaffInvitationPermissionsAndDisable(t *testing.T) {
 	if resp := doJSON(t, mux, "POST", "/admin/api/products", `{}`, staffAuth, staffCSRF); resp.StatusCode != 403 {
 		t.Fatalf("只读员工不应创建商品: %d", resp.StatusCode)
 	}
+	if resp := doJSON(t, mux, "PATCH", "/admin/api/roles/"+viewerRole, `{"name":"只读","permissions":["dashboard.view"]}`, ownerAuth, ownerCSRF); resp.StatusCode != 200 {
+		t.Fatalf("修改预设角色权限: %d %s", resp.StatusCode, resp.Body)
+	}
+	if resp := doJSON(t, mux, "GET", "/admin/api/me", "", staffAuth, ""); resp.StatusCode != 401 {
+		t.Fatalf("预设角色更新后应撤销员工会话: %d", resp.StatusCode)
+	}
+	login = doJSON(t, mux, "POST", "/admin/api/login", `{"username":"viewer1","password":"staffsecret"}`, nil, "")
+	if login.StatusCode != 200 {
+		t.Fatalf("角色更新后重新登录: %d %s", login.StatusCode, login.Body)
+	}
+	for _, cookie := range login.Cookies {
+		if cookie.Name == sessionCookie {
+			staff = cookie
+		}
+		if cookie.Name == csrfCookie {
+			staffCSRF = cookie.Value
+		}
+	}
+	staffAuth = []*http.Cookie{staff}
+	if resp := doJSON(t, mux, "GET", "/admin/api/products", "", staffAuth, ""); resp.StatusCode != 403 {
+		t.Fatalf("角色更新后商品权限应撤销: %d", resp.StatusCode)
+	}
+	if resp := doJSON(t, mux, "GET", "/admin/api/dashboard", "", staffAuth, ""); resp.StatusCode != 200 {
+		t.Fatalf("角色更新后仍应能查看概览: %d", resp.StatusCode)
+	}
 	if resp := doJSON(t, mux, "PUT", "/admin/api/account/password", `{"current_password":"staffsecret","new_password":"newstaffsecret"}`, staffAuth, staffCSRF); resp.StatusCode != 200 {
 		t.Fatalf("员工修改自己的密码失败: %d %s", resp.StatusCode, resp.Body)
 	}
@@ -199,5 +224,51 @@ func TestCustomRoleUpdateRevokesStaffSessions(t *testing.T) {
 	}
 	if resp := doJSON(t, mux, "GET", "/admin/api/me", "", []*http.Cookie{staff}, ""); resp.StatusCode != 401 {
 		t.Fatalf("角色更新后应撤销会话: %d", resp.StatusCode)
+	}
+}
+
+func TestPresetRolePermissionsCanChangeWithoutChangingOwner(t *testing.T) {
+	_, mux := newHTTP(t)
+	owner, csrf := loginAndCookies(t, mux)
+	auth := []*http.Cookie{owner}
+	presets := []struct {
+		id   string
+		name string
+	}{
+		{"00000000-0000-7000-8000-000000000001", "管理员"},
+		{"00000000-0000-7000-8000-000000000002", "运营"},
+		{"00000000-0000-7000-8000-000000000003", "内容编辑"},
+		{"00000000-0000-7000-8000-000000000004", "只读"},
+	}
+	for _, preset := range presets {
+		path := "/admin/api/roles/" + preset.id
+		if resp := doJSON(t, mux, "PATCH", path, `{"name":"改名","permissions":["dashboard.view"]}`, auth, csrf); resp.StatusCode != 400 {
+			t.Fatalf("预设角色 %s 不应改名: %d %s", preset.name, resp.StatusCode, resp.Body)
+		}
+		if resp := doJSON(t, mux, "PATCH", path, `{"name":"`+preset.name+`","permissions":["users.manage"]}`, auth, csrf); resp.StatusCode != 400 {
+			t.Fatalf("预设角色 %s 不应获得店主专属权限: %d %s", preset.name, resp.StatusCode, resp.Body)
+		}
+		if resp := doJSON(t, mux, "PATCH", path, `{"name":"`+preset.name+`","permissions":["dashboard.view"]}`, auth, csrf); resp.StatusCode != 200 {
+			t.Fatalf("更新预设角色 %s 权限: %d %s", preset.name, resp.StatusCode, resp.Body)
+		}
+		if resp := doJSON(t, mux, "DELETE", path, "", auth, csrf); resp.StatusCode != 409 {
+			t.Fatalf("预设角色 %s 不应删除: %d %s", preset.name, resp.StatusCode, resp.Body)
+		}
+	}
+	roles := doJSON(t, mux, "GET", "/admin/api/roles", "", auth, "")
+	if roles.StatusCode != 200 {
+		t.Fatalf("读取角色: %d %s", roles.StatusCode, roles.Body)
+	}
+	var listed []managedRole
+	if err := json.Unmarshal(roles.Body, &listed); err != nil {
+		t.Fatal(err)
+	}
+	for i, preset := range presets {
+		if listed[i].Name != preset.name || len(listed[i].Permissions) != 1 || listed[i].Permissions[0] != "dashboard.view" {
+			t.Fatalf("预设角色 %s 的名称或权限不正确: %+v", preset.name, listed[i])
+		}
+	}
+	if resp := doJSON(t, mux, "GET", "/admin/api/me", "", auth, ""); resp.StatusCode != 200 {
+		t.Fatalf("店主权限不应受角色修改影响: %d %s", resp.StatusCode, resp.Body)
 	}
 }

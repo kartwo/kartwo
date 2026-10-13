@@ -125,8 +125,10 @@ onMounted(load)
       <button class="primary" :disabled="!roleForm.name || !roleForm.permissions.length" @click="createRole">创建角色</button>
     </section>
     <section class="panel card"><h3>现有角色</h3><div v-for="role in roles" :key="role.public_id" class="role-entry"><div><strong>{{ role.name }}</strong><span class="muted"> · {{ role.user_count }} 位员工{{ role.system_key ? ' · 预设角色' : '' }}</span></div>
-      <template v-if="!role.system_key"><label>名称<input v-model="role.name" maxlength="60" /></label><div v-for="[group, permissions] in permissionGroups" :key="group" class="permission-group"><strong>{{ group }}</strong><div class="permission-grid"><label v-for="[key, label] in permissions" :key="key"><input v-model="role.permissions" type="checkbox" :value="key" /> {{ label }}</label></div></div><div class="actions"><button @click="saveRole(role)">保存</button><button class="danger" @click="deleteRole(role)">删除</button></div></template>
-      <p v-else class="muted">{{ role.permissions.length }} 项权限；预设角色不可编辑。</p></div>
+      <label v-if="!role.system_key">名称<input v-model="role.name" maxlength="60" /></label>
+      <p v-else class="muted">预设角色名称固定，权限可以调整。</p>
+      <div v-for="[group, permissions] in permissionGroups" :key="group" class="permission-group"><strong>{{ group }}</strong><div class="permission-grid"><label v-for="[key, label] in permissions" :key="key"><input v-model="role.permissions" type="checkbox" :value="key" /> {{ label }}</label></div></div>
+      <div class="actions"><button @click="saveRole(role)">保存权限</button><button v-if="!role.system_key" class="danger" @click="deleteRole(role)">删除</button></div></div>
     </section>
   </template>
 </template>
