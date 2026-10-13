@@ -95,7 +95,7 @@ func securityHeaders(hstsEnabled bool) func(http.Handler) http.Handler {
 			h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 			// script 严格 'self'（Vue 生产构建无需 eval/inline）；style 放开内联（Vue 内联 style 属性）；图片含本地 /media。
 			h.Set("Content-Security-Policy",
-				"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'")
+				"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com; frame-ancestors 'none'; base-uri 'self'")
 			if hstsEnabled {
 				h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 			}

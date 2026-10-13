@@ -32,7 +32,7 @@ func TestBlogRoutesSwitchAndSitemap(t *testing.T) {
 	if _, err := b.Create(ctx, pub); err != nil {
 		t.Fatal(err)
 	}
-	rich := blog.Post{Title: "Rich", Slug: "rich", BodyHTML: `<h2>Visual title</h2><p><strong>Formatted</strong></p>`, Status: "active"}
+	rich := blog.Post{Title: "Rich", Slug: "rich", BodyHTML: `<h2>Visual title</h2><p><strong>Formatted</strong></p><p><iframe src="https://www.youtube-nocookie.com/embed/M7lc1UVf-VE"></iframe></p>`, Status: "active"}
 	if _, err := b.Create(ctx, rich); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestBlogRoutesSwitchAndSitemap(t *testing.T) {
 	if code, body := get("/blog/published"); code != 200 || !strings.Contains(body, "Hello") {
 		t.Fatalf("详情不正确: %d %s", code, body)
 	}
-	if code, body := get("/blog/rich"); code != 200 || !strings.Contains(body, "<h2>Visual title</h2>") || !strings.Contains(body, "<strong>Formatted</strong>") {
+	if code, body := get("/blog/rich"); code != 200 || !strings.Contains(body, "<h2>Visual title</h2>") || !strings.Contains(body, "<strong>Formatted</strong>") || !strings.Contains(body, "youtube-nocookie.com/embed/M7lc1UVf-VE") {
 		t.Fatalf("富文本详情不正确: %d %s", code, body)
 	}
 	if _, body := get("/sitemap.xml"); !strings.Contains(body, "/blog/published") || strings.Contains(body, "/blog/draft") {

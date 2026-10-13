@@ -150,3 +150,27 @@ func TestRichTextSanitizedBeforeSaveAndOnRender(t *testing.T) {
 		t.Fatalf("仅有危险代码或空段落不能发布: %v", err)
 	}
 }
+
+func TestRichTextToolbarFormatsAndVideoAllowlist(t *testing.T) {
+	source := `<blockquote>Quote</blockquote><p style="text-align:center;line-height:1.8;position:absolute"><font face="serif" size="5" color="rgb(12, 34, 56)">Styled</font><span style="background-color:#fff1b8; background-image:url(javascript:bad)">mark</span></p><table onclick="bad()"><tbody><tr><td>Cell</td></tr></tbody></table><p><iframe src="https://www.youtube-nocookie.com/embed/M7lc1UVf-VE" onload="bad()"></iframe><iframe src="https://evil.example/embed/M7lc1UVf-VE"></iframe></p>`
+	safe, visible := SanitizeHTML(source)
+	if !visible {
+		t.Fatal("工具栏内容应可发布")
+	}
+	for _, want := range []string{`<blockquote>Quote</blockquote>`, `text-align:center`, `line-height:1.8`, `font-family:serif`, `font-size:24px`, `color:#0c2238`, `background-color:#fff1b8`, `<table>`, `youtube-nocookie.com/embed/M7lc1UVf-VE`} {
+		if !strings.Contains(safe, want) {
+			t.Fatalf("排版或视频丢失 %q: %s", want, safe)
+		}
+	}
+	for _, unsafe := range []string{"position:", "background-image", "javascript:", "onclick", "onload", "evil.example"} {
+		if strings.Contains(safe, unsafe) {
+			t.Fatalf("危险属性未过滤 %q: %s", unsafe, safe)
+		}
+	}
+	if safeVideoEmbed("https://www.youtube-nocookie.com/embed/M7lc1UVf-VE?autoplay=1") || safeVideoEmbed("https://player.vimeo.com/video/123#x") {
+		t.Fatal("视频地址不应保留任意参数或片段")
+	}
+	if !safeVideoEmbed("https://player.vimeo.com/video/123456") {
+		t.Fatal("Vimeo 播放器地址应可用")
+	}
+}
