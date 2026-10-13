@@ -7,6 +7,8 @@ package admin
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -67,6 +69,8 @@ type HTTP struct {
 	envShopName string           // KARTWO_SHOP_NAME（非空时覆盖 DB 店铺名称）
 	secure      bool             // 本实例能否签发 HTTPS（prod=true，dev 恒 false），供 domain 页 https_capable
 	limiter     *loginLimiter
+	loginIPs    *loginLimiter
+	loginNames  *loginLimiter
 	trusted     []*net.IPNet
 	demo        DemoConfig
 }
@@ -84,7 +88,7 @@ type DemoConfig struct {
 // 注意 cookie 的 Secure 标记按**每次请求**是否走 TLS 决定（决策 D8-A），与此参数无关。
 // envDomain=KARTWO_DOMAIN，非空时域名由 env 提供、后台只读（决策 C：env 覆盖 DB、不双写）。
 func NewHTTP(svc *Service, cat *catalog.Service, importSvc *importer.Service, md *media.Service, settingsSvc *settings.Service, orderSvc *order.Service, paySvc refundService, mailCache *mail.Cache, exporter *backup.Exporter, backupCfg BackupConfig, envDomain string, secure bool, trusted []*net.IPNet, envShopName ...string) *HTTP {
-	h := &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, policy: policy.New(settingsSvc, cat), contact: contact.New(svc.db, settingsSvc), blog: blog.New(svc.db, settingsSvc), orders: orderSvc, pay: paySvc, mailCache: mailCache, exporter: exporter, audit: audit.New(svc.db), backupCfg: backupCfg, envDomain: envDomain, secure: secure, trusted: trusted, limiter: newLoginLimiter(5, time.Minute)}
+	h := &HTTP{svc: svc, cat: cat, importer: importSvc, media: md, settings: settingsSvc, policy: policy.New(settingsSvc, cat), contact: contact.New(svc.db, settingsSvc), blog: blog.New(svc.db, settingsSvc), orders: orderSvc, pay: paySvc, mailCache: mailCache, exporter: exporter, audit: audit.New(svc.db), backupCfg: backupCfg, envDomain: envDomain, secure: secure, trusted: trusted, limiter: newLoginLimiter(5, time.Minute), loginIPs: newLoginLimiter(20, time.Minute), loginNames: newLoginLimiter(5, time.Minute)}
 	if tester, ok := paySvc.(stripeConnectionTester); ok {
 		h.stripeTest = tester
 	}
@@ -253,7 +257,7 @@ func (h *HTTP) demoSession(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "公开演示未启用")
 		return
 	}
-	key := clientIP(r) + "|public-demo"
+	key := h.clientIP(r) + "|public-demo"
 	if !h.limiter.allow(key) {
 		writeErr(w, http.StatusTooManyRequests, "演示会话创建过于频繁，请稍后再试")
 		return
@@ -294,13 +298,16 @@ func (h *HTTP) login(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	key := clientIP(r) + "|" + strings.TrimSpace(req.Username)
-	if !h.limiter.allow(key) {
+	username := strings.TrimSpace(req.Username)
+	nameHash := sha256.Sum256([]byte(username))
+	nameKey := hex.EncodeToString(nameHash[:])
+	if !h.loginIPs.allow(h.clientIP(r)) || !h.loginNames.allow(nameKey) {
+		w.Header().Set("Retry-After", "60")
 		writeErr(w, http.StatusTooManyRequests, "登录尝试过多，请稍后再试")
 		return
 	}
 
-	sess, err := h.svc.Login(r.Context(), strings.TrimSpace(req.Username), req.Password)
+	sess, err := h.svc.Login(r.Context(), username, req.Password)
 	if errors.Is(err, ErrInvalidCredentials) {
 		writeErr(w, http.StatusUnauthorized, "用户名或口令错误")
 		return
@@ -309,7 +316,7 @@ func (h *HTTP) login(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "内部错误")
 		return
 	}
-	h.limiter.reset(key)
+	h.loginNames.reset(nameKey)
 
 	h.setCookie(w, r, sessionCookie, sess.Token, sess.ExpiresAt, true)
 	h.setCookie(w, r, csrfCookie, sess.CSRFToken, sess.ExpiresAt, false) // 非 HttpOnly，供 SPA 读取回传
@@ -394,10 +401,37 @@ func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	return true
 }
 
-func clientIP(r *http.Request) string {
+func (h *HTTP) clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
 	}
-	return host
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return host
+	}
+	for _, proxy := range h.trusted {
+		if proxy != nil && proxy.Contains(ip) {
+			parts := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+			for i := len(parts) - 1; i >= 0; i-- {
+				candidate := net.ParseIP(strings.TrimSpace(parts[i]))
+				if candidate == nil {
+					break
+				}
+				ip = candidate
+				trusted := false
+				for _, network := range h.trusted {
+					if network != nil && network.Contains(ip) {
+						trusted = true
+						break
+					}
+				}
+				if !trusted {
+					break
+				}
+			}
+			break
+		}
+	}
+	return ip.String()
 }

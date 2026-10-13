@@ -29,7 +29,7 @@ type Config struct {
 	ShopNameEnv    bool   // KARTWO_SHOP_NAME 是否显式提供；仅标记回退值来源，不锁定后台
 	Currency       string // 币种代码（CNY/USD/EUR…），默认 CNY
 	BaseURL        string // 站点基址（用于 canonical/sitemap 绝对 URL）；空则按请求推导
-	// TrustedProxies 为可采信 X-Forwarded-Proto 的上游代理 CIDR/IP 白名单。
+	// TrustedProxies 为可采信 X-Forwarded-Proto 与 X-Forwarded-For 的上游代理 CIDR/IP 白名单。
 	TrustedProxies []*net.IPNet
 
 	// —— M4.1 自动 HTTPS（仅 prod 生效）——

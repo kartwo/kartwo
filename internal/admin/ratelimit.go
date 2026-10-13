@@ -1,5 +1,5 @@
 // 登录限流 / Login Rate Limiter
-// 功能：内存固定窗口限流，按 key(IP|用户名) 限制登录尝试，防爆破
+// 功能：有界内存滑动窗口限流，限制后台登录及公开入口的尝试频率
 // 作者：仗键天涯(daxing)
 // 邮箱：3442535897@qq.com
 // 时间：2026-06-17 23:18:17
@@ -10,12 +10,14 @@ import (
 	"time"
 )
 
-// loginLimiter 为内存固定窗口限流器（单实例自部署足够）。
+const maxLimiterKeys = 4096
+
+// loginLimiter 为单实例自部署使用的有界内存滑动窗口限流器。
 type loginLimiter struct {
-	mu      sync.Mutex
-	hits    map[string][]time.Time
-	max     int
-	window  time.Duration
+	mu     sync.Mutex
+	hits   map[string][]time.Time
+	max    int
+	window time.Duration
 }
 
 func newLoginLimiter(max int, window time.Duration) *loginLimiter {
@@ -29,6 +31,22 @@ func (l *loginLimiter) allow(key string) bool {
 
 	now := time.Now()
 	cutoff := now.Add(-l.window)
+	if _, exists := l.hits[key]; !exists && len(l.hits) >= maxLimiterKeys {
+		oldestKey := ""
+		var oldestTime time.Time
+		for candidate, times := range l.hits {
+			if len(times) == 0 || !times[len(times)-1].After(cutoff) {
+				delete(l.hits, candidate)
+				continue
+			}
+			if oldestKey == "" || times[0].Before(oldestTime) {
+				oldestKey, oldestTime = candidate, times[0]
+			}
+		}
+		if len(l.hits) >= maxLimiterKeys {
+			delete(l.hits, oldestKey)
+		}
+	}
 	kept := l.hits[key][:0]
 	for _, t := range l.hits[key] {
 		if t.After(cutoff) {

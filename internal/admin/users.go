@@ -413,7 +413,7 @@ func (h *HTTP) acceptInvite(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "邀请链接无效或已过期")
 		return
 	}
-	if !h.limiter.allow(clientIP(r) + "|invite") {
+	if !h.limiter.allow(h.clientIP(r) + "|invite") {
 		writeErr(w, http.StatusTooManyRequests, "尝试过于频繁，请稍后重试")
 		return
 	}
@@ -462,7 +462,7 @@ func (h *HTTP) acceptInvite(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "设置密码失败")
 		return
 	}
-	h.limiter.reset(clientIP(r) + "|invite")
+	h.limiter.reset(h.clientIP(r) + "|invite")
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }

@@ -9,7 +9,9 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	cryptotls "crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,8 +19,10 @@ import (
 	"image/png"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -1302,7 +1306,7 @@ func TestHTTPShippingSettingsSeparated(t *testing.T) {
 }
 
 func TestHTTPLoginRateLimited(t *testing.T) {
-	_, mux := newHTTP(t)
+	h, mux := newHTTP(t)
 	_ = doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"supersecret"}`, nil, "")
 
 	// 5 次错误后第 6 次应被限流（429）。
@@ -1313,6 +1317,89 @@ func TestHTTPLoginRateLimited(t *testing.T) {
 	}
 	if last != http.StatusTooManyRequests {
 		t.Fatalf("第 6 次登录状态 = %d，期望 429", last)
+	}
+	if resp := doJSON(t, mux, "POST", "/admin/api/login", `{"username":"admin","password":"supersecret"}`, nil, ""); resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("限流窗口内正确口令也应暂缓: %d", resp.StatusCode)
+	}
+	nameHash := sha256.Sum256([]byte("admin"))
+	h.loginNames.hits[hex.EncodeToString(nameHash[:])] = []time.Time{time.Now().Add(-2 * time.Minute)}
+	if resp := doJSON(t, mux, "POST", "/admin/api/login", `{"username":"admin","password":"supersecret"}`, nil, ""); resp.StatusCode != http.StatusOK {
+		t.Fatalf("窗口过后正确口令应可登录: %d %s", resp.StatusCode, resp.Body)
+	}
+}
+
+func TestHTTPLoginRateLimitAcrossUsernamesAndIPs(t *testing.T) {
+	t.Run("同一地址轮换用户名", func(t *testing.T) {
+		_, mux := newHTTP(t)
+		_ = doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"supersecret"}`, nil, "")
+		for i := 0; i < 21; i++ {
+			req := httptest.NewRequest("POST", "/admin/api/login", bytes.NewBufferString(fmt.Sprintf(`{"username":"unknown%d","password":"wrong"}`, i)))
+			req.RemoteAddr = "203.0.113.10:1234"
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, req)
+			want := http.StatusUnauthorized
+			if i == 20 {
+				want = http.StatusTooManyRequests
+				if rec.Header().Get("Retry-After") != "60" {
+					t.Fatalf("限流应提示等待时间: %q", rec.Header().Get("Retry-After"))
+				}
+			}
+			if rec.Code != want {
+				t.Fatalf("第 %d 次请求状态 = %d，期望 %d", i+1, rec.Code, want)
+			}
+		}
+	})
+	t.Run("同一用户名轮换地址", func(t *testing.T) {
+		_, mux := newHTTP(t)
+		_ = doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"supersecret"}`, nil, "")
+		for i := 0; i < 6; i++ {
+			req := httptest.NewRequest("POST", "/admin/api/login", bytes.NewBufferString(`{"username":"admin","password":"wrong"}`))
+			req.RemoteAddr = fmt.Sprintf("203.0.113.%d:1234", i+1)
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, req)
+			want := http.StatusUnauthorized
+			if i == 5 {
+				want = http.StatusTooManyRequests
+			}
+			if rec.Code != want {
+				t.Fatalf("第 %d 次请求状态 = %d，期望 %d", i+1, rec.Code, want)
+			}
+		}
+	})
+}
+
+func TestLoginClientIPTrustsOnlyConfiguredProxy(t *testing.T) {
+	h, _ := newHTTP(t)
+	req := httptest.NewRequest("POST", "/admin/api/login", nil)
+	req.RemoteAddr = "203.0.113.1:1234"
+	req.Header.Set("X-Forwarded-For", "198.51.100.1")
+	if got := h.clientIP(req); got != "203.0.113.1" {
+		t.Fatalf("直连请求不得伪造来源: %q", got)
+	}
+	_, network, _ := net.ParseCIDR("127.0.0.1/32")
+	h.trusted = []*net.IPNet{network}
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Header.Set("X-Forwarded-For", "198.51.100.1, 203.0.113.2")
+	if got := h.clientIP(req); got != "203.0.113.2" {
+		t.Fatalf("应取最靠近可信代理的非可信地址: %q", got)
+	}
+}
+
+func TestHTTPLoginLongUsernameUsesBoundedKey(t *testing.T) {
+	h, mux := newHTTP(t)
+	_ = doJSON(t, mux, "POST", "/admin/api/setup", `{"username":"admin","password":"supersecret"}`, nil, "")
+	username := strings.Repeat("x", 10000)
+	body, _ := json.Marshal(map[string]string{"username": username, "password": "wrong"})
+	req := httptest.NewRequest("POST", "/admin/api/login", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("未知用户名应拒绝: %d", rec.Code)
+	}
+	for key := range h.loginNames.hits {
+		if len(key) != 64 || strings.Contains(key, username) {
+			t.Fatalf("用户名限流键不应保存原始输入，长度=%d", len(key))
+		}
 	}
 }
 
