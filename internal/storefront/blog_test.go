@@ -32,6 +32,10 @@ func TestBlogRoutesSwitchAndSitemap(t *testing.T) {
 	if _, err := b.Create(ctx, pub); err != nil {
 		t.Fatal(err)
 	}
+	rich := blog.Post{Title: "Rich", Slug: "rich", BodyHTML: `<h2>Visual title</h2><p><strong>Formatted</strong></p>`, Status: "active"}
+	if _, err := b.Create(ctx, rich); err != nil {
+		t.Fatal(err)
+	}
 	h := NewHTTP(sf, cart.New(db), order.New(db, settingSvc), settingSvc, nil, redirect.New(db), "Shop", "https://shop.test", nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
@@ -49,6 +53,9 @@ func TestBlogRoutesSwitchAndSitemap(t *testing.T) {
 	}
 	if code, body := get("/blog/published"); code != 200 || !strings.Contains(body, "Hello") {
 		t.Fatalf("详情不正确: %d %s", code, body)
+	}
+	if code, body := get("/blog/rich"); code != 200 || !strings.Contains(body, "<h2>Visual title</h2>") || !strings.Contains(body, "<strong>Formatted</strong>") {
+		t.Fatalf("富文本详情不正确: %d %s", code, body)
 	}
 	if _, body := get("/sitemap.xml"); !strings.Contains(body, "/blog/published") || strings.Contains(body, "/blog/draft") {
 		t.Fatalf("站点地图不正确: %s", body)

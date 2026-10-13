@@ -117,3 +117,36 @@ func TestMarkdownEscapesScriptsAndRestrictsImages(t *testing.T) {
 		t.Fatalf("安全内容缺失: %s", html)
 	}
 }
+
+func TestRichTextSanitizedBeforeSaveAndOnRender(t *testing.T) {
+	s := testService(t)
+	ctx := context.Background()
+	image := "/media/blog/" + strings.Repeat("a", 64) + ".webp"
+	p := Post{Title: "Rich", Slug: "rich", Status: "active", BodyHTML: `<h2 onclick="bad()">Title</h2><p><b>Bold</b> <a href="javascript:alert(1)">bad link</a> <a href="https://example.com/story" target="_blank">good link</a></p><script>alert(1)</script><p><img src="` + image + `" onerror="bad()"><img src="https://evil.example/x.png"></p>`}
+	id, err := s.Create(ctx, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := s.GetPublished(ctx, "rich")
+	if err != nil || saved.PublicID != id {
+		t.Fatalf("富文本未发布: %+v %v", saved, err)
+	}
+	for _, unsafe := range []string{"onclick", "onerror", "javascript:", "<script", "alert(1)", "evil.example", "target="} {
+		if strings.Contains(saved.BodyHTML, unsafe) {
+			t.Fatalf("保存了不安全内容 %q: %s", unsafe, saved.BodyHTML)
+		}
+	}
+	for _, safe := range []string{"<h2>Title</h2>", "<strong>Bold</strong>", `href="https://example.com/story"`, `src="` + image + `"`} {
+		if !strings.Contains(saved.BodyHTML, safe) {
+			t.Fatalf("安全排版丢失 %q: %s", safe, saved.BodyHTML)
+		}
+	}
+	if rendered := string(RenderHTML(`<p>Hello</p><img src="https://evil.example/x.png"><svg onload="bad()"></svg>`)); strings.Contains(rendered, "evil.example") || strings.Contains(rendered, "svg") {
+		t.Fatalf("读取时未二次过滤: %s", rendered)
+	}
+	p.Slug = "empty-rich"
+	p.BodyHTML = `<script>alert(1)</script><p><br></p>`
+	if _, err := s.Create(ctx, p); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("仅有危险代码或空段落不能发布: %v", err)
+	}
+}

@@ -18,13 +18,14 @@ type blogPostReq struct {
 	Slug           string `json:"slug"`
 	Excerpt        string `json:"excerpt"`
 	BodyMarkdown   string `json:"body_markdown"`
+	BodyHTML       string `json:"body_html"`
 	CoverPath      string `json:"cover_path"`
 	SEODescription string `json:"seo_description"`
 	Status         string `json:"status"`
 }
 
 func (p blogPostReq) post() blog.Post {
-	return blog.Post{Title: p.Title, Slug: p.Slug, Excerpt: p.Excerpt, BodyMarkdown: p.BodyMarkdown, CoverPath: p.CoverPath, SEODescription: p.SEODescription, Status: p.Status}
+	return blog.Post{Title: p.Title, Slug: p.Slug, Excerpt: p.Excerpt, BodyMarkdown: p.BodyMarkdown, BodyHTML: p.BodyHTML, CoverPath: p.CoverPath, SEODescription: p.SEODescription, Status: p.Status}
 }
 
 func (h *HTTP) blogErr(w http.ResponseWriter, err error) {
