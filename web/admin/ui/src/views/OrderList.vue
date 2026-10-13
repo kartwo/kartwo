@@ -54,9 +54,8 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="container">
-    <div class="title-row">
-      <h2>订单</h2>
+  <div class="orders-page">
+    <div class="page-toolbar page-toolbar--end">
       <div v-if="accountRole !== 'staff'" class="export-actions">
         <select v-model="exportFilter.status" aria-label="导出订单状态">
           <option value="">全部状态</option><option value="pending">待付款</option><option value="paid">已付款</option><option value="fulfilled">已发货</option><option value="refunded">已退款</option><option value="cancelled">已取消</option><option value="payment_review">收款异常待处理</option>
@@ -67,8 +66,8 @@ onMounted(load)
       </div>
     </div>
     <ErrorState v-if="err" :message="err" :retry="load" />
-    <p v-else-if="!orders.length" class="muted">暂无订单。</p>
-    <table v-else class="orders">
+    <div v-else-if="!orders.length" class="panel muted">暂无订单。</div>
+    <div v-else class="panel table-scroll"><table class="orders">
       <thead>
         <tr><th>订单号</th><th>状态</th><th>邮箱</th><th>金额</th><th>时间</th></tr>
       </thead>
@@ -81,25 +80,23 @@ onMounted(load)
           <td class="muted">{{ o.created_at.slice(0, 19).replace('T', ' ') }}</td>
         </tr>
       </tbody>
-    </table>
+    </table></div>
   </div>
 </template>
 
 <style scoped>
-.orders{width:100%;border-collapse:collapse;margin-top:1rem}
-.title-row{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3)}
-.title-row h2{margin:0}
+.orders-page{max-width:1200px;margin:0 auto}
+.orders{min-width:690px}
 .export-actions{display:flex;align-items:center;justify-content:flex-end;gap:var(--sp-2);flex-wrap:wrap}
 .export-actions label{display:flex;align-items:center;gap:var(--sp-1);font-size:var(--fs-sm);color:var(--text-muted)}
 .export-actions select,.export-actions input{width:auto}
-.orders th,.orders td{text-align:left;padding:.5rem .6rem;border-bottom:1px solid var(--border)}
-.orders th{font-size:var(--fs-sm);color:var(--text-muted)}
 /* 可点击行：改名避开全局 .row 的 flex 工具类（display:flex 会破坏表格列宽算法致表头竖排） */
 .clickable{cursor:pointer}
-.clickable:hover{background:var(--surface)}
+.clickable:hover{background:var(--surface-2)}
 .badge{font-size:var(--fs-xs);border-radius:var(--radius-pill);padding:.1rem .5rem;border:1px solid var(--border)}
 .badge.paid{color:var(--on-accent);background:var(--accent);border-color:var(--accent)}
 .badge.refunded{color:var(--danger);background:var(--danger-bg);border-color:var(--danger-bg)}
 .badge.payment_review{color:var(--danger);background:var(--danger-bg);border-color:var(--danger-bg)}
 .badge.pending{color:var(--text-muted)}
+@media(max-width:700px){.export-actions{justify-content:flex-start}}
 </style>
