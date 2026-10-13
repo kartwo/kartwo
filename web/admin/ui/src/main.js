@@ -20,6 +20,8 @@ import TranslationSettings from './views/TranslationSettings.vue'
 import OrderList from './views/OrderList.vue'
 import OrderDetail from './views/OrderDetail.vue'
 import Merchandising from './views/Merchandising.vue'
+import BlogPosts from './views/BlogPosts.vue'
+import BlogSettings from './views/BlogSettings.vue'
 import CategoryManagement from './views/CategoryManagement.vue'
 import ShippingSettings from './views/ShippingSettings.vue'
 import PolicySettings from './views/PolicySettings.vue'
@@ -55,6 +57,8 @@ const router = createRouter({
     { path: '/about', component: About },
     { path: '/orders/:id', component: OrderDetail, props: true, meta: { demoReadonly: true } },
     { path: '/merchandising', component: Merchandising },
+    { path: '/blog', component: BlogPosts, meta: { demoReadonly: true } },
+    { path: '/blog-settings', component: BlogSettings, meta: { demoReadonly: true } },
     { path: '/categories', component: CategoryManagement },
     { path: '/shipping', component: ShippingSettings, meta: { demoReadonly: true } },
     { path: '/policies', component: PolicySettings, meta: { demoReadonly: true } },

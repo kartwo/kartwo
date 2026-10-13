@@ -82,8 +82,12 @@ func TestReservationMigrationPreservesAvailableStock(t *testing.T) {
 			t.Fatalf("造旧数据失败: %v: %s", err, statement)
 		}
 	}
-	if applied, err := migrate.Run(ctx, db, migrations.FS); err != nil || applied != 1 {
+	if applied, err := migrate.Run(ctx, db, migrations.FS); err != nil || applied < 1 {
 		t.Fatalf("升级迁移失败: applied=%d err=%v", applied, err)
+	}
+	var reservationApplied int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version='0025_order_reservation'`).Scan(&reservationApplied); err != nil || reservationApplied != 1 {
+		t.Fatalf("库存预留迁移未应用: count=%d err=%v", reservationApplied, err)
 	}
 	var quantity, reserved int
 	if err := db.QueryRow(`SELECT quantity,reserved FROM inventory WHERE variant_id=1`).Scan(&quantity, &reserved); err != nil {

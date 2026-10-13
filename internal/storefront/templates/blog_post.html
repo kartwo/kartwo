@@ -1,0 +1,3 @@
+{{define "content"}}
+<article class="blog-article"><p><a href="/blog">← Back to Blog</a></p><time datetime="{{.Post.PublishedAt}}">{{.Post.PublishedDate}}</time><h1>{{.Post.Title}}</h1>{{if .Post.Excerpt}}<p class="blog-intro">{{.Post.Excerpt}}</p>{{end}}{{if .Post.CoverURL}}<img class="blog-cover" src="{{.Post.CoverURL}}" alt="{{.Post.Title}}" />{{end}}<div class="blog-body">{{.Body}}</div></article>
+{{end}}

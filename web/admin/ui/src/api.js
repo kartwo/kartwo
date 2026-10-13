@@ -50,6 +50,10 @@ function contentPagePayload(page) {
   }
 }
 
+function blogPostPayload(post) {
+  return { title: post.title, slug: post.slug, excerpt: post.excerpt, body_markdown: post.body_markdown, cover_path: post.cover_path, seo_description: post.seo_description, status: post.status }
+}
+
 export const api = {
   status: () => request('GET', '/status'),
   me: () => request('GET', '/me'),
@@ -88,6 +92,15 @@ export const api = {
   updateContentPage: (id, payload) => request('PATCH', '/content-pages/' + id, contentPagePayload(payload)),
   deleteContentPage: (id) => request('DELETE', '/content-pages/' + id),
   generateFooterPages: (payload) => request('POST', '/content-pages/generate-footer', payload),
+  listBlogPosts: () => request('GET', '/blog/posts'),
+  getBlogPost: (id) => request('GET', '/blog/posts/' + id),
+  createBlogPost: (post) => request('POST', '/blog/posts', blogPostPayload(post)),
+  updateBlogPost: (id, post) => request('PUT', '/blog/posts/' + id, blogPostPayload(post)),
+  deleteBlogPost: (id) => request('DELETE', '/blog/posts/' + id),
+  uploadBlogImage: (file) => { const fd = new FormData(); fd.append('file', file); return request('POST', '/blog/images', fd, true) },
+  previewBlog: (body_markdown) => request('POST', '/blog/preview', { body_markdown }),
+  getBlogSettings: () => request('GET', '/settings/blog'),
+  setBlogSettings: (enabled) => request('PUT', '/settings/blog', { enabled }),
   setInventory: (variantId, quantity) => request('PATCH', '/variants/' + variantId + '/inventory', { quantity }),
   setPrice: (variantId, priceCents) => request('PATCH', '/variants/' + variantId + '/price', { price_cents: priceCents }),
   previewImportCSV: (file, format) => { const fd = new FormData(); fd.append('file', file); fd.append('format', format); return request('POST', '/imports/csv/preview', fd, true) },
