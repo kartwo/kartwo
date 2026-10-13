@@ -53,6 +53,22 @@ type AuditEvent struct {
 	AdminUsernameSnapshot string `db:"admin_username_snapshot" json:"admin_username_snapshot"`
 }
 
+type BlogPost struct {
+	ID             int64          `db:"id" json:"id"`
+	PublicID       string         `db:"public_id" json:"public_id"`
+	Title          string         `db:"title" json:"title"`
+	Slug           string         `db:"slug" json:"slug"`
+	Excerpt        string         `db:"excerpt" json:"excerpt"`
+	BodyMarkdown   string         `db:"body_markdown" json:"body_markdown"`
+	CoverPath      string         `db:"cover_path" json:"cover_path"`
+	SeoDescription string         `db:"seo_description" json:"seo_description"`
+	Status         string         `db:"status" json:"status"`
+	PublishedAt    sql.NullString `db:"published_at" json:"published_at"`
+	CreatedAt      string         `db:"created_at" json:"created_at"`
+	UpdatedAt      string         `db:"updated_at" json:"updated_at"`
+	DeletedAt      sql.NullString `db:"deleted_at" json:"deleted_at"`
+}
+
 type Cart struct {
 	ID        int64  `db:"id" json:"id"`
 	Token     string `db:"token" json:"token"`
@@ -80,6 +96,28 @@ type Category struct {
 	CreatedAt string         `db:"created_at" json:"created_at"`
 	UpdatedAt string         `db:"updated_at" json:"updated_at"`
 	DeletedAt sql.NullString `db:"deleted_at" json:"deleted_at"`
+}
+
+type ContactMessage struct {
+	ID               int64          `db:"id" json:"id"`
+	PublicID         string         `db:"public_id" json:"public_id"`
+	Name             string         `db:"name" json:"name"`
+	Email            string         `db:"email" json:"email"`
+	Topic            string         `db:"topic" json:"topic"`
+	Body             string         `db:"body" json:"body"`
+	OrderRef         string         `db:"order_ref" json:"order_ref"`
+	IpAddress        string         `db:"ip_address" json:"ip_address"`
+	CountryCode      string         `db:"country_code" json:"country_code"`
+	Status           string         `db:"status" json:"status"`
+	CreatedAt        string         `db:"created_at" json:"created_at"`
+	UpdatedAt        string         `db:"updated_at" json:"updated_at"`
+	ClosedAt         sql.NullString `db:"closed_at" json:"closed_at"`
+	AnonymizedAt     sql.NullString `db:"anonymized_at" json:"anonymized_at"`
+	ProcessingByID   string         `db:"processing_by_id" json:"processing_by_id"`
+	ProcessingByName string         `db:"processing_by_name" json:"processing_by_name"`
+	ProcessingAt     sql.NullString `db:"processing_at" json:"processing_at"`
+	ClosedByID       string         `db:"closed_by_id" json:"closed_by_id"`
+	ClosedByName     string         `db:"closed_by_name" json:"closed_by_name"`
 }
 
 type ContentPage struct {
@@ -184,24 +222,25 @@ type Meta struct {
 }
 
 type Order struct {
-	ID               int64  `db:"id" json:"id"`
-	PublicID         string `db:"public_id" json:"public_id"`
-	CustomerID       int64  `db:"customer_id" json:"customer_id"`
-	Status           string `db:"status" json:"status"`
-	Email            string `db:"email" json:"email"`
-	ShipName         string `db:"ship_name" json:"ship_name"`
-	ShipPhone        string `db:"ship_phone" json:"ship_phone"`
-	ShipAddress      string `db:"ship_address" json:"ship_address"`
-	ShipCountry      string `db:"ship_country" json:"ship_country"`
-	Currency         string `db:"currency" json:"currency"`
-	SubtotalCents    int64  `db:"subtotal_cents" json:"subtotal_cents"`
-	TotalCents       int64  `db:"total_cents" json:"total_cents"`
-	CreatedAt        string `db:"created_at" json:"created_at"`
-	UpdatedAt        string `db:"updated_at" json:"updated_at"`
-	PaymentProvider  string `db:"payment_provider" json:"payment_provider"`
-	PaymentRef       string `db:"payment_ref" json:"payment_ref"`
-	ShippingCents    int64  `db:"shipping_cents" json:"shipping_cents"`
-	ShippingRuleName string `db:"shipping_rule_name" json:"shipping_rule_name"`
+	ID                   int64  `db:"id" json:"id"`
+	PublicID             string `db:"public_id" json:"public_id"`
+	CustomerID           int64  `db:"customer_id" json:"customer_id"`
+	Status               string `db:"status" json:"status"`
+	Email                string `db:"email" json:"email"`
+	ShipName             string `db:"ship_name" json:"ship_name"`
+	ShipPhone            string `db:"ship_phone" json:"ship_phone"`
+	ShipAddress          string `db:"ship_address" json:"ship_address"`
+	ShipCountry          string `db:"ship_country" json:"ship_country"`
+	Currency             string `db:"currency" json:"currency"`
+	SubtotalCents        int64  `db:"subtotal_cents" json:"subtotal_cents"`
+	TotalCents           int64  `db:"total_cents" json:"total_cents"`
+	CreatedAt            string `db:"created_at" json:"created_at"`
+	UpdatedAt            string `db:"updated_at" json:"updated_at"`
+	PaymentProvider      string `db:"payment_provider" json:"payment_provider"`
+	PaymentRef           string `db:"payment_ref" json:"payment_ref"`
+	ShippingCents        int64  `db:"shipping_cents" json:"shipping_cents"`
+	ShippingRuleName     string `db:"shipping_rule_name" json:"shipping_rule_name"`
+	ReservationExpiresAt string `db:"reservation_expires_at" json:"reservation_expires_at"`
 }
 
 type OrderItem struct {
