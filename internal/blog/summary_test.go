@@ -34,3 +34,26 @@ func TestListSummary(t *testing.T) {
 		t.Fatalf("long summary = %q", got)
 	}
 }
+
+func TestListImageURL(t *testing.T) {
+	bodyImage := "/media/blog/" + strings.Repeat("a", 64) + ".webp"
+	cover := "blog/" + strings.Repeat("b", 64) + ".webp"
+	tests := []struct {
+		name string
+		post Post
+		want string
+	}{
+		{"body image", Post{BodyHTML: `<p><img src="` + bodyImage + `" alt="photo"></p>`}, bodyImage},
+		{"cover wins", Post{CoverPath: cover, BodyHTML: `<img src="` + bodyImage + `">`}, "/media/" + cover},
+		{"markdown image", Post{BodyMarkdown: `![photo](` + bodyImage + `)`}, bodyImage},
+		{"external image rejected", Post{BodyHTML: `<img src="https://example.test/photo.webp">`}, ""},
+		{"empty", Post{}, ""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.post.ListImageURL(); got != test.want {
+				t.Fatalf("ListImageURL() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}

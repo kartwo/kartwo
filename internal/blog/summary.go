@@ -13,18 +13,19 @@ import (
 
 const listSummaryRunes = 180
 
+func (p Post) renderedListBody() string {
+	if p.BodyHTML != "" {
+		return string(RenderHTML(p.BodyHTML))
+	}
+	return string(RenderMarkdown(p.BodyMarkdown))
+}
+
 // ListSummary prefers the merchant's excerpt and otherwise previews the post body.
 func (p Post) ListSummary() string {
 	if excerpt := strings.TrimSpace(p.Excerpt); excerpt != "" {
 		return excerpt
 	}
-	var rendered string
-	if p.BodyHTML != "" {
-		rendered = string(RenderHTML(p.BodyHTML))
-	} else {
-		rendered = string(RenderMarkdown(p.BodyMarkdown))
-	}
-	tokenizer := html.NewTokenizer(strings.NewReader(rendered))
+	tokenizer := html.NewTokenizer(strings.NewReader(p.renderedListBody()))
 	var words []string
 	for tokenizer.Next() != html.ErrorToken {
 		token := tokenizer.Token()
@@ -38,4 +39,24 @@ func (p Post) ListSummary() string {
 		return string(runes[:listSummaryRunes]) + "…"
 	}
 	return summary
+}
+
+// ListImageURL uses the chosen cover, or the first safe local body image on list cards.
+func (p Post) ListImageURL() string {
+	if cover := p.CoverURL(); cover != "" {
+		return cover
+	}
+	tokenizer := html.NewTokenizer(strings.NewReader(p.renderedListBody()))
+	for tokenizer.Next() != html.ErrorToken {
+		token := tokenizer.Token()
+		if (token.Type != html.StartTagToken && token.Type != html.SelfClosingTagToken) || token.Data != "img" {
+			continue
+		}
+		for _, attr := range token.Attr {
+			if attr.Key == "src" && strings.HasPrefix(attr.Val, "/media/blog/") && imagePathPattern.MatchString(strings.TrimPrefix(attr.Val, "/media/")) {
+				return attr.Val
+			}
+		}
+	}
+	return ""
 }

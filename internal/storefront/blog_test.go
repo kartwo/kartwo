@@ -32,7 +32,8 @@ func TestBlogRoutesSwitchAndSitemap(t *testing.T) {
 	if _, err := b.Create(ctx, pub); err != nil {
 		t.Fatal(err)
 	}
-	rich := blog.Post{Title: "Rich", Slug: "rich", BodyHTML: `<h2>Visual title</h2><p><strong>Formatted</strong></p><p><iframe src="https://www.youtube-nocookie.com/embed/M7lc1UVf-VE"></iframe></p>`, Status: "active"}
+	richImage := "/media/blog/" + strings.Repeat("a", 64) + ".webp"
+	rich := blog.Post{Title: "Rich", Slug: "rich", BodyHTML: `<h2>Visual title</h2><p><strong>Formatted</strong></p><p><img src="` + richImage + `" alt="photo"></p><p><iframe src="https://www.youtube-nocookie.com/embed/M7lc1UVf-VE"></iframe></p>`, Status: "active"}
 	if _, err := b.Create(ctx, rich); err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +46,7 @@ func TestBlogRoutesSwitchAndSitemap(t *testing.T) {
 		mux.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		return w.Code, w.Body.String()
 	}
-	if code, body := get("/blog"); code != 200 || !strings.Contains(body, "Published") || !strings.Contains(body, "<p>Visual title Formatted</p>") || strings.Contains(body, "Hidden") {
+	if code, body := get("/blog"); code != 200 || !strings.Contains(body, "Published") || !strings.Contains(body, "<p>Visual title Formatted</p>") || !strings.Contains(body, `src="`+richImage+`"`) || strings.Contains(body, "Hidden") {
 		t.Fatalf("列表不正确: %d %s", code, body)
 	}
 	if code, _ := get("/blog/draft"); code != 404 {

@@ -1,5 +1,5 @@
 {{define "content"}}
 <section class="blog-head"><span class="eyebrow">{{.ShopName}}</span><h1>Blog</h1><p>Stories and updates from our store.</p></section>
-{{if .Posts}}<div class="blog-grid">{{range .Posts}}<article class="blog-card"><a href="/blog/{{.Slug}}">{{if .CoverURL}}<img src="{{.CoverURL}}" alt="" loading="lazy" />{{end}}<div class="blog-card-body"><h2>{{.Title}}</h2></div></a>{{if .ListSummary}}<p>{{.ListSummary}}</p>{{end}}<time datetime="{{.PublishedAt}}">{{.PublishedDate}}</time></article>{{end}}</div>{{else}}<p>Stories are coming soon.</p>{{end}}
+{{if .Posts}}<div class="blog-grid">{{range .Posts}}<article class="blog-card"><a href="/blog/{{.Slug}}">{{if .ListImageURL}}<img src="{{.ListImageURL}}" alt="" loading="lazy" />{{end}}<div class="blog-card-body"><h2>{{.Title}}</h2></div></a>{{if .ListSummary}}<p>{{.ListSummary}}</p>{{end}}<time datetime="{{.PublishedAt}}">{{.PublishedDate}}</time></article>{{end}}</div>{{else}}<p>Stories are coming soon.</p>{{end}}
 {{if or .HasPrevious .HasNext}}<nav class="blog-pages" aria-label="Blog pages">{{if .HasPrevious}}<a href="/blog?page={{.Previous}}">← Newer</a>{{end}}{{if .HasNext}}<a href="/blog?page={{.Next}}">Older →</a>{{end}}</nav>{{end}}
 {{end}}
