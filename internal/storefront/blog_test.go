@@ -32,6 +32,11 @@ func TestBlogRoutesSwitchAndSitemap(t *testing.T) {
 	if _, err := b.Create(ctx, pub); err != nil {
 		t.Fatal(err)
 	}
+	richImage := "/media/blog/" + strings.Repeat("a", 64) + ".webp"
+	rich := blog.Post{Title: "Rich", Slug: "rich", BodyHTML: `<h2>Visual title</h2><p><strong>Formatted</strong></p><p><img src="` + richImage + `" alt="photo"></p><p><iframe src="https://www.youtube-nocookie.com/embed/M7lc1UVf-VE"></iframe></p>`, Status: "active"}
+	if _, err := b.Create(ctx, rich); err != nil {
+		t.Fatal(err)
+	}
 	h := NewHTTP(sf, cart.New(db), order.New(db, settingSvc), settingSvc, nil, redirect.New(db), "Shop", "https://shop.test", nil)
 	mux := http.NewServeMux()
 	h.Register(mux)
@@ -41,7 +46,7 @@ func TestBlogRoutesSwitchAndSitemap(t *testing.T) {
 		mux.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		return w.Code, w.Body.String()
 	}
-	if code, body := get("/blog"); code != 200 || !strings.Contains(body, "Published") || strings.Contains(body, "Hidden") {
+	if code, body := get("/blog"); code != 200 || !strings.Contains(body, "Published") || !strings.Contains(body, "<p>Visual title Formatted</p>") || !strings.Contains(body, `src="`+richImage+`"`) || strings.Contains(body, "Hidden") {
 		t.Fatalf("列表不正确: %d %s", code, body)
 	}
 	if code, _ := get("/blog/draft"); code != 404 {
@@ -49,6 +54,9 @@ func TestBlogRoutesSwitchAndSitemap(t *testing.T) {
 	}
 	if code, body := get("/blog/published"); code != 200 || !strings.Contains(body, "Hello") {
 		t.Fatalf("详情不正确: %d %s", code, body)
+	}
+	if code, body := get("/blog/rich"); code != 200 || !strings.Contains(body, "<h2>Visual title</h2>") || !strings.Contains(body, "<strong>Formatted</strong>") || !strings.Contains(body, "youtube-nocookie.com/embed/M7lc1UVf-VE") {
+		t.Fatalf("富文本详情不正确: %d %s", code, body)
 	}
 	if _, body := get("/sitemap.xml"); !strings.Contains(body, "/blog/published") || strings.Contains(body, "/blog/draft") {
 		t.Fatalf("站点地图不正确: %s", body)

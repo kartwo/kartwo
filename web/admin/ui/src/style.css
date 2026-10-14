@@ -3,28 +3,35 @@
  * 作者：仗键天涯(daxing)
  * 邮箱：3442535897@qq.com
  * 时间：2026-06-18 10:43:28 */
-/* 后台基调：深色导航 + 浅灰工作区 + 白色内容卡片。 */
+/* 后台基调：深蓝导航 + 暖白工作区 + 柔和分层卡片。 */
 :root {
   /* —— 色板 —— */
-  --bg: #f5f7fa;            /* 页面底（极浅冷灰） */
+  --bg: #f7f5f2;
   --surface: #ffffff;      /* 卡片/面板 */
-  --surface-2: #f7fafc;    /* 输入底/内嵌区/次级底 */
-  --border: #e4e7ed;       /* 细边框 */
-  --border-strong: #cdd3dc;/* hover/强调边 */
-  --text: #303133;         /* 主文字 */
-  --text-muted: #606266;   /* 次要文字 */
-  --text-subtle: #8792a2;  /* 占位/辅助 */
-  --accent: #409eff;       /* 主色（明蓝） */
-  --accent-hover: #337ecc; /* 主色 hover */
+  --surface-2: #faf8f5;
+  --border: #e9e2dc;
+  --border-strong: #cfc0b6;
+  --text: #302b29;
+  --text-muted: #695f5a;
+  --text-subtle: #958984;
+  --accent: #975448;
+  --accent-hover: #7f4138;
   --on-accent: #ffffff;    /* 主色上文字 */
-  --focus-ring: rgba(64, 158, 255, .18);
-  --sidebar-bg: #223041;
-  --sidebar-hover: #2c3c50;
-  --sidebar-active: #1c2938;
-  --sidebar-text: #e9eef5;
-  --sidebar-muted: #b8c4d2;
-  --sidebar-border: #344357;
-  --sidebar-focus: #8fc7ff;
+  --focus-ring: rgba(151, 84, 72, .2);
+  --sidebar-bg: #102344;
+  --sidebar-hover: #1c355a;
+  --sidebar-active: #31517e;
+  --sidebar-text: #f1f5fb;
+  --sidebar-muted: #c6d3e7;
+  --sidebar-subtle: #98a9c6;
+  --sidebar-border: #324666;
+  --sidebar-focus: #b4cfff;
+  --intro-start: #ffffff;
+  --intro-end: #f8ede6;
+  --login-start: #f5e5df;
+  --login-middle: #faf7f3;
+  --login-end: #e6e6db;
+  --login-glow: #f3d6ca;
   --success: #0e7c4a;      /* 成功文字 */
   --success-bg: #e3f6ec;   /* 成功底 */
   --danger: #df1b41;       /* 危险/错误文字 */
@@ -34,13 +41,14 @@
   /* —— 间距（4px 基） —— */
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px;
   /* —— 圆角 —— */
-  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px; --radius-pill: 999px;
+  --radius-sm: 8px; --radius-md: 10px; --radius-lg: 18px; --radius-pill: 999px;
   /* —— 阴影（弱分层） —— */
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, .06);
-  --shadow-md: 0 2px 8px rgba(16, 24, 40, .08);
+  --shadow-sm: 0 4px 18px rgba(58, 39, 27, .045);
+  --shadow-md: 0 12px 36px rgba(58, 39, 27, .09);
+  --shadow-login: 0 28px 76px rgba(74, 51, 43, .16);
   --nav-overlay: rgba(16, 24, 40, .35);
   /* —— 字阶 —— */
-  --fs-xs: .75rem; --fs-sm: .8125rem; --fs-base: .875rem; --fs-md: 1rem; --fs-lg: 1.25rem; --fs-xl: 1.75rem;
+  --fs-xs: .75rem; --fs-sm: .8125rem; --fs-base: .875rem; --fs-md: 1rem; --fs-lg: 1.25rem; --fs-xl: 2rem;
   /* —— 旧 token 名别名：使既有组件的 var(--panel/--line/--muted/--ok) 自动吃新浅色值，无需逐页改 —— */
   --panel: var(--surface);
   --line: var(--border);
@@ -67,7 +75,7 @@ a:hover { text-decoration: underline; }
 button {
   font: inherit; font-weight: 500; cursor: pointer;
   border: 1px solid var(--border); background: var(--surface); color: var(--text);
-  padding: .5rem .9rem; border-radius: var(--radius-md); box-shadow: var(--shadow-sm);
+  padding: .58rem .95rem; border-radius: var(--radius-md); box-shadow: var(--shadow-sm);
   transition: background .12s ease, border-color .12s ease, box-shadow .12s ease;
 }
 button:hover { background: var(--surface-2); border-color: var(--border-strong); }
@@ -109,7 +117,7 @@ label,
 .container { max-width: 880px; margin: 1.6rem auto; padding: 0 1.2rem; }
 .panel {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 1.2rem; box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-lg); padding: var(--sp-6); box-shadow: var(--shadow-sm);
 }
 .row { display: flex; gap: .8rem; align-items: center; }
 .row > * { flex: 1; }
@@ -118,8 +126,15 @@ label,
 .ok { color: var(--success); }
 
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: .5rem .4rem; border-bottom: 1px solid var(--border); font-size: var(--fs-base); }
-th { color: var(--text-muted); font-weight: 500; }
+th, td { text-align: left; padding: .85rem .8rem; border-bottom: 1px solid var(--border); font-size: var(--fs-base); }
+th { background: var(--surface-2); color: var(--text-muted); font-size: var(--fs-sm); font-weight: 600; }
+tbody tr:last-child td { border-bottom: 0; }
+.table-scroll { overflow-x: auto; border-radius: var(--radius-md); }
+.page-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); margin-bottom: var(--sp-4); }
+.page-toolbar--end { justify-content: flex-end; }
+.page-toolbar h2 { margin: 0; }
+.page-description { margin: 0 0 var(--sp-6); color: var(--text-muted); font-size: var(--fs-sm); }
+@media (max-width: 700px) { .page-toolbar { align-items: flex-start; flex-direction: column; } }
 
 .center-screen { min-height: 100vh; display: grid; place-items: center; }
 .card { width: 380px; max-width: 92vw; }

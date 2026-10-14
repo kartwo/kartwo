@@ -30,6 +30,7 @@ type Post struct {
 	Slug           string `json:"slug"`
 	Excerpt        string `json:"excerpt"`
 	BodyMarkdown   string `json:"body_markdown"`
+	BodyHTML       string `json:"body_html"`
 	CoverPath      string `json:"cover_path"`
 	SEODescription string `json:"seo_description"`
 	Status         string `json:"status"`
@@ -77,15 +78,22 @@ func (s *Service) SetEnabled(ctx context.Context, enabled bool) error {
 	return s.settings.SetPlain(ctx, "blog.enabled", v)
 }
 
-func validate(p Post) error {
+func validate(p *Post) error {
 	if n := len([]rune(strings.TrimSpace(p.Title))); n == 0 || n > 160 {
 		return fmt.Errorf("%w: 标题需为 1–160 字", ErrInvalid)
 	}
 	if len(p.Slug) > 100 || !slugPattern.MatchString(p.Slug) {
 		return fmt.Errorf("%w: 链接只能用小写英文、数字和连字符", ErrInvalid)
 	}
-	if len([]rune(p.Excerpt)) > 300 || len([]rune(p.SEODescription)) > 300 || len(p.BodyMarkdown) > 100000 {
+	if len([]rune(p.Excerpt)) > 300 || len([]rune(p.SEODescription)) > 300 || len(p.BodyMarkdown) > 100000 || len(p.BodyHTML) > 100000 {
 		return fmt.Errorf("%w: 正文、摘要或 SEO 描述过长", ErrInvalid)
+	}
+	visibleHTML := false
+	if p.BodyHTML != "" {
+		p.BodyHTML, visibleHTML = SanitizeHTML(p.BodyHTML)
+		if !visibleHTML {
+			p.BodyHTML = ""
+		}
 	}
 	if p.CoverPath != "" && !imagePathPattern.MatchString(p.CoverPath) {
 		return fmt.Errorf("%w: 封面路径非法", ErrInvalid)
@@ -93,7 +101,7 @@ func validate(p Post) error {
 	if p.Status != "draft" && p.Status != "active" {
 		return fmt.Errorf("%w: 状态非法", ErrInvalid)
 	}
-	if p.Status == "active" && strings.TrimSpace(p.BodyMarkdown) == "" {
+	if p.Status == "active" && !visibleHTML && strings.TrimSpace(p.BodyMarkdown) == "" {
 		return fmt.Errorf("%w: 发布前请填写正文", ErrInvalid)
 	}
 	return nil
@@ -104,12 +112,12 @@ func uniqueErr(err error) bool {
 }
 
 func (s *Service) Create(ctx context.Context, p Post) (string, error) {
-	if err := validate(p); err != nil {
+	if err := validate(&p); err != nil {
 		return "", err
 	}
 	id := uuid.Must(uuid.NewV7()).String()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO blog_post(public_id,title,slug,excerpt,body_markdown,cover_path,seo_description,status,published_at)
-	VALUES(?,?,?,?,?,?,?,?,CASE WHEN ?='active' THEN strftime('%Y-%m-%dT%H:%M:%fZ','now') ELSE NULL END)`, id, strings.TrimSpace(p.Title), p.Slug, p.Excerpt, p.BodyMarkdown, p.CoverPath, p.SEODescription, p.Status, p.Status)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO blog_post(public_id,title,slug,excerpt,body_markdown,body_html,cover_path,seo_description,status,published_at)
+	VALUES(?,?,?,?,?,?,?,?,?,CASE WHEN ?='active' THEN strftime('%Y-%m-%dT%H:%M:%fZ','now') ELSE NULL END)`, id, strings.TrimSpace(p.Title), p.Slug, p.Excerpt, p.BodyMarkdown, p.BodyHTML, p.CoverPath, p.SEODescription, p.Status, p.Status)
 	if uniqueErr(err) {
 		return "", ErrConflict
 	}
@@ -120,7 +128,7 @@ func (s *Service) Create(ctx context.Context, p Post) (string, error) {
 }
 
 func (s *Service) Update(ctx context.Context, id string, p Post) error {
-	if err := validate(p); err != nil {
+	if err := validate(&p); err != nil {
 		return err
 	}
 	old, err := s.Get(ctx, id)
@@ -130,9 +138,9 @@ func (s *Service) Update(ctx context.Context, id string, p Post) error {
 	if old.Slug != p.Slug {
 		return fmt.Errorf("%w: 文章链接创建后不可修改", ErrInvalid)
 	}
-	result, err := s.db.ExecContext(ctx, `UPDATE blog_post SET title=?,excerpt=?,body_markdown=?,cover_path=?,seo_description=?,status=?,
+	result, err := s.db.ExecContext(ctx, `UPDATE blog_post SET title=?,excerpt=?,body_markdown=?,body_html=?,cover_path=?,seo_description=?,status=?,
 	 published_at=CASE WHEN ?='active' AND status='draft' THEN strftime('%Y-%m-%dT%H:%M:%fZ','now') ELSE published_at END,
-	 updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id=? AND deleted_at IS NULL`, strings.TrimSpace(p.Title), p.Excerpt, p.BodyMarkdown, p.CoverPath, p.SEODescription, p.Status, p.Status, id)
+	 updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id=? AND deleted_at IS NULL`, strings.TrimSpace(p.Title), p.Excerpt, p.BodyMarkdown, p.BodyHTML, p.CoverPath, p.SEODescription, p.Status, p.Status, id)
 	if err != nil {
 		return err
 	}
@@ -155,11 +163,11 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-const postColumns = `public_id,title,slug,excerpt,body_markdown,cover_path,seo_description,status,COALESCE(published_at,''),updated_at`
+const postColumns = `public_id,title,slug,excerpt,body_markdown,body_html,cover_path,seo_description,status,COALESCE(published_at,''),updated_at`
 
 func scan(row interface{ Scan(...any) error }) (Post, error) {
 	var p Post
-	err := row.Scan(&p.PublicID, &p.Title, &p.Slug, &p.Excerpt, &p.BodyMarkdown, &p.CoverPath, &p.SEODescription, &p.Status, &p.PublishedAt, &p.UpdatedAt)
+	err := row.Scan(&p.PublicID, &p.Title, &p.Slug, &p.Excerpt, &p.BodyMarkdown, &p.BodyHTML, &p.CoverPath, &p.SEODescription, &p.Status, &p.PublishedAt, &p.UpdatedAt)
 	return p, err
 }
 
@@ -190,7 +198,7 @@ func list(rows *sql.Rows) ([]Post, error) {
 	return posts, rows.Err()
 }
 func (s *Service) ListAdmin(ctx context.Context) ([]Post, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT public_id,title,slug,excerpt,'' AS body_markdown,cover_path,seo_description,status,COALESCE(published_at,''),updated_at FROM blog_post WHERE deleted_at IS NULL ORDER BY updated_at DESC,id DESC`)
+	rows, err := s.db.QueryContext(ctx, `SELECT public_id,title,slug,excerpt,'' AS body_markdown,'' AS body_html,cover_path,seo_description,status,COALESCE(published_at,''),updated_at FROM blog_post WHERE deleted_at IS NULL ORDER BY updated_at DESC,id DESC`)
 	if err != nil {
 		return nil, err
 	}

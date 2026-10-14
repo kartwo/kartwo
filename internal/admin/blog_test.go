@@ -6,6 +6,7 @@
 package admin
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -30,6 +31,26 @@ func TestBlogAdminAPI(t *testing.T) {
 	}
 	if got := doJSON(t, mux, "POST", "/admin/api/blog/posts", body, cookies, csrf); got.StatusCode != 201 {
 		t.Fatalf("发布失败: %d %s", got.StatusCode, got.Body)
+	}
+	rich := doJSON(t, mux, "POST", "/admin/api/blog/posts", `{"title":"Rich","slug":"rich","body_html":"<p onclick=\"bad()\">Hello <strong>world</strong></p>","status":"active"}`, cookies, csrf)
+	if rich.StatusCode != 201 {
+		t.Fatalf("富文本发布失败: %d %s", rich.StatusCode, rich.Body)
+	}
+	var created struct {
+		PublicID string `json:"public_id"`
+	}
+	if err := json.Unmarshal(rich.Body, &created); err != nil {
+		t.Fatal(err)
+	}
+	gotRich := doJSON(t, mux, "GET", "/admin/api/blog/posts/"+created.PublicID, "", cookies, "")
+	var saved struct {
+		BodyHTML string `json:"body_html"`
+	}
+	if err := json.Unmarshal(gotRich.Body, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if gotRich.StatusCode != 200 || saved.BodyHTML != "<p>Hello <strong>world</strong></p>" {
+		t.Fatalf("富文本未安全保存: %d %s", gotRich.StatusCode, gotRich.Body)
 	}
 	if got := doJSON(t, mux, "PUT", "/admin/api/settings/blog", `{"enabled":false}`, cookies, csrf); got.StatusCode != 200 || !strings.Contains(string(got.Body), `"enabled":false`) {
 		t.Fatalf("关闭失败: %d %s", got.StatusCode, got.Body)

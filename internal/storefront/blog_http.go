@@ -80,6 +80,10 @@ func (h *HTTP) blogPost(w http.ResponseWriter, r *http.Request) {
 	if desc == "" {
 		desc = p.Title
 	}
-	h.render(w, r, h.blogPostTmpl, map[string]any{"ShopName": shop, "Post": p, "Body": blog.RenderMarkdown(p.BodyMarkdown),
+	body := blog.RenderMarkdown(p.BodyMarkdown)
+	if p.BodyHTML != "" {
+		body = blog.RenderHTML(p.BodyHTML)
+	}
+	h.render(w, r, h.blogPostTmpl, map[string]any{"ShopName": shop, "Post": p, "Body": body,
 		"SEO": seo{Title: p.Title + " — " + shop, Description: desc, Canonical: h.base(r) + "/blog/" + p.Slug, OGType: "article", OGImage: image}})
 }

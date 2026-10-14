@@ -1,5 +1,10 @@
 {{define "content"}}
+<!-- 博客列表 / Blog List
+功能：显示文章封面缩略图、标题、摘要与发布日期
+作者：仗键天涯(daxing)
+邮箱：3442535897@qq.com
+时间：2026-10-14 11:15:00 -->
 <section class="blog-head"><span class="eyebrow">{{.ShopName}}</span><h1>Blog</h1><p>Stories and updates from our store.</p></section>
-{{if .Posts}}<div class="blog-grid">{{range .Posts}}<article class="blog-card"><a href="/blog/{{.Slug}}">{{if .CoverURL}}<img src="{{.CoverURL}}" alt="" loading="lazy" />{{end}}<div class="blog-card-body"><h2>{{.Title}}</h2></div></a><p>{{.Excerpt}}</p><time datetime="{{.PublishedAt}}">{{.PublishedDate}}</time></article>{{end}}</div>{{else}}<p>Stories are coming soon.</p>{{end}}
+{{if .Posts}}<div class="blog-grid">{{range .Posts}}<article class="blog-card{{if .ListImageURL}} has-image{{end}}">{{if .ListImageURL}}<a class="blog-card-cover" href="/blog/{{.Slug}}" aria-label="Read {{.Title}}"><img src="{{.ListImageURL}}" alt="" loading="lazy" /></a>{{end}}<div class="blog-card-content"><h2><a href="/blog/{{.Slug}}">{{.Title}}</a></h2>{{if .ListSummary}}<p>{{.ListSummary}}</p>{{end}}<time datetime="{{.PublishedAt}}">{{.PublishedDate}}</time></div></article>{{end}}</div>{{else}}<p>Stories are coming soon.</p>{{end}}
 {{if or .HasPrevious .HasNext}}<nav class="blog-pages" aria-label="Blog pages">{{if .HasPrevious}}<a href="/blog?page={{.Previous}}">← Newer</a>{{end}}{{if .HasNext}}<a href="/blog?page={{.Next}}">Older →</a>{{end}}</nav>{{end}}
 {{end}}

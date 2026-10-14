@@ -115,8 +115,8 @@ func TestSecurityHeaders_HSTSGating(t *testing.T) {
 	if recOff.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatal("非 HSTS 的其它安全头应始终存在")
 	}
-	if recOff.Header().Get("Content-Security-Policy") == "" {
-		t.Fatal("CSP 头应始终存在")
+	if policy := recOff.Header().Get("Content-Security-Policy"); policy == "" || !strings.Contains(policy, "frame-src https://www.youtube-nocookie.com https://player.vimeo.com") {
+		t.Fatalf("CSP 应仅允许受支持的视频播放器: %q", policy)
 	}
 }
 

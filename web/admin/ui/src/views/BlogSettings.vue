@@ -15,5 +15,5 @@ async function load(){try{enabled.value=(await api.getBlogSettings()).enabled}ca
 async function save(){try{enabled.value=(await api.setBlogSettings(enabled.value)).enabled;toast.success('博客设置已保存')}catch(e){toast.error(e.message);await load()}}
 onMounted(load)
 </script>
-<template><h2>博客设置</h2><div class="panel"><label class="blog-toggle"><input v-model="enabled" type="checkbox" :disabled="demo" /> 开启店面博客</label><p class="muted">默认开启。关闭后顾客无法访问博客，导航和站点地图不再显示；文章与草稿都会保留。</p><button v-if="!demo" class="primary" @click="save">保存设置</button></div></template>
-<style scoped>.blog-toggle{display:flex;align-items:center;gap:var(--sp-3);font-weight:700;margin-bottom:var(--sp-3)}</style>
+<template><div class="panel"><label class="blog-toggle"><input v-model="enabled" type="checkbox" :disabled="demo" /><span>开启店面博客</span></label><p class="muted">默认开启。关闭后顾客无法访问博客，导航和站点地图不再显示；文章与草稿都会保留。</p><button v-if="!demo" class="primary" @click="save">保存设置</button></div></template>
+<style scoped>.blog-toggle{display:inline-flex;align-items:center;gap:var(--sp-3);font-weight:700;margin:0 0 var(--sp-3)}.blog-toggle input{width:1.1rem;height:1.1rem;flex:none;margin:0;padding:0;accent-color:var(--accent)}</style>

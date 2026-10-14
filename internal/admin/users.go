@@ -162,11 +162,6 @@ func (h *HTTP) updateRole(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	name, raw, err := cleanRoleInput(req.Name, req.Permissions)
-	if err != nil {
-		writeErr(w, 400, err.Error())
-		return
-	}
 	id := r.PathValue("id")
 	tx, err := h.svc.db.BeginTx(r.Context(), nil)
 	if err != nil {
@@ -174,14 +169,32 @@ func (h *HTTP) updateRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(r.Context(), "UPDATE admin_role SET name=?, permissions=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id=? AND system_key IS NULL", name, raw, id)
+	var currentName, systemKey string
+	if err := tx.QueryRowContext(r.Context(), "SELECT name, COALESCE(system_key,'') FROM admin_role WHERE public_id=?", id).Scan(&currentName, &systemKey); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeErr(w, 404, "角色不存在")
+		} else {
+			writeErr(w, 500, "读取角色失败")
+		}
+		return
+	}
+	if systemKey != "" && req.Name != currentName {
+		writeErr(w, 400, "预设角色名称不可修改")
+		return
+	}
+	name, raw, err := cleanRoleInput(req.Name, req.Permissions)
+	if err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), "UPDATE admin_role SET name=CASE WHEN system_key IS NULL THEN ? ELSE name END, permissions=?, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id=?", name, raw, id)
 	if err != nil {
 		writeErr(w, 409, "角色名已存在或保存失败")
 		return
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		writeErr(w, 404, "自定义角色不存在；预设角色不可修改")
+		writeErr(w, 404, "角色不存在")
 		return
 	}
 	if _, err = tx.ExecContext(r.Context(), "DELETE FROM session WHERE admin_id IN (SELECT a.id FROM admin_user a JOIN admin_role ro ON ro.id=a.role_id WHERE ro.public_id=?)", id); err != nil {
@@ -400,7 +413,7 @@ func (h *HTTP) acceptInvite(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "邀请链接无效或已过期")
 		return
 	}
-	if !h.limiter.allow(clientIP(r) + "|invite") {
+	if !h.limiter.allow(h.clientIP(r) + "|invite") {
 		writeErr(w, http.StatusTooManyRequests, "尝试过于频繁，请稍后重试")
 		return
 	}
@@ -449,7 +462,7 @@ func (h *HTTP) acceptInvite(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "设置密码失败")
 		return
 	}
-	h.limiter.reset(clientIP(r) + "|invite")
+	h.limiter.reset(h.clientIP(r) + "|invite")
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }

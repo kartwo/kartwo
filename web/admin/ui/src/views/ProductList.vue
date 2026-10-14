@@ -58,9 +58,8 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="row" style="justify-content: space-between;">
-    <h2>商品</h2>
-		<div style="flex:0;text-align:right">
+  <div class="page-toolbar page-toolbar--end">
+		<div class="product-actions">
 			<button v-if="accountRole !== 'staff' || accountPermissions.includes('products.create')" class="primary" :disabled="demoSession && demoProductCount >= 3" @click="router.push('/products/new')">+ 新建商品</button>
 			<div v-if="demoSession" class="muted demo-quota">临时商品 {{ demoProductCount }} / 3</div>
 		</div>
@@ -69,7 +68,7 @@ onMounted(load)
   <div v-else class="panel">
     <p v-if="loading" class="muted">加载中…</p>
     <p v-else-if="!products.length" class="muted">还没有商品，点右上角「新建商品」。</p>
-    <table v-else>
+    <div v-else class="table-scroll"><table>
       <thead><tr><th>标题</th><th>slug</th><th>状态</th><th></th></tr></thead>
       <tbody>
         <tr v-for="p in products" :key="p.public_id">
@@ -83,10 +82,12 @@ onMounted(load)
 					</td>
         </tr>
       </tbody>
-    </table>
+    </table></div>
   </div>
 </template>
 
 <style scoped>
 .demo-quota{margin-top:var(--sp-1);font-size:var(--fs-xs)}
+.product-actions{text-align:right}
+@media(max-width:700px){.product-actions{text-align:left}}
 </style>
