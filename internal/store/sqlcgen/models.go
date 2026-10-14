@@ -67,6 +67,7 @@ type BlogPost struct {
 	CreatedAt      string         `db:"created_at" json:"created_at"`
 	UpdatedAt      string         `db:"updated_at" json:"updated_at"`
 	DeletedAt      sql.NullString `db:"deleted_at" json:"deleted_at"`
+	BodyHtml       string         `db:"body_html" json:"body_html"`
 }
 
 type Cart struct {
