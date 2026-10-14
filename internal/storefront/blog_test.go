@@ -45,7 +45,7 @@ func TestBlogRoutesSwitchAndSitemap(t *testing.T) {
 		mux.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
 		return w.Code, w.Body.String()
 	}
-	if code, body := get("/blog"); code != 200 || !strings.Contains(body, "Published") || strings.Contains(body, "Hidden") {
+	if code, body := get("/blog"); code != 200 || !strings.Contains(body, "Published") || !strings.Contains(body, "<p>Visual title Formatted</p>") || strings.Contains(body, "Hidden") {
 		t.Fatalf("列表不正确: %d %s", code, body)
 	}
 	if code, _ := get("/blog/draft"); code != 404 {
