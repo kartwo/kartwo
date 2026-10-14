@@ -6,6 +6,7 @@
 <script setup>
 import { ref, computed, inject, onMounted, nextTick } from 'vue'
 import { api, APIError } from '../api.js'
+import { uniqueBlogSlug } from '../blogSlug.js'
 import { useToast } from '../toast.js'
 import { confirm } from '../confirm.js'
 const toast = useToast()
@@ -19,11 +20,18 @@ const form = ref(empty())
 const editor = ref(null)
 const bodyImageInput = ref(null)
 const uploading = ref(false)
+const slugCustomized = ref(false)
 let savedRange = null
 function empty() { return { public_id:'', title:'', slug:'', excerpt:'', body_markdown:'', body_html:'', cover_path:'', seo_description:'', status:'draft' } }
 async function load() { try { posts.value = (await api.listBlogPosts()).posts || [] } catch(e) { if(e instanceof APIError && e.status===401) onUnauthorized(); else toast.error(e.message) } }
-function reset() { form.value = empty(); savedRange = null; if(editor.value) editor.value.innerHTML = '' }
-async function edit(post) { try { const loaded = await api.getBlogPost(post.public_id); const html = loaded.body_html || (loaded.body_markdown ? (await api.previewBlog(loaded.body_markdown)).html : ''); form.value = loaded; savedRange = null; await nextTick(); if(editor.value) editor.value.innerHTML = html || '' } catch(e) { toast.error(e.message) } }
+function suggestSlug() {
+  if (form.value.public_id || slugCustomized.value) return
+  form.value.slug = uniqueBlogSlug(form.value.title, posts.value.map(post => post.slug))
+}
+function customizeSlug() { slugCustomized.value = true }
+function regenerateSlug() { slugCustomized.value = false; suggestSlug() }
+function reset() { form.value = empty(); slugCustomized.value = false; savedRange = null; if(editor.value) editor.value.innerHTML = '' }
+async function edit(post) { try { const loaded = await api.getBlogPost(post.public_id); const html = loaded.body_html || (loaded.body_markdown ? (await api.previewBlog(loaded.body_markdown)).html : ''); form.value = loaded; slugCustomized.value = true; savedRange = null; await nextTick(); if(editor.value) editor.value.innerHTML = html || '' } catch(e) { toast.error(e.message) } }
 async function save() { try { form.value.body_html = editor.value?.innerHTML || ''; form.value.body_markdown = ''; if(form.value.public_id) await api.updateBlogPost(form.value.public_id,form.value); else { const r=await api.createBlogPost(form.value); form.value.public_id=r.public_id } await load();toast.success('文章已保存') } catch(e) { toast.error(e.message) } }
 async function remove(post) { if(!await confirm({title:'删除文章',message:`确定删除「${post.title}」？`,confirmText:'删除',danger:true})) return; try { await api.deleteBlogPost(post.public_id); if(form.value.public_id===post.public_id) reset(); await load(); toast.success('文章已删除') } catch(e) { toast.error(e.message) } }
 function rememberSelection() { const selection = window.getSelection(); if(selection?.rangeCount && editor.value?.contains(selection.anchorNode)) savedRange = selection.getRangeAt(0).cloneRange() }
@@ -92,7 +100,7 @@ onMounted(load)
 </script>
 <template>
   <div v-if="canManage" class="page-toolbar page-toolbar--end"><button class="primary" @click="reset">新建文章</button></div>
-  <p class="page-description">先保存草稿，确认内容后再发布。文章链接发布后保持不变。</p>
+  <p class="page-description">先保存草稿，确认内容后再发布。文章链接保存后保持不变。</p>
   <p v-if="demo" class="muted">公开演示中不显示真实文章草稿。</p>
   <section class="blog-layout">
     <div class="panel blog-list">
@@ -106,8 +114,14 @@ onMounted(load)
     </div>
     <form class="panel blog-editor" :inert="!canManage" @submit.prevent="save">
       <h3>{{ form.public_id ? '编辑文章' : '新建文章' }}</h3>
-      <label>标题</label><input v-model="form.title" maxlength="160" required />
-      <label>文章链接</label><input v-model="form.slug" pattern="[a-z0-9]+(-[a-z0-9]+)*" maxlength="100" :disabled="!!form.public_id" placeholder="my-story" required />
+      <label>标题</label><input v-model="form.title" maxlength="160" @input="suggestSlug" required />
+      <label>文章链接</label>
+      <div class="slug-controls">
+        <input v-model="form.slug" pattern="[a-z0-9]+(-[a-z0-9]+)*" maxlength="100" :disabled="!!form.public_id" placeholder="按标题自动生成" @input="customizeSlug" required />
+        <button v-if="!form.public_id" type="button" @click="regenerateSlug">按标题生成</button>
+      </div>
+      <p v-if="form.title && !form.slug && !form.public_id" class="muted slug-hint">标题没有可用于链接的英文字母或数字，请手动填写英文链接。</p>
+      <p v-else-if="!form.public_id" class="muted slug-hint">保存前可修改；保存后链接固定，避免已有分享链接失效。</p>
       <label>摘要</label><textarea v-model="form.excerpt" maxlength="300" rows="3" />
       <label>SEO 描述</label><textarea v-model="form.seo_description" maxlength="300" rows="2" />
       <label>封面图</label><input type="file" accept="image/jpeg,image/png,image/webp" :disabled="uploading" @change="upload($event,true)" />
@@ -182,6 +196,7 @@ onMounted(load)
 .blog-title{min-width:0;flex:1;border:0;box-shadow:none;background:transparent;text-align:left;font-weight:600;overflow-wrap:anywhere}
 .blog-title:hover{color:var(--accent);background:var(--surface-2)}
 .blog-actions{display:flex;gap:var(--sp-3);margin-top:var(--sp-6)}
+.slug-controls{display:flex;gap:var(--sp-2)}.slug-controls input{flex:1;min-width:0}.slug-controls button{white-space:nowrap}.slug-hint{font-size:var(--fs-sm);margin-top:var(--sp-1)}
 .cover-preview{display:block;max-width:240px;max-height:160px;object-fit:cover;margin:var(--sp-2) 0;border-radius:var(--radius-md)}
 .editor-hint{font-size:var(--fs-sm)}
 .rich-toolbar{border:1px solid var(--border);border-bottom:0;border-radius:var(--radius-sm) var(--radius-sm) 0 0;background:var(--surface)}
@@ -201,5 +216,5 @@ onMounted(load)
 .rich-editor :deep(blockquote){border-left:3px solid var(--accent);margin:var(--sp-3) 0;padding-left:var(--sp-3);color:var(--muted)}
 .hidden-image-input{display:none}
 [inert]{opacity:.7}
-@media(max-width:800px){.tool-group{padding:var(--sp-1) var(--sp-2)}.tool-group--media{margin-left:0}}
+@media(max-width:800px){.tool-group{padding:var(--sp-1) var(--sp-2)}.tool-group--media{margin-left:0}.slug-controls{flex-wrap:wrap}}
 </style>
