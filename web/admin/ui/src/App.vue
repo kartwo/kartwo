@@ -89,11 +89,11 @@ const navEntries = computed(() => {
   return entries
 })
 function navItemActive(path) {
-  return route.path === path || (path === '/products' && route.path.startsWith('/products/')) || (path === '/orders' && route.path.startsWith('/orders/'))
+  return route.path === path || (path === '/products' && route.path.startsWith('/products/')) || (path === '/orders' && route.path.startsWith('/orders/')) || (path === '/blog' && route.path.startsWith('/blog/'))
 }
 const currentNav = computed(() => {
   if (route.path === '/dashboard') return { group: '', label: '概览' }
-  if (route.path === '/blog') return { group: '功能菜单', label: '博客文章' }
+  if (route.path.startsWith('/blog')) return { group: '功能菜单', label: route.path === '/blog/new' ? '新建文章' : route.path === '/blog' ? '博客文章' : '编辑文章' }
   const group = navGroups.value.find(section => section.items.some(item => navItemActive(item.path)))
   const item = group?.items.find(entry => navItemActive(entry.path))
   if (route.path === '/products/new') return { group: group?.label || '商品与内容', label: '新建商品' }
@@ -107,12 +107,14 @@ watch([() => route.path, navGroups], () => {
   if (group) expandedGroups.value[group.id] = true
 }, { immediate: true })
 function closeMobileNavOnEscape(event) { if (event.key === 'Escape') mobileNavOpen.value = false }
-const routePermission = computed(() => route.path === '/products/new' ? 'products.create' : route.path.startsWith('/products/') ? 'products.view' : route.path.startsWith('/orders/') ? 'orders.view' : accessByPath[route.path])
+const routePermission = computed(() => route.path === '/products/new' ? 'products.create' : route.path.startsWith('/products/') ? 'products.view' : route.path === '/blog/new' ? 'blog.manage' : route.path.startsWith('/blog/') ? 'blog.view' : route.path.startsWith('/orders/') ? 'orders.view' : accessByPath[route.path])
 const routeAllowed = computed(() => accountRole.value === 'demo' ? route.path !== '/users' : accountRole.value !== 'staff' || (!routePermission.value ? ['/account', '/about'].includes(route.path) : can(routePermission.value)))
 const staffReadonlyRoute = computed(() => accountRole.value === 'staff' && (
   (route.path.startsWith('/products/') && !can('products.edit')) ||
   (route.path === '/products' && !can('products.edit') && !can('products.create')) ||
   (route.path.startsWith('/orders') && !can('orders.fulfill')) ||
+  (route.path.startsWith('/blog/') && !can('blog.manage')) ||
+  (route.path === '/blog' && !can('blog.manage')) ||
   (route.path === '/categories' && !can('categories.manage')) ||
   (route.path === '/contact' && !can('contact.manage'))
 ))
@@ -366,7 +368,7 @@ onUnmounted(() => { if (clock) window.clearInterval(clock); window.removeEventLi
                 <RouterLink v-for="item in entry.items" :key="item.path" :to="item.path" class="nav-item" :class="{ 'is-active': navItemActive(item.path) }" :aria-current="navItemActive(item.path) ? 'page' : undefined" @click="mobileNavOpen = false">{{ item.label }}</RouterLink>
               </div>
             </section>
-            <RouterLink v-else :to="entry.path" class="nav-home nav-standalone" :class="{ 'is-active': route.path === entry.path }" :aria-current="route.path === entry.path ? 'page' : undefined" @click="mobileNavOpen = false"><span class="nav-icon" aria-hidden="true">{{ entry.icon }}</span>{{ entry.label }}</RouterLink>
+            <RouterLink v-else :to="entry.path" class="nav-home nav-standalone" :class="{ 'is-active': navItemActive(entry.path) }" :aria-current="navItemActive(entry.path) ? 'page' : undefined" @click="mobileNavOpen = false"><span class="nav-icon" aria-hidden="true">{{ entry.icon }}</span>{{ entry.label }}</RouterLink>
           </template>
         </nav>
       </aside>

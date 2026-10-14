@@ -21,6 +21,7 @@ import OrderList from './views/OrderList.vue'
 import OrderDetail from './views/OrderDetail.vue'
 import Merchandising from './views/Merchandising.vue'
 import BlogPosts from './views/BlogPosts.vue'
+import BlogPostEdit from './views/BlogPostEdit.vue'
 import BlogSettings from './views/BlogSettings.vue'
 import CategoryManagement from './views/CategoryManagement.vue'
 import ShippingSettings from './views/ShippingSettings.vue'
@@ -58,6 +59,8 @@ const router = createRouter({
     { path: '/orders/:id', component: OrderDetail, props: true, meta: { demoReadonly: true } },
     { path: '/merchandising', component: Merchandising },
     { path: '/blog', component: BlogPosts, meta: { demoReadonly: true } },
+    { path: '/blog/new', component: BlogPostEdit, meta: { demoReadonly: true } },
+    { path: '/blog/:id', component: BlogPostEdit, props: true, meta: { demoReadonly: true } },
     { path: '/blog-settings', component: BlogSettings, meta: { demoReadonly: true } },
     { path: '/categories', component: CategoryManagement },
     { path: '/shipping', component: ShippingSettings, meta: { demoReadonly: true } },
