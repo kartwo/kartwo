@@ -93,7 +93,7 @@ function navItemActive(path) {
 }
 const currentNav = computed(() => {
   if (route.path === '/dashboard') return { group: '', label: '概览' }
-  if (route.path.startsWith('/blog')) return { group: '功能菜单', label: route.path === '/blog/new' ? '新建文章' : route.path === '/blog' ? '博客文章' : '编辑文章' }
+  if (route.path === '/blog' || route.path.startsWith('/blog/')) return { group: '功能菜单', label: route.path === '/blog/new' ? '新建文章' : route.path === '/blog' ? '博客文章' : '编辑文章' }
   const group = navGroups.value.find(section => section.items.some(item => navItemActive(item.path)))
   const item = group?.items.find(entry => navItemActive(entry.path))
   if (route.path === '/products/new') return { group: group?.label || '商品与内容', label: '新建商品' }
