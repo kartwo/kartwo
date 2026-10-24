@@ -1,0 +1,35 @@
+{{define "content"}}
+<!-- 订单访问验证 / Order Access Verification
+功能：无账号邮箱验证，不公开订单存在性、状态、商品或收货信息
+作者：仗键天涯(daxing)
+邮箱：3442535897@qq.com
+时间：2026-10-24 17:18:40 -->
+<h1>View your order</h1>
+<p>For your privacy, verify the email address used at checkout before viewing this order or making a payment.</p>
+{{if .Message}}<p role="status">{{.Message}}</p>{{end}}
+{{if .MailReady}}
+<div class="detail order-access">
+  <section class="contact-card">
+    <h2>Request a code</h2>
+    <form method="post" action="/order/{{.OrderID}}/access/request">
+      <label for="order-email">Order email</label>
+      <input id="order-email" name="email" type="email" autocomplete="email" maxlength="320" required />
+      <button class="btn" type="submit">Email me a code</button>
+    </form>
+  </section>
+  <section class="contact-card">
+    <h2>Enter your code</h2>
+    <form method="post" action="/order/{{.OrderID}}/access/verify">
+      <label for="order-code">8-digit code</label>
+      <input id="order-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" minlength="8" maxlength="8" required />
+      <button class="btn" type="submit">View order</button>
+    </form>
+    <p class="muted">Use the code in the same browser where you requested it. Check your spam folder if it has not arrived.</p>
+  </section>
+</div>
+{{else}}
+<p>Email verification is temporarily unavailable. Please <a href="/contact">contact the store</a> for help with your order.</p>
+{{end}}
+<p class="muted">On a shared device, use “Close private order view” when you have finished.</p>
+<p><a href="/">← Continue shopping</a></p>
+{{end}}

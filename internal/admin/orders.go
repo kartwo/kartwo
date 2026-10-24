@@ -37,6 +37,9 @@ func (h *HTTP) listOrders(w http.ResponseWriter, r *http.Request) {
 			"payment_provider": o.PaymentProvider, "created_at": o.CreatedAt,
 		})
 	}
+	if len(out) > 0 && !orderCustomerDataHidden(r) {
+		h.recordAudit(r, authFrom(r.Context()).AdminID, "order.customer_list_viewed", "orders", "orders")
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"orders": out})
 }
 
@@ -175,13 +178,18 @@ func (h *HTTP) getOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	email, shipName, shipPhone, shipAddress := o.Email, o.ShipName, o.ShipPhone, o.ShipAddress
 	trackingNumber, trackingURL := o.TrackingNumber, o.TrackingURL
+	shipCountry := o.ShipCountry
 	if orderCustomerDataHidden(r) {
 		email, shipName, shipPhone, shipAddress = "已隐藏", "已隐藏", "已隐藏", "已隐藏"
 		trackingNumber, trackingURL = "已隐藏", ""
+		shipCountry = "已隐藏"
+	}
+	if !orderCustomerDataHidden(r) {
+		h.recordAudit(r, authFrom(r.Context()).AdminID, "order.customer_data_viewed", "order", o.PublicID)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"public_id": o.PublicID, "status": o.Status, "email": email,
-		"ship_name": shipName, "ship_phone": shipPhone, "ship_address": shipAddress, "ship_country": o.ShipCountry,
+		"ship_name": shipName, "ship_phone": shipPhone, "ship_address": shipAddress, "ship_country": shipCountry,
 		"currency": o.Currency, "subtotal_cents": o.SubtotalCents, "total_cents": o.TotalCents,
 		"shipping_cents": o.ShippingCents, "shipping_rule_name": o.ShippingRuleName, "tracking_carrier": o.TrackingCarrier, "tracking_number": trackingNumber, "tracking_url": trackingURL,
 		"payment_provider": o.PaymentProvider, "created_at": o.CreatedAt,
@@ -192,7 +200,7 @@ func (h *HTTP) getOrder(w http.ResponseWriter, r *http.Request) {
 
 func orderCustomerDataHidden(r *http.Request) bool {
 	ac := authFrom(r.Context())
-	return ac != nil && (ac.Role == "demo" || ac.Role == "staff" && !ac.Permissions["orders.customer_data"])
+	return ac == nil || (ac.Role != "owner" && (ac.Role != "staff" || !ac.Permissions["orders.customer_data"]))
 }
 
 func (h *HTTP) refundOrder(w http.ResponseWriter, r *http.Request) {

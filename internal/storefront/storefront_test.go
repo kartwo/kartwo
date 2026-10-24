@@ -58,8 +58,10 @@ func TestOrderPayPendingOnly(t *testing.T) {
 	mux := http.NewServeMux()
 	h.Register(mux)
 
+	grant := authorizeGuestTest(t, h, "ORD1")
 	pay := func() (int, string) {
 		req := httptest.NewRequest("POST", "/order/ORD1/pay", strings.NewReader("payment_method=stripe"))
+		req.AddCookie(grant)
 		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rec := httptest.NewRecorder()
@@ -73,7 +75,9 @@ func TestOrderPayPendingOnly(t *testing.T) {
 	}
 	// 订单页应渲染「Pay now」。
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/order/ORD1", nil))
+	pageRequest := httptest.NewRequest("GET", "/order/ORD1", nil)
+	pageRequest.AddCookie(grant)
+	mux.ServeHTTP(rec, pageRequest)
 	if !strings.Contains(rec.Body.String(), "Pay now") {
 		t.Fatal("未付订单页应有 Pay now 按钮")
 	}
@@ -462,7 +466,9 @@ func TestOrderPayExplainsRetryAndConfigErrors(t *testing.T) {
 			h := NewHTTP(sf, cart.New(db), order.New(db, cfg), cfg, fakeGateway{methods: []string{"stripe"}, err: tc.err}, redirect.New(db), "Shop", "https://shop", nil)
 			mux := http.NewServeMux()
 			h.Register(mux)
+			grant := authorizeGuestTest(t, h, "retry-order")
 			r := httptest.NewRequest(http.MethodPost, "/order/retry-order/pay", strings.NewReader("payment_method=stripe"))
+			r.AddCookie(grant)
 			r.Header.Set("Sec-Fetch-Site", "same-origin")
 			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
@@ -471,7 +477,9 @@ func TestOrderPayExplainsRetryAndConfigErrors(t *testing.T) {
 				t.Fatalf("code=%d location=%s", w.Code, w.Header().Get("Location"))
 			}
 			page := httptest.NewRecorder()
-			mux.ServeHTTP(page, httptest.NewRequest(http.MethodGet, w.Header().Get("Location"), nil))
+			pageRequest := httptest.NewRequest(http.MethodGet, w.Header().Get("Location"), nil)
+			pageRequest.AddCookie(grant)
+			mux.ServeHTTP(page, pageRequest)
 			if page.Code != 200 || !strings.Contains(page.Body.String(), tc.message) || strings.Contains(page.Body.String(), tc.err.Error()) {
 				t.Fatalf("safe user-facing explanation missing: status=%d", page.Code)
 			}

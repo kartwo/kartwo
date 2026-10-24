@@ -346,6 +346,7 @@ func runServe(logger *slog.Logger) error {
 	storeHTTP := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), orderSvc, settingsSvc, paySvc, redirectSvc, cfg.ShopName, cfg.BaseURL, cfg.TrustedProxies, shopNameOverride)
 	contactSvc := contact.New(st.DB, settingsSvc)
 	storeHTTP.ConfigureContact(contactSvc)
+	storeHTTP.ConfigureGuestMail(mailCache)
 	payHTTP := payment.NewHTTP(paySvc)
 	// 解析"当前生效域名"（env 覆盖 DB），决定是否启用 HTTPS（仅 prod）。
 	baseCtx := context.Background()

@@ -33,7 +33,7 @@ func TestCommercePrivateResponsesAndPublicCatalog(t *testing.T) {
 		status       int
 	}{
 		{"GET", "/cart", 200}, {"GET", "/cart/data", 200}, {"GET", "/checkout", 200},
-		{"GET", "/order/nonexistent", 404}, {"POST", "/order/nonexistent/pay", 404},
+		{"GET", "/order/nonexistent", 200}, {"POST", "/order/nonexistent/pay", 303},
 		{"GET", "/paypal/return", 303}, {"POST", "/checkout", 200},
 	} {
 		t.Run(tc.method+tc.path, func(t *testing.T) {

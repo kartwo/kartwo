@@ -9,7 +9,7 @@ INSERT OR IGNORE INTO email_outbox (order_id, kind, to_addr, subject, body) VALU
 
 -- name: ClaimDueEmails :many
 -- Due pending emails (next_attempt_at reached), oldest first, limited batch. Worker sends outside any tx.
-SELECT id, order_id, to_addr, subject, body, attempts FROM email_outbox WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY id LIMIT ?;
+SELECT id, order_id, kind, to_addr, subject, body, attempts FROM email_outbox WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY id LIMIT ?;
 
 -- name: MarkEmailSending :execrows
 -- Claim one row pending->sending (rows=1 confirms claim). Quick single-statement; no network I/O held.

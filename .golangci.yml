@@ -52,7 +52,7 @@ linters:
           - gosec
       # Secure 由 secureFor 校验 TLS/可信代理；CSRF Cookie 须供 SPA 读取，session 仍 HttpOnly。
       # 既有 Cookie TLS/明文回归测试覆盖此部署兼容策略，仅豁免这些具体 SetCookie 调用。
-      - path: internal/(admin/http|storefront/cart_http|storefront/checkout_http)\.go
+      - path: internal/(admin/http|storefront/cart_http|storefront/checkout_http|storefront/guest_access)\.go
         source: 'http\.SetCookie\(w, &http\.Cookie'
         text: "G124:"
         linters:

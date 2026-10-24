@@ -109,6 +109,20 @@ async function refreshRefund(r) {
     toast.error(e.message)
   } finally { busy.value = false }
 }
+async function revokeAccess() {
+  if (busy.value) return
+  const ok = await confirm({ title:'撤销顾客访问', message:'此订单所有设备上的查看凭证和未使用验证码会立即失效。顾客可通过订单邮箱重新验证；订单与付款状态不变。', confirmText:'撤销访问', danger:true })
+  if (!ok || busy.value) return
+  busy.value = true
+  try {
+    await api.revokeOrderAccess(route.params.id)
+    toast.success('已撤销此订单的顾客访问凭证。')
+  } catch (e) {
+    if (e instanceof APIError && e.status === 401) return onUnauthorized()
+    toast.error(e.message)
+  } finally { busy.value = false }
+}
+
 async function fulfill() { if(!shipment.value.carrier||!shipment.value.tracking_number){toast.error('请填写承运商和运单号');return};busy.value=true;try{await api.fulfillOrder(route.params.id,shipment.value);await load();toast.success('订单已标记为发货')}catch(e){toast.error(e.message)}finally{busy.value=false} }
 onMounted(load)
 </script>
@@ -129,6 +143,7 @@ onMounted(load)
         <p><strong>邮箱：</strong>{{ o.email }}</p>
         <p><strong>收货：</strong>{{ o.ship_name }} · {{ o.ship_phone }} · {{ o.ship_address }} {{ o.ship_country }}</p>
         <p><strong>支付通道：</strong>{{ o.payment_provider || '—' }}</p>
+        <button v-if="accountRole === 'owner'" :disabled="busy" @click="revokeAccess">撤销顾客访问</button>
         <p class="muted">{{ (o.created_at || '').slice(0, 19).replace('T', ' ') }}</p>
       </div>
 	  <div v-if="o.payment_review || o.status === 'payment_review'" class="panel payment-warning">

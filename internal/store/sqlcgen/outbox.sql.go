@@ -10,7 +10,7 @@ import (
 )
 
 const claimDueEmails = `-- name: ClaimDueEmails :many
-SELECT id, order_id, to_addr, subject, body, attempts FROM email_outbox WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY id LIMIT ?
+SELECT id, order_id, kind, to_addr, subject, body, attempts FROM email_outbox WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY id LIMIT ?
 `
 
 type ClaimDueEmailsParams struct {
@@ -21,6 +21,7 @@ type ClaimDueEmailsParams struct {
 type ClaimDueEmailsRow struct {
 	ID       int64  `db:"id" json:"id"`
 	OrderID  int64  `db:"order_id" json:"order_id"`
+	Kind     string `db:"kind" json:"kind"`
 	ToAddr   string `db:"to_addr" json:"to_addr"`
 	Subject  string `db:"subject" json:"subject"`
 	Body     string `db:"body" json:"body"`
@@ -40,6 +41,7 @@ func (q *Queries) ClaimDueEmails(ctx context.Context, arg ClaimDueEmailsParams) 
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrderID,
+			&i.Kind,
 			&i.ToAddr,
 			&i.Subject,
 			&i.Body,

@@ -5,6 +5,7 @@
 {{else if eq $o.Status "cancelled"}}<h1>Order expired</h1>
 {{else if eq $o.Status "payment_review"}}<h1>Payment under review</h1>
 {{else}}<h1>Order placed ✓</h1>{{end}}
+<form method="post" action="/order/{{$o.PublicID}}/access/logout"><button class="btn" type="submit">Close private order view</button></form>
 <p class="muted">Order <strong>{{$o.PublicID}}</strong> — status: {{$o.Status}}.</p>
 {{if eq $o.Status "payment_review"}}<p>We received your payment after the order expired. Please do not place another payment for this order. Contact the store for a refund.</p>{{end}}
 {{if eq $o.Status "cancelled"}}<p>This order was not paid within 30 minutes, so its stock hold has ended. Please place a new order if you still want these items.</p>{{end}}

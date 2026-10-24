@@ -8,7 +8,9 @@ package mail
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/kartwo/kartwo/internal/store/sqlcgen"
@@ -66,6 +68,10 @@ func (w *Worker) Run(ctx context.Context) {
 
 // tick 处理一批到期邮件。发送在事务/连接之外进行。
 func (w *Worker) tick(ctx context.Context) {
+	if err := w.cleanGuestMail(ctx); err != nil {
+		w.logger.Warn("验证码邮件清理失败")
+		return
+	}
 	cfg, ready := w.cache.Config()
 	// 已配置但金库锁定（KEK 未解锁）：全部留 pending、本轮不认领，待登录解锁后补发（D2）。
 	if !ready && w.cache.Configured(ctx) {
@@ -83,21 +89,51 @@ func (w *Worker) tick(ctx context.Context) {
 		if err != nil || rows == 0 {
 			continue
 		}
+		guest := strings.HasPrefix(m.Kind, guestMailPrefix)
+		if guest {
+			valid, err := w.guestMailReady(ctx, m.ID)
+			if err != nil {
+				// A DB failure is not proof of expiry; defer without an SMTP attempt.
+				w.logger.Warn("验证码邮件状态暂不可确认", "outbox_id", m.ID)
+				_ = w.q.MarkEmailRetry(ctx, sqlcgen.MarkEmailRetryParams{Attempts: m.Attempts, NextAttemptAt: time.Now().Add(time.Minute).UTC().Format(tsLayout), LastError: "verification status unavailable", ID: m.ID})
+				continue
+			}
+			if !valid {
+				_ = w.q.MarkEmailSkipped(ctx, sqlcgen.MarkEmailSkippedParams{LastError: "verification expired", ID: m.ID})
+				w.clearGuestMail(ctx, m.ID)
+				continue
+			}
+		}
 		// 真未配置（D7-A）：标 skipped，不重试、不阻塞。
 		if !ready {
 			_ = w.q.MarkEmailSkipped(ctx, sqlcgen.MarkEmailSkippedParams{LastError: "SMTP 未配置", ID: m.ID})
+			if guest {
+				w.clearGuestMail(ctx, m.ID)
+			}
 			continue
 		}
 		// —— 脱离 DB 做 SMTP 发送（可能耗时数秒，绝不持连接/事务）——
 		sendErr := w.send(cfg, m.ToAddr, m.Subject, m.Body)
 		if sendErr == nil {
-			_ = w.q.MarkEmailSent(ctx, m.ID)
+			if err := w.q.MarkEmailSent(ctx, m.ID); err != nil {
+				w.logger.Warn("邮件发送结果保存失败", "outbox_id", m.ID)
+				continue
+			}
+			if guest {
+				w.clearGuestMail(ctx, m.ID)
+			}
 			w.logger.Info("确认信已发送", "outbox_id", m.ID, "order_id", m.OrderID) // 不记收件人/凭证
 			continue
+		}
+		if guest {
+			sendErr = errors.New("verification email delivery failed")
 		}
 		attempts := m.Attempts + 1
 		if attempts >= maxAttempts {
 			_ = w.q.MarkEmailFailed(ctx, sqlcgen.MarkEmailFailedParams{Attempts: attempts, LastError: sendErr.Error(), ID: m.ID})
+			if guest {
+				w.clearGuestMail(ctx, m.ID)
+			}
 			w.logger.Error("确认信发送最终失败（死信）", "outbox_id", m.ID, "order_id", m.OrderID, "attempts", attempts, "err", sendErr)
 			continue
 		}

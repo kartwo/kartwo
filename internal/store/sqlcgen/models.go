@@ -261,6 +261,28 @@ type Order struct {
 	ReservationExpiresAt string `db:"reservation_expires_at" json:"reservation_expires_at"`
 }
 
+type OrderGuestAccess struct {
+	TokenHash string `db:"token_hash" json:"token_hash"`
+	OrderID   int64  `db:"order_id" json:"order_id"`
+	ExpiresAt int64  `db:"expires_at" json:"expires_at"`
+	CreatedAt string `db:"created_at" json:"created_at"`
+	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
+type OrderGuestChallenge struct {
+	PublicID    string `db:"public_id" json:"public_id"`
+	OrderID     int64  `db:"order_id" json:"order_id"`
+	BrowserHash string `db:"browser_hash" json:"browser_hash"`
+	CodeHash    string `db:"code_hash" json:"code_hash"`
+	OutboxID    int64  `db:"outbox_id" json:"outbox_id"`
+	ExpiresAt   int64  `db:"expires_at" json:"expires_at"`
+	Attempts    int64  `db:"attempts" json:"attempts"`
+	ConsumedAt  int64  `db:"consumed_at" json:"consumed_at"`
+	RequestedAt int64  `db:"requested_at" json:"requested_at"`
+	CreatedAt   string `db:"created_at" json:"created_at"`
+	UpdatedAt   string `db:"updated_at" json:"updated_at"`
+}
+
 type OrderItem struct {
 	ID           int64  `db:"id" json:"id"`
 	OrderID      int64  `db:"order_id" json:"order_id"`

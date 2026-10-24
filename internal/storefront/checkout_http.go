@@ -70,7 +70,7 @@ func (h *HTTP) checkoutSubmit(w http.ResponseWriter, r *http.Request) {
 		Address: r.PostFormValue("address"),
 		Country: r.PostFormValue("country"),
 	}
-	publicID, err := h.order.Checkout(r.Context(), id, info)
+	publicID, guestToken, err := h.order.CheckoutForGuest(r.Context(), id, info)
 	if err != nil {
 		switch {
 		case errors.Is(err, order.ErrCartConverted):
@@ -86,6 +86,10 @@ func (h *HTTP) checkoutSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	// The grant is already committed atomically with this order. Use its scoped
+	// path even when immediately redirecting to a hosted payment provider.
+	r.SetPathValue("id", publicID)
+	h.setGuestCookie(w, r, guestAccessCookie, guestToken, order.GuestAccessTTL)
 	// 下单成功：清购物车 cookie（车已转换；下次购物自动新建）。
 	h.clearCartCookie(w, r)
 
@@ -179,6 +183,14 @@ func (h *HTTP) clearCartCookie(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
+	ok, authErr := h.guestAuthorized(w, r)
+	if authErr != nil {
+		return
+	}
+	if !ok {
+		h.renderGuestAccess(w, r, "")
+		return
+	}
 	o, err := h.order.Get(r.Context(), r.PathValue("id"))
 	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
@@ -207,6 +219,14 @@ func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
 
 // orderPay 对未付订单重新发起收款（订单页「去支付」按钮）。
 func (h *HTTP) orderPay(w http.ResponseWriter, r *http.Request) {
+	ok, authErr := h.guestAuthorized(w, r)
+	if authErr != nil {
+		return
+	}
+	if !ok {
+		http.Redirect(w, r, guestOrderPath(r.PathValue("id")), http.StatusSeeOther)
+		return
+	}
 	if !parseCommerceForm(w, r) {
 		return
 	}

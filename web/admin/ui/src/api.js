@@ -167,6 +167,7 @@ export const api = {
     }
     return res.blob()
   },
+  revokeOrderAccess: id => request('POST', `/orders/${encodeURIComponent(id)}/revoke-access`, {}),
   getOrder: (id) => request('GET', '/orders/' + id),
   refundOrder: (id) => request('POST', '/orders/' + id + '/refund'),
   reconcileRefunds: (id, provider, paymentRef) => request('POST', '/orders/' + encodeURIComponent(id) + '/refund-check', { provider, payment_ref: paymentRef }),

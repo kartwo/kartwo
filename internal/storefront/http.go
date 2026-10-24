@@ -53,6 +53,9 @@ type HTTP struct {
 	cartTmpl         *template.Template
 	ckoutTmpl        *template.Template
 	orderTmpl        *template.Template
+	orderAccessTmpl  *template.Template
+	guestMailReady   func() bool
+	accessLimit      *commerceLimiter
 	pageTmpl         *template.Template
 	blogListTmpl     *template.Template
 	blogPostTmpl     *template.Template
@@ -84,22 +87,24 @@ func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, setti
 	h := &HTTP{
 		trusted: trusted,
 		svc:     svc, cart: cartSvc, order: orderSvc, settings: settingsSvc, pay: pay, redirect: redirectSvc, shopNameFallback: shopName,
-		baseURL:       strings.TrimRight(baseURL, "/"),
-		homeTmpl:      parse("templates/home.html"),
-		catalogTmpl:   parse("templates/catalog.html"),
-		prodTmpl:      parse("templates/product.html"),
-		cartTmpl:      parse("templates/cart.html"),
-		ckoutTmpl:     parse("templates/checkout.html"),
-		orderTmpl:     parse("templates/order.html"),
-		pageTmpl:      parse("templates/content_page.html"),
-		blogListTmpl:  parse("templates/blog_list.html"),
-		blogPostTmpl:  parse("templates/blog_post.html"),
-		blog:          blog.New(svc.db, settingsSvc),
-		contactTmpl:   parse("templates/contact.html"),
-		contactLimit:  newContactLimiter(),
-		cartLimit:     newCommerceLimiter(120),
-		checkoutLimit: newCommerceLimiter(12),
-		payLimit:      newCommerceLimiter(20),
+		baseURL:         strings.TrimRight(baseURL, "/"),
+		homeTmpl:        parse("templates/home.html"),
+		catalogTmpl:     parse("templates/catalog.html"),
+		prodTmpl:        parse("templates/product.html"),
+		cartTmpl:        parse("templates/cart.html"),
+		ckoutTmpl:       parse("templates/checkout.html"),
+		orderTmpl:       parse("templates/order.html"),
+		orderAccessTmpl: parse("templates/order_access.html"),
+		accessLimit:     newCommerceLimiter(6),
+		pageTmpl:        parse("templates/content_page.html"),
+		blogListTmpl:    parse("templates/blog_list.html"),
+		blogPostTmpl:    parse("templates/blog_post.html"),
+		blog:            blog.New(svc.db, settingsSvc),
+		contactTmpl:     parse("templates/contact.html"),
+		contactLimit:    newContactLimiter(),
+		cartLimit:       newCommerceLimiter(120),
+		checkoutLimit:   newCommerceLimiter(12),
+		payLimit:        newCommerceLimiter(20),
 	}
 	if len(shopNameOverride) > 0 {
 		if fallback := strings.TrimSpace(shopNameOverride[0]); fallback != "" {
@@ -150,6 +155,9 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /checkout", httpx.PrivateHandler(h.checkoutPage))
 	mux.HandleFunc("POST /checkout", h.protectCommerce(h.checkoutLimit, h.checkoutSubmit))
 	mux.HandleFunc("GET /order/{id}", httpx.PrivateHandler(h.orderPage))
+	mux.HandleFunc("POST /order/{id}/access/request", h.protectCommerce(h.accessLimit, h.requestGuestAccess))
+	mux.HandleFunc("POST /order/{id}/access/verify", h.protectCommerce(h.accessLimit, h.verifyGuestAccess))
+	mux.HandleFunc("POST /order/{id}/access/logout", h.protectCommerce(h.accessLimit, h.logoutGuestAccess))
 	mux.HandleFunc("POST /order/{id}/pay", h.protectCommerce(h.payLimit, h.orderPay))   // 未付订单「去支付」重新发起
 	mux.HandleFunc("GET /paypal/return", h.protectCommerce(h.payLimit, h.paypalReturn)) // PayPal 审批后跳回做同步 capture
 }

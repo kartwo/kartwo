@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	stdmail "net/mail"
 	"strings"
 	"time"
 
@@ -132,8 +133,17 @@ type RefundView struct {
 	CreatedAt        string
 }
 
+func validOrderEmail(email string) bool {
+	if len(email) > 320 || strings.ContainsAny(email, "\r\n") {
+		return false
+	}
+	value := strings.TrimSpace(email)
+	parsed, err := stdmail.ParseAddress(value)
+	return err == nil && parsed.Name == "" && parsed.Address == value
+}
+
 func (in CheckoutInfo) validate() error {
-	if !strings.Contains(in.Email, "@") || strings.TrimSpace(in.Email) == "" {
+	if !validOrderEmail(in.Email) {
 		return fmt.Errorf("%w: 邮箱非法", ErrInvalidInfo)
 	}
 	if strings.TrimSpace(in.Name) == "" {
@@ -151,6 +161,11 @@ func (in CheckoutInfo) validate() error {
 // Checkout 由购物车结算生成订单。事务内：认领购物车 → 原子预留库存 → 建客户/订单/订单行。
 // 任一变体库存不足则整单回滚（释放本次已预留）。
 func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo) (string, error) {
+	return s.checkout(ctx, cartID, info, "")
+}
+
+func (s *Service) checkout(ctx context.Context, cartID int64, info CheckoutInfo, guestHash string) (string, error) {
+	info.Email = strings.TrimSpace(info.Email)
 	if err := info.validate(); err != nil {
 		return "", err
 	}
@@ -229,6 +244,12 @@ func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo)
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE \"order\" SET shipping_cents=?, shipping_rule_name=? WHERE id=?", shipping, rule, orderID); err != nil {
 		return "", fmt.Errorf("order: 写配送快照: %w", err)
+	}
+
+	if guestHash != "" {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO order_guest_access(token_hash,order_id,expires_at) VALUES(?,?,?)`, guestHash, orderID, time.Now().Add(GuestAccessTTL).Unix()); err != nil {
+			return "", fmt.Errorf("order: 保存访问凭证失败: %w", err)
+		}
 	}
 
 	// 4) 订单行（快照：标题/规格/单价）。
