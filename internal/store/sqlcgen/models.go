@@ -344,6 +344,19 @@ type Refund struct {
 	CreatedAt        string `db:"created_at" json:"created_at"`
 }
 
+type RefundReconciliation struct {
+	ID            int64  `db:"id" json:"id"`
+	PublicID      string `db:"public_id" json:"public_id"`
+	ReceiptID     int64  `db:"receipt_id" json:"receipt_id"`
+	Provider      string `db:"provider" json:"provider"`
+	RefundRef     string `db:"refund_ref" json:"refund_ref"`
+	AmountCents   int64  `db:"amount_cents" json:"amount_cents"`
+	ObservedState string `db:"observed_state" json:"observed_state"`
+	State         string `db:"state" json:"state"`
+	CreatedAt     string `db:"created_at" json:"created_at"`
+	UpdatedAt     string `db:"updated_at" json:"updated_at"`
+}
+
 type RefundRequest struct {
 	ID                   int64  `db:"id" json:"id"`
 	PublicID             string `db:"public_id" json:"public_id"`

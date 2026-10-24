@@ -217,6 +217,15 @@ func paypalWebhookSvc(t *testing.T, verifyStatus string) (*Service, *sql.DB) {
 			_, _ = w.Write([]byte(`{"access_token":"tok","expires_in":3600}`))
 		case "/v1/notifications/verify-webhook-signature":
 			_, _ = w.Write([]byte(`{"verification_status":"` + verifyStatus + `"}`))
+		case "/v2/payments/refunds/RF9":
+			_, _ = w.Write([]byte(`{"id":"RF9","status":"COMPLETED","amount":{"value":"99.00","currency_code":"USD"},"seller_payable_breakdown":{"total_refunded_amount":{"value":"99.00","currency_code":"USD"}},"links":[{"rel":"up","href":"https://api.paypal.test/v2/payments/captures/CAP1"}]}`))
+		case "/v2/payments/refunds/rf1", "/v2/payments/refunds/rf2":
+			ref := strings.TrimPrefix(r.URL.Path, "/v2/payments/refunds/")
+			amount, total := "20.00", "20.00"
+			if ref == "rf2" {
+				amount, total = "79.00", "99.00"
+			}
+			_, _ = fmt.Fprintf(w, `{"id":%q,"status":"COMPLETED","amount":{"value":%q,"currency_code":"USD"},"seller_payable_breakdown":{"total_refunded_amount":{"value":%q,"currency_code":"USD"}},"links":[{"rel":"up","href":"https://api.paypal.test/v2/payments/captures/cap"}]}`, ref, amount, total)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

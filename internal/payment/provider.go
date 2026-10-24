@@ -72,15 +72,16 @@ type PaymentSession struct {
 
 // WebhookEvent 是 VerifyWebhook 验签通过后规范化的事件（供幂等处理）。
 type WebhookEvent struct {
-	ID            string // 网关事件 ID（幂等去重键）
-	Type          string // 如 checkout.session.completed / charge.refunded
-	OrderRef      string // 我方订单 public_id（来自 client_reference_id；退款事件无）
-	PaymentRef    string // 网关支付引用（Stripe payment_intent）；用于退款与退款事件回查订单
-	PaymentStatus string // 如 paid（不假设事件类型即已付，须显式校验）
-	AmountCents   int64  // 网关侧成交总额（分）
-	Currency      string // 网关侧币种
-	RefundRef     string // PayPal 单笔退款 ID
-	RefundedCents int64  // Stripe charge 的累计已退金额
+	ID              string // 网关事件 ID（幂等去重键）
+	Type            string // 如 checkout.session.completed / charge.refunded
+	OrderRef        string // 我方订单 public_id（来自 client_reference_id；退款事件无）
+	PaymentRef      string // 网关支付引用（Stripe payment_intent）；用于退款与退款事件回查订单
+	PaymentStatus   string // 如 paid（不假设事件类型即已付，须显式校验）
+	AmountCents     int64  // 网关侧成交总额（分）
+	Currency        string // 网关侧币种
+	RefundRef       string // 平台单笔退款 ID
+	RefundRequestID string // 本系统退款请求元数据；仅用于定位，仍须核对网关当前资源
+	RefundedCents   int64  // 平台提供的累计已退金额
 }
 
 // PaymentProvider 支付通道抽象（ARCHITECTURE §9）。双校验在 VerifyWebhook 内：验签 + 由调用方比对订单/金额。

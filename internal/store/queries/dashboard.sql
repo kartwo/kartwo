@@ -7,7 +7,7 @@
 -- Net sales by order creation window. Exception payments are not sales.
 SELECT COUNT(*) AS order_count, CAST(COALESCE(SUM(CASE
     WHEN EXISTS(SELECT 1 FROM payment_receipt p WHERE p.order_id=o.id)
-    THEN COALESCE((SELECT SUM(p.amount_cents-p.refunded_cents) FROM payment_receipt p WHERE p.order_id=o.id AND p.review_reason=''),0)
+    THEN COALESCE((SELECT SUM(p.amount_cents-p.refunded_cents) FROM payment_receipt p WHERE p.order_id=o.id AND p.review_reason='' AND NOT EXISTS(SELECT 1 FROM refund_reconciliation r WHERE r.receipt_id=p.id AND r.state='open')),0)
     WHEN o.status IN ('paid','fulfilled') THEN o.total_cents ELSE 0 END),0) AS INTEGER) AS sales_cents
 FROM "order" o WHERE o.created_at >= ?;
 

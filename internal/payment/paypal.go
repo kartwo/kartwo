@@ -300,8 +300,9 @@ func parsePayPalEvent(payload []byte) (WebhookEvent, error) {
 	switch ev.Type {
 	case "PAYMENT.CAPTURE.COMPLETED":
 		out.PaymentRef = ev.Resource.ID // capture id
-	case "PAYMENT.CAPTURE.REFUNDED":
+	case "PAYMENT.CAPTURE.REFUNDED", "PAYMENT.REFUND.PENDING", "PAYMENT.REFUND.FAILED":
 		out.RefundRef = ev.Resource.ID
+		out.RefundRequestID = ev.Resource.CustomID
 		if ev.Resource.Breakdown.Total.Value != "" {
 			var err error
 			out.RefundedCents, err = decimalToCents(ev.Resource.Breakdown.Total.Value)

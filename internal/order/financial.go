@@ -12,6 +12,7 @@ import "context"
 type ReceiptView struct {
 	Provider, Reference, Currency, ReviewReason, Source, CreatedAt string
 	AmountCents, RefundedCents                                     int64
+	RefundReconciliationRequired                                   bool
 }
 
 func (s *Service) loadFinancials(ctx context.Context, orderID int64, out *Order) error {
@@ -23,7 +24,7 @@ func (s *Service) loadFinancials(ctx context.Context, orderID int64, out *Order)
 	if shipped {
 		out.FulfillmentStatus = "fulfilled"
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT provider,payment_ref,currency,review_reason,source,created_at,amount_cents,refunded_cents FROM payment_receipt WHERE order_id=? ORDER BY id`, orderID)
+	rows, err := s.db.QueryContext(ctx, `SELECT provider,payment_ref,currency,review_reason,source,created_at,amount_cents,refunded_cents,EXISTS(SELECT 1 FROM refund_reconciliation r WHERE r.receipt_id=payment_receipt.id AND r.state='open') FROM payment_receipt WHERE order_id=? ORDER BY id`, orderID)
 	if err != nil {
 		return err
 	}
@@ -31,19 +32,21 @@ func (s *Service) loadFinancials(ctx context.Context, orderID int64, out *Order)
 	out.PaymentStatus = "unrecorded"
 	for rows.Next() {
 		var p ReceiptView
-		if err := rows.Scan(&p.Provider, &p.Reference, &p.Currency, &p.ReviewReason, &p.Source, &p.CreatedAt, &p.AmountCents, &p.RefundedCents); err != nil {
+		if err := rows.Scan(&p.Provider, &p.Reference, &p.Currency, &p.ReviewReason, &p.Source, &p.CreatedAt, &p.AmountCents, &p.RefundedCents, &p.RefundReconciliationRequired); err != nil {
 			return err
 		}
 		out.Receipts = append(out.Receipts, p)
 		out.PaidCents += p.AmountCents
 		out.RefundedCents += p.RefundedCents
-		out.PaymentReview = out.PaymentReview || p.ReviewReason != "" && p.RefundedCents < p.AmountCents
+		out.PaymentReview = out.PaymentReview || p.RefundReconciliationRequired || p.ReviewReason != "" && p.RefundedCents < p.AmountCents
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
 	if len(out.Receipts) > 0 {
 		switch {
+		case out.PaymentReview:
+			out.PaymentStatus = "review"
 		case out.RefundedCents == out.PaidCents:
 			out.PaymentStatus = "refunded"
 		case out.RefundedCents > 0:
@@ -65,7 +68,7 @@ type RefundRequestView struct {
 }
 
 func (s *Service) loadRefundRequests(ctx context.Context, orderID int64, out *Order) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT public_id,provider,payment_ref,currency,state,gateway_ref,reason,created_at,amount_cents FROM refund_request WHERE order_id=? ORDER BY id DESC`, orderID)
+	rows, err := s.db.QueryContext(ctx, `SELECT public_id,provider,payment_ref,currency,CASE WHEN EXISTS(SELECT 1 FROM refund_reconciliation rc WHERE rc.provider=refund_request.provider AND rc.refund_ref=refund_request.gateway_ref AND rc.state='open') THEN 'reconciliation' ELSE state END,gateway_ref,CASE WHEN EXISTS(SELECT 1 FROM refund_reconciliation rc WHERE rc.provider=refund_request.provider AND rc.refund_ref=refund_request.gateway_ref AND rc.state='open') THEN 'refund_status_changed' ELSE reason END,created_at,amount_cents FROM refund_request WHERE order_id=? ORDER BY id DESC`, orderID)
 	if err != nil {
 		return err
 	}

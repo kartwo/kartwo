@@ -30,6 +30,20 @@ linters:
         text: "G101"
         linters:
           - gosec
+      # G704 将整个 provider 接收器污染为外部输入；实际 OAuth 地址由固定 PayPal
+      # sandbox/live 常量决定，apiBase 是仅测试注入的私有字段，商家/回调不能改主机。
+      - path: internal/payment/paypal\.go
+        source: 'http\.NewRequestWithContext\(ctx, http\.MethodPost, p\.base\(\)\+"/v1/oauth2/token"|resp, err := p\.httpClient\.Do\(req\)'
+        text: "G704:"
+        linters:
+          - gosec
+      # 两个退款客户端的主机同样为固定私有基址；退款编号先限 ASCII 标识符，再 PathEscape。
+      # 路径由内部端点拼接，无法把 Webhook 中的编号变为任意目标 URL。
+      - path: internal/payment/refund_gateway\.go
+        source: 'http\.NewRequestWithContext\(ctx, method, p\.apiBase\+path, strings\.NewReader\(form\.Encode\(\)\)\)|http\.NewRequestWithContext\(ctx, method, p\.base\(\)\+path, body\)|resp, err := p\.httpClient\.Do\(req\)'
+        text: "G704:"
+        linters:
+          - gosec
       # G120 未识别紧邻 ParseMultipartForm 之前的 MaxBytesReader；四处已有请求体硬上限。
       - path: internal/admin/(blog|imports|media|shop)\.go
         source: 'if err := r\.ParseMultipartForm\((4|5) << 20\);'

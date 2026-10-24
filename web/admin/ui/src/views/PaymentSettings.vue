@@ -1,4 +1,10 @@
-<!-- 收款设置 / Payment Settings (Stripe + PayPal). 作者：仗键天涯(daxing) 3442535897@qq.com -->
+<!--
+收款设置 / Payment Settings
+功能：设置 Stripe 与 PayPal 凭证及必需回调事件
+作者：仗键天涯(daxing)
+邮箱：3442535897@qq.com
+时间：2026-10-24 23:55:00
+-->
 <script setup>
 import { ref, onMounted, inject } from 'vue'
 import { api, APIError } from '../api.js'
@@ -80,7 +86,7 @@ onMounted(load)
       <input v-model="s.publishable" placeholder="pk_test_…" autocomplete="off" :disabled="s.readonly" />
       <label>Secret key（sk_… 或 rk_…，推荐 rk_）</label>
       <input v-model="s.secret" type="password" :placeholder="s.readonly ? '由环境变量提供' : (s.has_secret ? '已保存，留空不改' : 'sk_test_…')" autocomplete="off" :disabled="s.readonly" />
-      <p class="muted">Stripe 回调需订阅 checkout.session.completed、checkout.session.async_payment_succeeded 和 charge.refunded，以同步即时/异步付款及退款。</p>
+      <p class="muted">Stripe 回调需订阅 checkout.session.completed、checkout.session.async_payment_succeeded、charge.refunded、refund.created、refund.updated 和 refund.failed，以同步即时/异步付款及退款结果变化。</p>
       <label>Webhook 签名密钥（whsec_…）<span class="chip" :class="{ on: s.has_webhook }">{{ s.has_webhook ? '已配置' : '未配置' }}</span></label>
       <input v-model="s.webhook_secret" type="password" :placeholder="s.readonly ? '由环境变量提供' : (s.has_webhook ? '已保存，留空不改' : 'whsec_…')" autocomplete="off" :disabled="s.readonly" />
       <div class="spacer"></div>
@@ -103,7 +109,8 @@ onMounted(load)
       <input v-model="p.client_id" placeholder="AY…" autocomplete="off" :disabled="p.readonly" />
       <label>Secret</label>
       <input v-model="p.secret" type="password" :placeholder="p.readonly ? '由环境变量提供' : (p.has_secret ? '已保存，留空不改' : 'EM…')" autocomplete="off" :disabled="p.readonly" />
-      <label>Webhook ID（退款/对账回调验签用，可后填）</label>
+      <p class="muted">PayPal 回调需订阅 PAYMENT.CAPTURE.COMPLETED、PAYMENT.CAPTURE.REFUNDED、PAYMENT.REFUND.PENDING 和 PAYMENT.REFUND.FAILED；回调地址为店面域名下的 /webhooks/paypal。</p>
+      <label>Webhook ID（收款及退款对账必填）</label>
       <input v-model="p.webhook_id" placeholder="WH-…" autocomplete="off" :disabled="p.readonly" />
       <div class="spacer"></div>
       <button class="primary" :disabled="busy || p.readonly" @click="savePaypal">保存 PayPal</button>

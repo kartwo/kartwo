@@ -120,6 +120,8 @@ func (s *Service) HandleWebhook(ctx context.Context, payload []byte, sigHeader s
 		return s.markPaid(ctx, "stripe", ev)
 	case "charge.refunded":
 		return s.markRefundedFromWebhook(ctx, "stripe", ev)
+	case "refund.created", "refund.updated", "refund.failed":
+		return s.handleRefundStatus(ctx, "stripe", ev)
 	default:
 		return nil // 其它事件：确认收到、无需动作。
 	}
@@ -139,18 +141,8 @@ func (s *Service) HandlePayPalWebhook(ctx context.Context, payload []byte, heade
 			return nil
 		}
 		return s.markPaid(ctx, "paypal", ev)
-	case "PAYMENT.CAPTURE.REFUNDED":
-		if ev.RefundedCents == 0 {
-			r, err := s.paypal.lookupRefund(ctx, ev.RefundRef)
-			if err != nil {
-				return err
-			}
-			if r.State != "succeeded" || r.PaymentRef != ev.PaymentRef || r.Amount != ev.AmountCents || !strings.EqualFold(r.Currency, ev.Currency) {
-				return ErrMismatch
-			}
-			ev.RefundedCents = r.TotalRefunded
-		}
-		return s.markRefundedFromWebhook(ctx, "paypal", ev)
+	case "PAYMENT.CAPTURE.REFUNDED", "PAYMENT.REFUND.PENDING", "PAYMENT.REFUND.FAILED":
+		return s.handleRefundStatus(ctx, "paypal", ev)
 	default:
 		return nil
 	}

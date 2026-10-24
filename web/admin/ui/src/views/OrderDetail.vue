@@ -28,13 +28,13 @@ const selectedPayment = ref('')
 const refundAmount = ref('')
 const requestKey = ref('')
 const reconciliation = ref({})
-const refundable = computed(() => (o.value?.receipts || []).filter(p => p.refunded_cents < p.amount_cents && p.review_reason !== 'legacy_refund'))
+const refundable = computed(() => (o.value?.receipts || []).filter(p => p.refunded_cents < p.amount_cents && p.review_reason !== 'legacy_refund' && !p.refund_reconciliation_required))
 const selectedReceipt = computed(() => refundable.value.find(p => `${p.provider}:${p.reference}` === selectedPayment.value))
 function refundState(state) {
-  return { prepared:'待提交', pending:'处理中', succeeded:'已成功', failed:'未成功', review:'待核对' }[state] || state
+  return { reconciliation:'结果变更待对账', prepared:'待提交', pending:'处理中', succeeded:'已成功', failed:'未成功', review:'待核对' }[state] || state
 }
 function refundReason(reason) {
-  return { credentials_locked:'收款凭证未解锁，解锁后将自动继续查询。', configuration_changed:'收款配置已变更，请恢复原配置后继续核对。', gateway_unconfirmed:'尚未确认网关结果，请继续原请求。', gateway_pending:'支付平台正在处理。', unknown_result:'请在支付平台找到这笔退款的编号，填写后核对。', result_mismatch:'返回信息不一致，请核对支付平台退款记录。', rejected:'支付平台拒绝了退款参数，请核对可退余额。', gateway_failed:'支付平台确认本次退款未成功。' }[reason] || ''
+  return { refund_status_changed:'平台退款状态已变化，需核对全部退款记录后确认金额。', credentials_locked:'收款凭证未解锁，解锁后将自动继续查询。', configuration_changed:'收款配置已变更，请恢复原配置后继续核对。', gateway_unconfirmed:'尚未确认网关结果，请继续原请求。', gateway_pending:'支付平台正在处理。', unknown_result:'请在支付平台找到这笔退款的编号，填写后核对。', result_mismatch:'返回信息不一致，请核对支付平台退款记录。', rejected:'支付平台拒绝了退款参数，请核对可退余额。', gateway_failed:'支付平台确认本次退款未成功。' }[reason] || ''
 }
 function choosePayment() {
   const p = selectedReceipt.value
@@ -133,6 +133,7 @@ onMounted(load)
             {{ p.provider }} · {{ money(p.amount_cents, p.currency) }} · 已退 {{ money(p.refunded_cents, p.currency) }}
             · {{ reviewText(p.review_reason) }}{{ p.source === 'legacy' ? '（历史记录）' : '' }}
             <p class="muted">{{ p.reference }}</p>
+            <p v-if="p.refund_reconciliation_required" class="payment-warning">平台退款状态与原记账结果不一致。以上为原记账金额，当前暂停继续退款与发货，需完成对账后确认。</p>
           </li>
         </ul>
       </template>

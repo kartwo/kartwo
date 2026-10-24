@@ -177,6 +177,7 @@ func (p *StripeProvider) VerifyWebhook(payload []byte, sigHeader string) (Webhoo
 		Type string `json:"type"`
 		Data struct {
 			Object struct {
+				ID                string `json:"id"`
 				ClientReferenceID string `json:"client_reference_id"` // checkout.session
 				PaymentStatus     string `json:"payment_status"`      // checkout.session
 				Amount            int64  `json:"amount"`
@@ -185,7 +186,8 @@ func (p *StripeProvider) VerifyWebhook(payload []byte, sigHeader string) (Webhoo
 				Currency          string `json:"currency"`       // 二者皆有
 				PaymentIntent     string `json:"payment_intent"` // 二者皆有（退款引用锚点）
 				Metadata          struct {
-					OrderRef string `json:"order_ref"`
+					OrderRef        string `json:"order_ref"`
+					RefundRequestID string `json:"kartwo_refund_id"`
 				} `json:"metadata"`
 			} `json:"object"`
 		} `json:"data"`
@@ -199,18 +201,20 @@ func (p *StripeProvider) VerifyWebhook(payload []byte, sigHeader string) (Webhoo
 		ref = ev.Data.Object.Metadata.OrderRef
 	}
 	amount := ev.Data.Object.AmountTotal
-	if ev.Type == "charge.refunded" {
+	if ev.Type == "charge.refunded" || strings.HasPrefix(ev.Type, "refund.") {
 		amount = ev.Data.Object.Amount
 	}
 	return WebhookEvent{
-		ID:            ev.ID,
-		Type:          ev.Type,
-		OrderRef:      ref,
-		PaymentRef:    ev.Data.Object.PaymentIntent,
-		PaymentStatus: ev.Data.Object.PaymentStatus,
-		AmountCents:   amount,
-		RefundedCents: ev.Data.Object.AmountRefunded,
-		Currency:      ev.Data.Object.Currency,
+		ID:              ev.ID,
+		Type:            ev.Type,
+		OrderRef:        ref,
+		PaymentRef:      ev.Data.Object.PaymentIntent,
+		PaymentStatus:   ev.Data.Object.PaymentStatus,
+		AmountCents:     amount,
+		RefundedCents:   ev.Data.Object.AmountRefunded,
+		Currency:        ev.Data.Object.Currency,
+		RefundRef:       ev.Data.Object.ID,
+		RefundRequestID: ev.Data.Object.Metadata.RefundRequestID,
 	}, nil
 }
 

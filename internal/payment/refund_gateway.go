@@ -41,6 +41,21 @@ func (s *Service) refundGateway(provider string) refundGateway {
 // Refund requests use their own frozen schema version, independent of checkout.
 const refundRequestVersion = "refund-v1"
 
+// Provider refund IDs are opaque ASCII identifiers, not URLs or path fragments.
+func validRefundReference(id string) bool {
+	if len(id) == 0 || len(id) > 255 {
+		return false
+	}
+	for _, c := range id {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_', c == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func (p *StripeProvider) refundHTTP(ctx context.Context, method, path string, form url.Values, key string) ([]byte, error) {
 	secret, ok := p.keys.secretKey()
 	if !ok {
@@ -88,6 +103,9 @@ func (p *StripeProvider) submitRefund(ctx context.Context, a refundAttempt) (gat
 	return p.decodeRefund(ctx, raw)
 }
 func (p *StripeProvider) lookupRefund(ctx context.Context, id string) (gatewayRefund, error) {
+	if !validRefundReference(id) {
+		return gatewayRefund{}, ErrMismatch
+	}
 	raw, err := p.refundHTTP(ctx, http.MethodGet, "/v1/refunds/"+url.PathEscape(id), nil, "")
 	if err != nil {
 		return gatewayRefund{}, err
@@ -126,7 +144,7 @@ func (p *StripeProvider) decodeRefund(ctx context.Context, raw []byte) (gatewayR
 	if r.State != "succeeded" {
 		return r, nil
 	}
-	if data.Charge == "" {
+	if !validRefundReference(data.Charge) {
 		return r, ErrMismatch
 	}
 	raw, err := p.refundHTTP(ctx, http.MethodGet, "/v1/charges/"+url.PathEscape(data.Charge), nil, "")
@@ -213,6 +231,9 @@ func (p *PayPalProvider) submitRefund(ctx context.Context, a refundAttempt) (gat
 	return decodePayPalRefund(raw)
 }
 func (p *PayPalProvider) lookupRefund(ctx context.Context, id string) (gatewayRefund, error) {
+	if !validRefundReference(id) {
+		return gatewayRefund{}, ErrMismatch
+	}
 	raw, err := p.refundHTTP(ctx, http.MethodGet, "/v2/payments/refunds/"+url.PathEscape(id), nil, "")
 	if err != nil {
 		return gatewayRefund{}, err

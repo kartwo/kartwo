@@ -127,6 +127,13 @@ func (s *Service) claimRefund(ctx context.Context, publicID string, in RefundInp
 		if p.Review == "legacy_refund" || p.Refunded != in.ExpectedRefundedCents || in.AmountCents > p.Amount-p.Refunded {
 			return a, ErrRefundConflict
 		}
+		var needsReconciliation bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM refund_reconciliation WHERE receipt_id=? AND state='open')`, p.ID).Scan(&needsReconciliation); err != nil {
+			return a, err
+		}
+		if needsReconciliation {
+			return a, ErrRefundConflict
+		}
 		var active bool
 		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM refund_request WHERE receipt_id=? AND state IN ('prepared','pending','review'))`, p.ID).Scan(&active); err != nil {
 			return a, err
@@ -147,6 +154,14 @@ func (s *Service) claimRefund(ctx context.Context, publicID string, in RefundInp
 	}
 	if a.Provider != in.Provider || a.PaymentRef != in.PaymentRef || a.AmountCents != in.AmountCents || a.InitialRefunded != in.ExpectedRefundedCents {
 		return a, ErrRefundConflict
+	}
+	var changedResult bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM refund_reconciliation WHERE provider=? AND refund_ref=? AND state='open')`, a.Provider, a.GatewayRef).Scan(&changedResult); err != nil {
+		return a, err
+	}
+	if changedResult {
+		a.State, a.Reason = "review", "refund_status_changed"
+		return a, tx.Commit()
 	}
 	if a.State == "succeeded" || a.State == "failed" {
 		return a, tx.Commit()

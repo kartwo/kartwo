@@ -235,6 +235,7 @@ func (s *Service) markRefundedFromWebhook(ctx context.Context, provider string, 
 // not automatically restock physical goods; that belongs to the returns workflow.
 func reconcileOrderFinancialStatus(ctx context.Context, tx *sql.Tx, orderID int64) error {
 	_, err := tx.ExecContext(ctx, `UPDATE "order" SET status=CASE
+        WHEN EXISTS(SELECT 1 FROM refund_reconciliation r JOIN payment_receipt p ON p.id=r.receipt_id WHERE p.order_id="order".id AND r.state='open') THEN 'payment_review'
         WHEN EXISTS(SELECT 1 FROM payment_receipt p WHERE p.order_id="order".id AND p.review_reason<>'' AND p.refunded_cents<p.amount_cents) THEN 'payment_review'
         WHEN EXISTS(SELECT 1 FROM payment_receipt p WHERE p.order_id="order".id AND p.provider="order".payment_provider AND p.payment_ref="order".payment_ref AND p.refunded_cents=p.amount_cents) THEN 'refunded'
         WHEN EXISTS(SELECT 1 FROM shipment WHERE shipment.order_id="order".id) THEN 'fulfilled'
