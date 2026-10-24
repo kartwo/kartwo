@@ -21,7 +21,7 @@ func (h *HTTP) checkoutPage(w http.ResponseWriter, r *http.Request) {
 
 // renderCheckout 渲染结算页（errMsg 非空时显示错误，保留购物车）。
 func (h *HTTP) renderCheckout(w http.ResponseWriter, r *http.Request, errMsg string) {
-	id, err := h.cartCtx(w, r)
+	id, err := h.existingCartID(r)
 	if err != nil {
 		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
@@ -55,11 +55,10 @@ func (h *HTTP) renderCheckout(w http.ResponseWriter, r *http.Request, errMsg str
 }
 
 func (h *HTTP) checkoutSubmit(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		h.renderCheckout(w, r, "表单解析失败")
+	if !parseCommerceForm(w, r) {
 		return
 	}
-	id, err := h.cartCtx(w, r)
+	id, err := h.existingCartID(r)
 	if err != nil {
 		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
@@ -202,8 +201,7 @@ func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
 
 // orderPay 对未付订单重新发起收款（订单页「去支付」按钮）。
 func (h *HTTP) orderPay(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+	if !parseCommerceForm(w, r) {
 		return
 	}
 	publicID := r.PathValue("id")

@@ -348,10 +348,15 @@ func TestJSONLDValid(t *testing.T) {
 // 对购物车 cookie 而言，prod 明文态（HTTP-only 评估态 / 裸 IP 逃生路）下顾客每次请求
 // 都拿到新的空车 —— 加购不生效。清除路径同理：那条 Max-Age=-1 根本不会被处理。
 func TestCartCookieSecureFollowsRequestTLS(t *testing.T) {
-	// cartSet 触发 cartCtx 下发新车 cookie；返回该响应里的购物车 cookie。
-	cartCookieFrom := func(t *testing.T, mux http.Handler, tls bool) *http.Cookie {
+	// 真实加购才下发新购物车 Cookie；只浏览空购物车不会写数据库。
+	cartCookieFrom := func(t *testing.T, h *HTTP, mux http.Handler, tls bool) *http.Cookie {
 		t.Helper()
-		req := httptest.NewRequest("GET", "/cart", nil)
+		var variant string
+		if err := h.svc.db.QueryRow(`SELECT public_id FROM variant LIMIT 1`).Scan(&variant); err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest("POST", "/cart/items", strings.NewReader(`{"variant":"`+variant+`","quantity":1}`))
+		req.Header.Set("Content-Type", "application/json")
 		if tls {
 			req.TLS = &cryptotls.ConnectionState{} // httptest 默认 r.TLS==nil
 		}
@@ -378,8 +383,8 @@ func TestCartCookieSecureFollowsRequestTLS(t *testing.T) {
 			{"明文请求 → 不带 Secure（否则顾客加购不生效）", false, false},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				_, mux := newHTTP(t)
-				c := cartCookieFrom(t, mux, tc.tls)
+				h, mux := newHTTP(t)
+				c := cartCookieFrom(t, h, mux, tc.tls)
 				if c.Secure != tc.want {
 					t.Fatalf("Secure=%v，期望 %v", c.Secure, tc.want)
 				}

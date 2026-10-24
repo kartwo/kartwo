@@ -60,6 +60,9 @@ type HTTP struct {
 	contactTmpl      *template.Template
 	contact          *contact.Service
 	contactLimit     *contactLimiter
+	cartLimit        *commerceLimiter
+	checkoutLimit    *commerceLimiter
+	payLimit         *commerceLimiter
 }
 
 // secureFor 判定本次响应的 Cookie 是否该带 Secure：直连 TLS 始终安全；
@@ -81,19 +84,22 @@ func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, setti
 	h := &HTTP{
 		trusted: trusted,
 		svc:     svc, cart: cartSvc, order: orderSvc, settings: settingsSvc, pay: pay, redirect: redirectSvc, shopNameFallback: shopName,
-		baseURL:      strings.TrimRight(baseURL, "/"),
-		homeTmpl:     parse("templates/home.html"),
-		catalogTmpl:  parse("templates/catalog.html"),
-		prodTmpl:     parse("templates/product.html"),
-		cartTmpl:     parse("templates/cart.html"),
-		ckoutTmpl:    parse("templates/checkout.html"),
-		orderTmpl:    parse("templates/order.html"),
-		pageTmpl:     parse("templates/content_page.html"),
-		blogListTmpl: parse("templates/blog_list.html"),
-		blogPostTmpl: parse("templates/blog_post.html"),
-		blog:         blog.New(svc.db, settingsSvc),
-		contactTmpl:  parse("templates/contact.html"),
-		contactLimit: newContactLimiter(),
+		baseURL:       strings.TrimRight(baseURL, "/"),
+		homeTmpl:      parse("templates/home.html"),
+		catalogTmpl:   parse("templates/catalog.html"),
+		prodTmpl:      parse("templates/product.html"),
+		cartTmpl:      parse("templates/cart.html"),
+		ckoutTmpl:     parse("templates/checkout.html"),
+		orderTmpl:     parse("templates/order.html"),
+		pageTmpl:      parse("templates/content_page.html"),
+		blogListTmpl:  parse("templates/blog_list.html"),
+		blogPostTmpl:  parse("templates/blog_post.html"),
+		blog:          blog.New(svc.db, settingsSvc),
+		contactTmpl:   parse("templates/contact.html"),
+		contactLimit:  newContactLimiter(),
+		cartLimit:     newCommerceLimiter(120),
+		checkoutLimit: newCommerceLimiter(12),
+		payLimit:      newCommerceLimiter(20),
 	}
 	if len(shopNameOverride) > 0 {
 		if fallback := strings.TrimSpace(shopNameOverride[0]); fallback != "" {
@@ -137,15 +143,15 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	// 购物车（匿名，cookie 标识；SameSite=Lax 缓解 CSRF）。
 	mux.HandleFunc("GET /cart", h.cartPage)
 	mux.HandleFunc("GET /cart/data", h.cartData)
-	mux.HandleFunc("POST /cart/items", h.cartAdd)
-	mux.HandleFunc("PATCH /cart/items/{vid}", h.cartSet)
-	mux.HandleFunc("DELETE /cart/items/{vid}", h.cartRemove)
+	mux.HandleFunc("POST /cart/items", h.protectCommerce(h.cartLimit, h.cartAdd))
+	mux.HandleFunc("PATCH /cart/items/{vid}", h.protectCommerce(h.cartLimit, h.cartSet))
+	mux.HandleFunc("DELETE /cart/items/{vid}", h.protectCommerce(h.cartLimit, h.cartRemove))
 	// 结算/订单（表单提交，无 JS 也可用）。
 	mux.HandleFunc("GET /checkout", h.checkoutPage)
-	mux.HandleFunc("POST /checkout", h.checkoutSubmit)
+	mux.HandleFunc("POST /checkout", h.protectCommerce(h.checkoutLimit, h.checkoutSubmit))
 	mux.HandleFunc("GET /order/{id}", h.orderPage)
-	mux.HandleFunc("POST /order/{id}/pay", h.orderPay)   // 未付订单「去支付」重新发起
-	mux.HandleFunc("GET /paypal/return", h.paypalReturn) // PayPal 审批后跳回做同步 capture
+	mux.HandleFunc("POST /order/{id}/pay", h.protectCommerce(h.payLimit, h.orderPay))   // 未付订单「去支付」重新发起
+	mux.HandleFunc("GET /paypal/return", h.protectCommerce(h.payLimit, h.paypalReturn)) // PayPal 审批后跳回做同步 capture
 }
 
 // shopifyProductRedirect 将 Shopify 历史商品链接永久迁移到 Kartwo 商品页。

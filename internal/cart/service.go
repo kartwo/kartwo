@@ -79,6 +79,21 @@ func (s *Service) GetOrCreate(ctx context.Context, token string) (cartID int64, 
 	return id, newTok, nil
 }
 
+// ActiveID 只查询现有活跃购物车；没有有效 token 时返回 0，不写入空购物车。
+func (s *Service) ActiveID(ctx context.Context, token string) (int64, error) {
+	if token == "" {
+		return 0, nil
+	}
+	c, err := s.q.GetActiveCartByToken(ctx, token)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("cart: 取购物车失败: %w", err)
+	}
+	return c.ID, nil
+}
+
 // AddItem 加入（或累加）一个变体。
 func (s *Service) AddItem(ctx context.Context, cartID int64, variantPublicID string, qty int64) error {
 	if qty <= 0 || qty > maxQtyPerLine {
