@@ -22,6 +22,8 @@ import (
 var (
 	// ErrEmptyCart 购物车为空，不能结算。
 	ErrEmptyCart = errors.New("order: 购物车为空")
+	// ErrCartConverted 同一购物车已结算，拒绝重复建单和预留库存。
+	ErrCartConverted = errors.New("order: 该购物车已完成结算")
 	// ErrOutOfStock 某变体库存不足（防超卖拦截）。
 	ErrOutOfStock = errors.New("order: 库存不足")
 	// ErrInvalidInfo 结算信息非法。
@@ -140,7 +142,7 @@ func (in CheckoutInfo) validate() error {
 	return nil
 }
 
-// Checkout 由购物车结算生成订单。事务内：原子预留库存（防超卖）→ 建客户/订单/订单行 → 转换购物车。
+// Checkout 由购物车结算生成订单。事务内：认领购物车 → 原子预留库存 → 建客户/订单/订单行。
 // 任一变体库存不足则整单回滚（释放本次已预留）。
 func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo) (string, error) {
 	if err := info.validate(); err != nil {
@@ -171,6 +173,16 @@ func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo)
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := s.q.WithTx(tx)
+
+	// 原子认领购物车，与建单和库存预留同事务；失败回滚后仍可重试。
+	// HTTP 层可能有多个请求提前取得同一个 active cart，必须在服务层再次校验。
+	claimed, err := q.MarkCartConverted(ctx, cartID)
+	if err != nil {
+		return "", fmt.Errorf("order: 认领购物车失败: %w", err)
+	}
+	if claimed == 0 {
+		return "", ErrCartConverted
+	}
 
 	// 1) 原子预留库存（防超卖）。任一不足即整单失败、回滚释放。
 	for _, it := range items {
@@ -230,11 +242,6 @@ func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo)
 		}); err != nil {
 			return "", fmt.Errorf("order: 建订单行失败: %w", err)
 		}
-	}
-
-	// 5) 购物车转换为已下单。
-	if err := q.MarkCartConverted(ctx, cartID); err != nil {
-		return "", fmt.Errorf("order: 转换购物车失败: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {

@@ -324,13 +324,16 @@ func (q *Queries) ListRefundsByOrder(ctx context.Context, orderID int64) ([]List
 	return items, nil
 }
 
-const markCartConverted = `-- name: MarkCartConverted :exec
-UPDATE cart SET status = 'converted', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?
+const markCartConverted = `-- name: MarkCartConverted :execrows
+UPDATE cart SET status = 'converted', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND status = 'active'
 `
 
-func (q *Queries) MarkCartConverted(ctx context.Context, id int64) error {
-	_, err := q.db.ExecContext(ctx, markCartConverted, id)
-	return err
+func (q *Queries) MarkCartConverted(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markCartConverted, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const reserveInventory = `-- name: ReserveInventory :execrows

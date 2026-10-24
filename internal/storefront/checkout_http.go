@@ -74,6 +74,8 @@ func (h *HTTP) checkoutSubmit(w http.ResponseWriter, r *http.Request) {
 	publicID, err := h.order.Checkout(r.Context(), id, info)
 	if err != nil {
 		switch {
+		case errors.Is(err, order.ErrCartConverted):
+			h.renderCheckout(w, r, "This cart has already been checked out. Please check your existing order before placing another.")
 		case errors.Is(err, order.ErrEmptyCart):
 			h.renderCheckout(w, r, "Your cart is empty.")
 		case errors.Is(err, order.ErrOutOfStock):

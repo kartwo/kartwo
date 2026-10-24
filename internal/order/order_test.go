@@ -392,3 +392,136 @@ func TestCheckout_ConcurrentNoOversell(t *testing.T) {
 		t.Fatalf("预留 = %d（库存 %d），超卖防护失效", res, qty)
 	}
 }
+
+// 重放已提前解析的购物车：第二次提交不得另建订单或重复预留。
+func TestCheckout_RepeatedResolvedCart(t *testing.T) {
+	db, ord, crt, cat := setup(t)
+	ctx := context.Background()
+	v := seedVariant(t, cat, "repeated-cart", 1000, 10)
+	cid, token, err := crt.GetOrCreate(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := crt.AddItem(ctx, cid, v, 2); err != nil {
+		t.Fatal(err)
+	}
+	resolved, _, err := crt.GetOrCreate(ctx, token)
+	if err != nil || resolved != cid {
+		t.Fatalf("resolve: id=%d err=%v", resolved, err)
+	}
+	if _, err := ord.Checkout(ctx, cid, info()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(db, settings.New(db)).Checkout(ctx, resolved, info()); !errors.Is(err, ErrCartConverted) {
+		t.Fatalf("重复提交应被拒绝，得到 %v", err)
+	}
+	assertSingleCheckout(t, db, "repeated-cart", 2)
+}
+
+// 独立服务实例并发提交同一车，证明保护来自数据库而不是单进程互斥锁。
+func TestCheckout_ConcurrentSameCart(t *testing.T) {
+	db, _, crt, cat := setup(t)
+	ctx := context.Background()
+	v := seedVariant(t, cat, "concurrent-cart", 1000, 100)
+	cid, _, err := crt.GetOrCreate(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := crt.AddItem(ctx, cid, v, 2); err != nil {
+		t.Fatal(err)
+	}
+	const requests = 20
+	start := make(chan struct{})
+	results := make(chan error, requests)
+	for i := 0; i < requests; i++ {
+		go func() {
+			<-start
+			_, err := New(db, settings.New(db)).Checkout(ctx, cid, info())
+			results <- err
+		}()
+	}
+	close(start)
+	var successful, duplicate int
+	for i := 0; i < requests; i++ {
+		err := <-results
+		switch {
+		case err == nil:
+			successful++
+		case errors.Is(err, ErrCartConverted):
+			duplicate++
+		default:
+			t.Errorf("unexpected checkout error: %v", err)
+		}
+	}
+	if successful != 1 || duplicate != requests-1 {
+		t.Fatalf("successful=%d duplicate=%d", successful, duplicate)
+	}
+	assertSingleCheckout(t, db, "concurrent-cart", 2)
+}
+
+func assertSingleCheckout(t *testing.T, db *sql.DB, slug string, quantity int64) {
+	t.Helper()
+	var orders, lines int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM "order"`).Scan(&orders); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM order_item`).Scan(&lines); err != nil {
+		t.Fatal(err)
+	}
+	if orders != 1 || lines != 1 {
+		t.Fatalf("orders=%d lines=%d", orders, lines)
+	}
+	if _, reserved := reservedOf(t, db, slug); reserved != quantity {
+		t.Fatalf("reserved=%d want=%d", reserved, quantity)
+	}
+}
+
+// 第二行缺货时，认领购物车与第一行预留必须一起回滚，补货后原车仍可提交。
+func TestCheckout_RollbackClaimAndRetry(t *testing.T) {
+	db, ord, crt, cat := setup(t)
+	ctx := context.Background()
+	first := seedVariant(t, cat, "rollback-first", 1000, 5)
+	second := seedVariant(t, cat, "rollback-second", 1500, 1)
+	cid, _, err := crt.GetOrCreate(ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []string{first, second} {
+		if err := crt.AddItem(ctx, cid, v, 2); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := ord.Checkout(ctx, cid, info()); !errors.Is(err, ErrOutOfStock) {
+		t.Fatalf("got %v", err)
+	}
+	var status string
+	if err := db.QueryRow(`SELECT status FROM cart WHERE id=?`, cid).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "active" {
+		t.Fatalf("cart status=%s", status)
+	}
+	for _, slug := range []string{"rollback-first", "rollback-second"} {
+		if _, reserved := reservedOf(t, db, slug); reserved != 0 {
+			t.Fatalf("%s reserved=%d", slug, reserved)
+		}
+	}
+	var orders int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM "order"`).Scan(&orders); err != nil {
+		t.Fatal(err)
+	}
+	if orders != 0 {
+		t.Fatalf("failed checkout created %d orders", orders)
+	}
+	if _, err := db.Exec(`UPDATE inventory SET quantity=5 WHERE variant_id=(SELECT id FROM variant WHERE public_id=?)`, second); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ord.Checkout(ctx, cid, info()); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	for _, slug := range []string{"rollback-first", "rollback-second"} {
+		if _, reserved := reservedOf(t, db, slug); reserved != 2 {
+			t.Fatalf("%s reserved=%d", slug, reserved)
+		}
+	}
+}
