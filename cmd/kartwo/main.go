@@ -369,6 +369,7 @@ func runServe(logger *slog.Logger) error {
 	go adminHTTP.RunDemoCleanup(ctx, logger)
 	go contactSvc.RunRetention(ctx, logger)
 	go orderSvc.RunReservationExpiry(ctx, logger)
+	go paySvc.RunRefundReconciliation(ctx, logger)
 
 	var servers []*http.Server
 	errCh := make(chan error, 1)

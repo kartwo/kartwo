@@ -30,6 +30,7 @@ type refundServer struct {
 	mu               sync.Mutex
 	records          map[string]fakeRefundRecord
 	posts, creates   int
+	lookups          int
 	loseFirst        bool
 	initialState     string
 	entered, release chan struct{}
@@ -91,6 +92,7 @@ func newRefundServer(t *testing.T) (*refundServer, *httptest.Server) {
 				return
 			}
 		} else if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/refunds/") {
+			f.lookups++
 			id := strings.TrimPrefix(r.URL.Path, "/v1/refunds/")
 			for _, candidate := range f.records {
 				if candidate.ID == id {

@@ -34,7 +34,7 @@ function refundState(state) {
   return { prepared:'待提交', pending:'处理中', succeeded:'已成功', failed:'未成功', review:'待核对' }[state] || state
 }
 function refundReason(reason) {
-  return { gateway_unconfirmed:'尚未确认网关结果，请继续原请求。', gateway_pending:'支付平台正在处理。', unknown_result:'请在支付平台找到这笔退款的编号，填写后核对。', result_mismatch:'返回信息不一致，请核对支付平台退款记录。', rejected:'支付平台拒绝了退款参数，请核对可退余额。', gateway_failed:'支付平台确认本次退款未成功。' }[reason] || ''
+  return { credentials_locked:'收款凭证未解锁，解锁后将自动继续查询。', configuration_changed:'收款配置已变更，请恢复原配置后继续核对。', gateway_unconfirmed:'尚未确认网关结果，请继续原请求。', gateway_pending:'支付平台正在处理。', unknown_result:'请在支付平台找到这笔退款的编号，填写后核对。', result_mismatch:'返回信息不一致，请核对支付平台退款记录。', rejected:'支付平台拒绝了退款参数，请核对可退余额。', gateway_failed:'支付平台确认本次退款未成功。' }[reason] || ''
 }
 function choosePayment() {
   const p = selectedReceipt.value
@@ -175,6 +175,7 @@ onMounted(load)
       </section>
       <section v-if="o.refund_requests?.length" class="panel refund-panel">
         <h3>退款请求</h3>
+        <p class="muted">已取得平台退款编号的处理中请求会自动查询结果，也可手动核对。结果未知的请求不会自动重新提交退款。</p>
         <article v-for="r in o.refund_requests" :key="r.public_id" class="refund-request">
           <strong>{{ money(r.amount_cents, r.currency) }} · {{ r.provider }} · {{ refundState(r.state) }}</strong>
           <p class="muted">{{ r.payment_ref }} · {{ r.created_at }}</p>
