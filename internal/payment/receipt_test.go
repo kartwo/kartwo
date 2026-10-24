@@ -338,7 +338,7 @@ func TestPayPalPendingCaptureIsNotPaid(t *testing.T) {
 	body := `{"status":"COMPLETED","purchase_units":[{"payments":{"captures":[{"id":"CAP1","status":"PENDING","custom_id":"ORD-PP","amount":{"currency_code":"USD","value":"99.00"}}]}}]}`
 	svc, db, _ := newPayPalSvc(t, paypalMock(body))
 	seedOrder(t, db, "ORD-PP", 9900, "USD")
-	if _, err := svc.CapturePayPal(context.Background(), "PPORDER1"); err != ErrMismatch {
+	if _, err := svc.CapturePayPal(context.Background(), "PPORDER1"); err != ErrPaymentProcessing {
 		t.Fatalf("pending capture accepted: %v", err)
 	}
 	assertLedger(t, db, 0, 0, 0)

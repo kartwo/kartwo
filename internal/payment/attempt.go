@@ -38,7 +38,7 @@ type checkoutAttempt struct {
 }
 
 // StartCheckout 同订单同通道复用首次请求快照及会话。网络请求绝不持有数据库事务。
-func (s *Service) StartCheckout(ctx context.Context, provider string, input OrderForPayment) (string, error) {
+func (s *Service) startCheckoutSession(ctx context.Context, provider string, input OrderForPayment) (string, error) {
 	prov := s.providerByName(provider)
 	if prov == nil || !s.providerReady(ctx, provider) {
 		return "", fmt.Errorf("payment: 支付方式 %q 不可用", provider)
@@ -124,12 +124,12 @@ func (s *Service) claimCheckout(ctx context.Context, provider string, input Orde
 	if err != nil {
 		return a, err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO payment_attempt(public_id,order_id,provider,config_fingerprint,request_json) VALUES(?,?,?,?,?) ON CONFLICT(order_id,provider) DO NOTHING`, input.IdempotencyKey, orderID, provider, fingerprint, string(raw)); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO payment_attempt(public_id,order_id,provider,config_fingerprint,request_json) VALUES(?,?,?,?,?) ON CONFLICT(order_id,provider) WHERE state<>'retired' DO NOTHING`, input.IdempotencyKey, orderID, provider, fingerprint, string(raw)); err != nil {
 		return a, err
 	}
 	var storedScope, state, snapshot string
 	var until int64
-	if err := tx.QueryRowContext(ctx, `SELECT public_id,config_fingerprint,request_json,state,redirect_url,lease_until FROM payment_attempt WHERE order_id=? AND provider=?`, orderID, provider).Scan(&a.ID, &storedScope, &snapshot, &state, &a.RedirectURL, &until); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT public_id,config_fingerprint,request_json,state,redirect_url,lease_until FROM payment_attempt WHERE order_id=? AND provider=? AND state<>'retired'`, orderID, provider).Scan(&a.ID, &storedScope, &snapshot, &state, &a.RedirectURL, &until); err != nil {
 		return a, err
 	}
 	if storedScope != fingerprint {

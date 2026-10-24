@@ -82,27 +82,6 @@ func (s *Service) TestStripeConnection(ctx context.Context) error {
 // ErrOrderExpired 表示订单的 30 分钟库存预留已过期，禁止发起新的收款。
 var ErrOrderExpired = errors.New("payment: 订单库存预留已到期")
 
-// CapturePayPal 校验 capture 完成状态后与 Webhook 共用收款账本和订单状态机。
-// 支付引用、订单号、金额和币种共同对账；重复调用不重复结算库存。
-func (s *Service) CapturePayPal(ctx context.Context, paypalOrderID string) (string, error) {
-	res, err := s.paypal.Capture(ctx, paypalOrderID)
-	if err != nil {
-		// PayPal capture API 调用失败：err 内含 PayPal 返回的状态码+原因（doJSON 已带出）。
-		slog.Error("PayPal capture 调用失败", "paypal_order_id", paypalOrderID, "err", err)
-		return "", err
-	}
-	slog.Info("PayPal capture 返回", "paypal_order_id", paypalOrderID, "completed", res.Completed,
-		"order_ref", res.OrderRef, "amount_cents", res.AmountCents, "currency", res.Currency, "capture_id", res.CaptureID)
-	if !res.Completed || res.OrderRef == "" {
-		slog.Warn("PayPal capture 未完成或缺 custom_id", "completed", res.Completed, "order_ref", res.OrderRef)
-		return res.OrderRef, ErrMismatch
-	}
-	err = s.recordPayment(ctx, "paypal", WebhookEvent{
-		OrderRef: res.OrderRef, PaymentRef: res.CaptureID, AmountCents: res.AmountCents, Currency: res.Currency,
-	}, false)
-	return res.OrderRef, err
-}
-
 // HandleWebhook 处理 Stripe Webhook：双校验 + 幂等。
 // 返回 nil = 已处理或安全忽略（回 2xx）；ErrLocked/ErrBadSignature/ErrMismatch = 拒绝（回非 2xx）。
 func (s *Service) HandleWebhook(ctx context.Context, payload []byte, sigHeader string) error {

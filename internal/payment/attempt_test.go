@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -208,6 +209,12 @@ func TestPayPalAttemptAndCaptureIdempotencyHeaders(t *testing.T) {
 			creates++
 			createKey = r.Header.Get("PayPal-Request-Id")
 			_, _ = w.Write([]byte(`{"id":"PP1","links":[{"rel":"approve","href":"https://paypal.example/approve"}]}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v2/checkout/orders/PP1":
+			payments := "{}"
+			if captures > 0 {
+				payments = `{"captures":[{"id":"CAP1","status":"COMPLETED","amount":{"currency_code":"USD","value":"25.00"}}]}`
+			}
+			_, _ = fmt.Fprintf(w, `{"id":"PP1","intent":"CAPTURE","status":"APPROVED","purchase_units":[{"custom_id":"attempt-paypal","amount":{"currency_code":"USD","value":"25.00"},"payments":%s}]}`, payments)
 		case strings.HasSuffix(r.URL.Path, "/capture"):
 			captures++
 			key := r.Header.Get("PayPal-Request-Id")
@@ -231,7 +238,7 @@ func TestPayPalAttemptAndCaptureIdempotencyHeaders(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if creates != 1 || captures != 2 || len(createKey) != 36 || captureKey == "" || createKey == captureKey {
+	if creates != 1 || captures != 1 || len(createKey) != 36 || captureKey == "" || createKey == captureKey {
 		t.Fatalf("creates=%d captures=%d create=%q capture=%q", creates, captures, createKey, captureKey)
 	}
 }

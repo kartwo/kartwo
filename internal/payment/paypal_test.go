@@ -8,11 +8,13 @@ package payment
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/kartwo/kartwo/internal/migrate"
@@ -66,13 +68,45 @@ func newPayPalSvc(t *testing.T, handler http.HandlerFunc) (*Service, *sql.DB, *h
 }
 
 func paypalMock(captureBody string) http.HandlerFunc {
+	var captured atomic.Bool
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/v1/oauth2/token":
 			_, _ = w.Write([]byte(`{"access_token":"tok","expires_in":3600}`))
 		case r.URL.Path == "/v2/checkout/orders":
 			_, _ = w.Write([]byte(`{"id":"PPORDER1","links":[{"rel":"payer-action","href":"https://paypal.test/approve?token=PPORDER1"}]}`))
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v2/checkout/orders/"):
+			var body struct {
+				PurchaseUnits []struct {
+					CustomID string `json:"custom_id"`
+					Payments struct {
+						Captures []struct {
+							ID, Status string
+							CustomID   string `json:"custom_id"`
+							Amount     paypalMoney
+						}
+					}
+				} `json:"purchase_units"`
+			}
+			if json.Unmarshal([]byte(captureBody), &body) != nil || len(body.PurchaseUnits) != 1 || len(body.PurchaseUnits[0].Payments.Captures) != 1 {
+				w.WriteHeader(404)
+				return
+			}
+			u := body.PurchaseUnits[0]
+			c := u.Payments.Captures[0]
+			ref := u.CustomID
+			if ref == "" {
+				ref = c.CustomID
+			}
+			unit := map[string]any{"custom_id": ref, "amount": c.Amount}
+			status := "APPROVED"
+			if captured.Load() {
+				status = "COMPLETED"
+				unit["payments"] = map[string]any{"captures": []any{c}}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": strings.TrimPrefix(r.URL.Path, "/v2/checkout/orders/"), "intent": "CAPTURE", "status": status, "purchase_units": []any{unit}})
 		case strings.HasSuffix(r.URL.Path, "/capture"):
+			captured.Store(true)
 			_, _ = w.Write([]byte(captureBody))
 		default:
 			w.WriteHeader(http.StatusNotFound)

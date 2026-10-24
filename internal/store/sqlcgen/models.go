@@ -99,6 +99,23 @@ type Category struct {
 	DeletedAt sql.NullString `db:"deleted_at" json:"deleted_at"`
 }
 
+type CheckoutCapture struct {
+	AttemptID   string `db:"attempt_id" json:"attempt_id"`
+	OrderID     int64  `db:"order_id" json:"order_id"`
+	State       string `db:"state" json:"state"`
+	FirstSentAt int64  `db:"first_sent_at" json:"first_sent_at"`
+	CreatedAt   string `db:"created_at" json:"created_at"`
+	UpdatedAt   string `db:"updated_at" json:"updated_at"`
+}
+
+type CheckoutLock struct {
+	OrderID    int64  `db:"order_id" json:"order_id"`
+	LeaseToken string `db:"lease_token" json:"lease_token"`
+	LeaseUntil int64  `db:"lease_until" json:"lease_until"`
+	CreatedAt  string `db:"created_at" json:"created_at"`
+	UpdatedAt  string `db:"updated_at" json:"updated_at"`
+}
+
 type ContactMessage struct {
 	ID               int64          `db:"id" json:"id"`
 	PublicID         string         `db:"public_id" json:"public_id"`

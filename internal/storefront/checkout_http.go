@@ -156,7 +156,7 @@ func (h *HTTP) paypalReturn(w http.ResponseWriter, r *http.Request) {
 		// capture 失败/不匹配：回订单页（若能定位），订单保持 pending。
 		slog.Error("PayPal 跳回 capture 失败", "paypal_order_id", ppOrderID, "order_ref", orderRef, "err", err)
 		if orderRef != "" {
-			http.Redirect(w, r, "/order/"+orderRef+"?payment_error=1", http.StatusSeeOther)
+			http.Redirect(w, r, "/order/"+orderRef+"?payment_error="+paymentErrorCode(err), http.StatusSeeOther)
 			return
 		}
 		http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -235,6 +235,10 @@ func (h *HTTP) orderPay(w http.ResponseWriter, r *http.Request) {
 // paymentErrorCode 只向店面公开固定错误类别，不泄漏网关原始响应或配置。
 func paymentErrorCode(err error) string {
 	switch {
+	case errors.Is(err, payment.ErrPaymentProcessing):
+		return "processing"
+	case errors.Is(err, payment.ErrCheckoutReplaced):
+		return "replaced"
 	case errors.Is(err, payment.ErrPaymentInProgress):
 		return "busy"
 	case errors.Is(err, payment.ErrPaymentConfigChanged):
@@ -246,6 +250,10 @@ func paymentErrorCode(err error) string {
 
 func paymentErrorMessage(code string) string {
 	switch code {
+	case "processing":
+		return "Your previous payment is complete or still being confirmed. Please wait or contact the store before paying again."
+	case "replaced":
+		return "This payment link is no longer active. Please return to your order and use the current payment option."
 	case "busy":
 		return "Your payment page is being prepared. Please wait a moment and try again."
 	case "config":
