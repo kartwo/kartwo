@@ -140,16 +140,16 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /robots.txt", h.robots)
 	mux.HandleFunc("GET /static/cart.js", h.cartJS)
 	mux.HandleFunc("GET /static/running-tee-hero.png", h.runningTeeHero)
-	// 购物车（匿名，cookie 标识；SameSite=Lax 缓解 CSRF）。
-	mux.HandleFunc("GET /cart", h.cartPage)
-	mux.HandleFunc("GET /cart/data", h.cartData)
+	// 购物车（匿名，cookie 标识；写入必须同源，SameSite=Lax 为额外保护）。
+	mux.HandleFunc("GET /cart", httpx.PrivateHandler(h.cartPage))
+	mux.HandleFunc("GET /cart/data", httpx.PrivateHandler(h.cartData))
 	mux.HandleFunc("POST /cart/items", h.protectCommerce(h.cartLimit, h.cartAdd))
 	mux.HandleFunc("PATCH /cart/items/{vid}", h.protectCommerce(h.cartLimit, h.cartSet))
 	mux.HandleFunc("DELETE /cart/items/{vid}", h.protectCommerce(h.cartLimit, h.cartRemove))
 	// 结算/订单（表单提交，无 JS 也可用）。
-	mux.HandleFunc("GET /checkout", h.checkoutPage)
+	mux.HandleFunc("GET /checkout", httpx.PrivateHandler(h.checkoutPage))
 	mux.HandleFunc("POST /checkout", h.protectCommerce(h.checkoutLimit, h.checkoutSubmit))
-	mux.HandleFunc("GET /order/{id}", h.orderPage)
+	mux.HandleFunc("GET /order/{id}", httpx.PrivateHandler(h.orderPage))
 	mux.HandleFunc("POST /order/{id}/pay", h.protectCommerce(h.payLimit, h.orderPay))   // 未付订单「去支付」重新发起
 	mux.HandleFunc("GET /paypal/return", h.protectCommerce(h.payLimit, h.paypalReturn)) // PayPal 审批后跳回做同步 capture
 }
@@ -443,7 +443,7 @@ func (h *HTTP) sitemap(w http.ResponseWriter, r *http.Request) {
 
 func (h *HTTP) robots(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = fmt.Fprintf(w, "User-agent: *\nAllow: /\nDisallow: /admin/\nSitemap: %s/sitemap.xml\n", h.base(r))
+	_, _ = fmt.Fprintf(w, "User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /order/\nDisallow: /checkout\nDisallow: /cart\nDisallow: /paypal/\nSitemap: %s/sitemap.xml\n", h.base(r))
 }
 
 // runningTeeHero 提供内嵌的原创跑步产品首屏图；固定路径，不接受用户输入。

@@ -48,7 +48,7 @@ func (h *HTTP) renderCheckout(w http.ResponseWriter, r *http.Request, errMsg str
 		"Methods":   methods, // 可用支付方式（stripe/paypal）；>1 时结算页显示选择
 		"Countries": countries,
 		"SEO": seo{
-			Title: "Checkout — " + h.shopName(r.Context()), Description: "Checkout", Canonical: h.base(r) + "/checkout", OGType: "website",
+			Title: "Checkout — " + h.shopName(r.Context()), Description: "Checkout", NoIndex: true, Canonical: h.base(r) + "/checkout", OGType: "website",
 		},
 	}
 	h.render(w, r, h.ckoutTmpl, data)
@@ -143,18 +143,24 @@ func (h *HTTP) startPayment(r *http.Request, publicID, provider string) (string,
 
 // paypalReturn 顾客在 PayPal 批准后跳回：用 ?token=<paypal_order_id> 做同步 capture，成功即订单已付。
 func (h *HTTP) paypalReturn(w http.ResponseWriter, r *http.Request) {
+	// ServeMux also routes HEAD to GET handlers; a probe must never capture.
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	ppOrderID := r.URL.Query().Get("token")
 	if ppOrderID == "" || h.pay == nil {
-		// 缺 token / 支付未启用：记下原始 query 以便定位（PayPal 是否换了参数名/未带回）。
+		// 只记录固定状态，不记录查询参数、PayPal token 或网关响应。
 		slog.Warn("PayPal 跳回无法 capture：缺 token 或支付未启用",
-			"token_present", ppOrderID != "", "pay_enabled", h.pay != nil, "raw_query", r.URL.RawQuery)
+			"token_present", ppOrderID != "", "pay_enabled", h.pay != nil)
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 	orderRef, err := h.pay.CapturePayPal(r.Context(), ppOrderID)
 	if err != nil {
 		// capture 失败/不匹配：回订单页（若能定位），订单保持 pending。
-		slog.Error("PayPal 跳回 capture 失败", "paypal_order_id", ppOrderID, "order_ref", orderRef, "err", err)
+		slog.Error("PayPal 跳回 capture 失败", "reason", paymentErrorCode(err))
 		if orderRef != "" {
 			http.Redirect(w, r, "/order/"+orderRef+"?payment_error="+paymentErrorCode(err), http.StatusSeeOther)
 			return
@@ -162,7 +168,7 @@ func (h *HTTP) paypalReturn(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	slog.Info("PayPal 跳回 capture 成功，订单已付", "paypal_order_id", ppOrderID, "order_ref", orderRef)
+	slog.Info("PayPal 跳回 capture 已确认")
 	http.Redirect(w, r, "/order/"+orderRef+"?paid=1", http.StatusSeeOther)
 }
 
@@ -193,7 +199,7 @@ func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
 		"Methods":      payMethods,
 		"Money":        h.money(r.Context()),
 		"SEO": seo{
-			Title: "Order — " + h.shopName(r.Context()), Description: "Order confirmation", Canonical: h.base(r) + "/order/" + o.PublicID, OGType: "website",
+			Title: "Order — " + h.shopName(r.Context()), Description: "Order confirmation", NoIndex: true, Canonical: h.base(r) + "/order/" + o.PublicID, OGType: "website",
 		},
 	}
 	h.render(w, r, h.orderTmpl, data)

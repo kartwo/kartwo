@@ -39,6 +39,7 @@ func TestEmptyCartReadsDoNotCreateRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := httptest.NewRequest(http.MethodPost, "/cart/items", strings.NewReader(`{"variant":"`+variant+`","quantity":1}`))
+	r.Header.Set("Sec-Fetch-Site", "same-origin")
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
@@ -115,6 +116,7 @@ func TestCommerceGuardTrustAndBodyLimit(t *testing.T) {
 			guard := h.protectCommerce(newCommerceLimiter(1), func(w http.ResponseWriter, r *http.Request) { called++; w.WriteHeader(204) })
 			for i := 1; i <= 2; i++ {
 				r := httptest.NewRequest(http.MethodPost, "/checkout", strings.NewReader("email=a@example.com"))
+				r.Header.Set("Sec-Fetch-Site", "same-origin")
 				r.RemoteAddr = "127.0.0.1:1234"
 				r.Header.Set("X-Forwarded-For", fmt.Sprintf("203.0.113.%d", i))
 				w := httptest.NewRecorder()
@@ -142,6 +144,7 @@ func TestCommerceGuardTrustAndBodyLimit(t *testing.T) {
 	called := false
 	guard := h.protectCommerce(newCommerceLimiter(1), func(http.ResponseWriter, *http.Request) { called = true })
 	large := httptest.NewRequest(http.MethodPost, "/checkout", strings.NewReader(strings.Repeat("x", commerceMaxBody+1)))
+	large.Header.Set("Sec-Fetch-Site", "same-origin")
 	w := httptest.NewRecorder()
 	guard(w, large)
 	if w.Code != 413 || called {
@@ -157,6 +160,7 @@ func TestCheckoutRateLimitPreventsExtraWork(t *testing.T) {
 	h.Register(mux)
 	for i := 0; i < 2; i++ {
 		r := httptest.NewRequest(http.MethodPost, "/checkout", strings.NewReader("email=a@example.com"))
+		r.Header.Set("Sec-Fetch-Site", "same-origin")
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, r)
@@ -179,6 +183,7 @@ func TestCheckoutRateLimitPreventsExtraWork(t *testing.T) {
 func TestCommerceGuardRejectsOversizedChunkedForm(t *testing.T) {
 	h, mux := newHTTP(t)
 	r := httptest.NewRequest(http.MethodPost, "/checkout", strings.NewReader("email="+strings.Repeat("a", commerceMaxBody)))
+	r.Header.Set("Sec-Fetch-Site", "same-origin")
 	r.ContentLength = -1
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()

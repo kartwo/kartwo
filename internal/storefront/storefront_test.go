@@ -60,6 +60,7 @@ func TestOrderPayPendingOnly(t *testing.T) {
 
 	pay := func() (int, string) {
 		req := httptest.NewRequest("POST", "/order/ORD1/pay", strings.NewReader("payment_method=stripe"))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
@@ -356,6 +357,7 @@ func TestCartCookieSecureFollowsRequestTLS(t *testing.T) {
 			t.Fatal(err)
 		}
 		req := httptest.NewRequest("POST", "/cart/items", strings.NewReader(`{"variant":"`+variant+`","quantity":1}`))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/json")
 		if tls {
 			req.TLS = &cryptotls.ConnectionState{} // httptest 默认 r.TLS==nil
@@ -411,6 +413,7 @@ func TestCartCookieSecureFollowsRequestTLS(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				h := &HTTP{} // clearCartCookie 只用 w/r，不碰其它字段
 				req := httptest.NewRequest("POST", "/checkout", nil)
+				req.Header.Set("Sec-Fetch-Site", "same-origin")
 				if tc.tls {
 					req.TLS = &cryptotls.ConnectionState{}
 				}
@@ -460,6 +463,7 @@ func TestOrderPayExplainsRetryAndConfigErrors(t *testing.T) {
 			mux := http.NewServeMux()
 			h.Register(mux)
 			r := httptest.NewRequest(http.MethodPost, "/order/retry-order/pay", strings.NewReader("payment_method=stripe"))
+			r.Header.Set("Sec-Fetch-Site", "same-origin")
 			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			w := httptest.NewRecorder()
 			mux.ServeHTTP(w, r)

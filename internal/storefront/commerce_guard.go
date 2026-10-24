@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/kartwo/kartwo/internal/httpx"
 )
 
 const commerceMaxBody = 64 << 10
@@ -66,10 +68,16 @@ func (l *commerceLimiter) allowAt(key string, now time.Time) (bool, int) {
 
 func (h *HTTP) protectCommerce(limiter *commerceLimiter, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		httpx.PrivateHeaders(w)
+		// PayPal's authenticated provider return remains a cross-site GET.
+		// Every browser-initiated write must carry a same-origin signal.
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && !h.sameOrigin(r) {
+			writeErr(w, http.StatusForbidden, "Please submit this request from the store page.")
+			return
+		}
 		ip, _ := h.contactIPCountry(r) // 仅采信已配置代理，不能用伪造 X-Forwarded-For 绕过。
 		if allowed, retry := limiter.allowAt(ip, time.Now()); !allowed {
 			w.Header().Set("Retry-After", strconv.Itoa(retry))
-			w.Header().Set("Cache-Control", "no-store")
 			writeErr(w, http.StatusTooManyRequests, "Too many requests. Please wait a moment and try again.")
 			return
 		}

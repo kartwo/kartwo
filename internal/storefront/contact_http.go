@@ -94,7 +94,7 @@ func (h *HTTP) renderContact(w http.ResponseWriter, r *http.Request, status int,
 }
 
 func (h *HTTP) sameOrigin(r *http.Request) bool {
-	if strings.EqualFold(r.Header.Get("Sec-Fetch-Site"), "cross-site") {
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" {
 		return false
 	}
 	expectedScheme := "http"
@@ -103,7 +103,7 @@ func (h *HTTP) sameOrigin(r *http.Request) bool {
 	}
 	if origin := r.Header.Get("Origin"); origin != "" {
 		u, err := url.Parse(origin)
-		if err != nil || !strings.EqualFold(u.Host, r.Host) || u.Scheme != expectedScheme {
+		if err != nil || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || !strings.EqualFold(u.Host, r.Host) || u.Scheme != expectedScheme {
 			return false
 		}
 		return true

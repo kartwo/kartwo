@@ -117,11 +117,11 @@ func (h *HTTP) ConfigureDemo(cfg DemoConfig) {
 
 // Register 在给定 mux 上注册 /admin/api/* 路由。
 func (h *HTTP) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /admin/api/status", h.status)
-	mux.HandleFunc("POST /admin/api/setup", h.setup)
-	mux.HandleFunc("POST /admin/api/login", h.login)
-	mux.HandleFunc("POST /admin/api/invites/accept", h.acceptInvite)
-	mux.HandleFunc("POST /admin/api/demo-session", h.demoSession)
+	mux.HandleFunc("GET /admin/api/status", httpx.PrivateHandler(h.status))
+	mux.HandleFunc("POST /admin/api/setup", httpx.PrivateHandler(h.setup))
+	mux.HandleFunc("POST /admin/api/login", httpx.PrivateHandler(h.login))
+	mux.HandleFunc("POST /admin/api/invites/accept", httpx.PrivateHandler(h.acceptInvite))
+	mux.HandleFunc("POST /admin/api/demo-session", httpx.PrivateHandler(h.demoSession))
 	mux.Handle("POST /admin/api/logout", h.requireAuth(http.HandlerFunc(h.logout)))
 	mux.Handle("GET /admin/api/me", h.requireAuth(http.HandlerFunc(h.me)))
 	mux.Handle("POST /admin/api/demo/reset", h.requireAuth(http.HandlerFunc(h.resetDemo)))

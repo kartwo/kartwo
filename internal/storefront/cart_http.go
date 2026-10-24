@@ -152,7 +152,7 @@ func (h *HTTP) cartPage(w http.ResponseWriter, r *http.Request) {
 		"Cart":     view,
 		"Money":    h.money(r.Context()),
 		"SEO": seo{
-			Title: "Cart — " + h.shopName(r.Context()), Description: "Your cart", Canonical: canonical, OGType: "website",
+			Title: "Cart — " + h.shopName(r.Context()), Description: "Your cart", NoIndex: true, Canonical: canonical, OGType: "website",
 		},
 	}
 	h.render(w, r, h.cartTmpl, data)
