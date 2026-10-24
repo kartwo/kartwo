@@ -188,10 +188,11 @@ func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
 		payMethods = h.pay.AvailableMethods(r.Context())
 	}
 	data := map[string]any{
-		"ShopName": h.shopName(r.Context()),
-		"Order":    o,
-		"Methods":  payMethods,
-		"Money":    h.money(r.Context()),
+		"ShopName":     h.shopName(r.Context()),
+		"Order":        o,
+		"PaymentError": paymentErrorMessage(r.URL.Query().Get("payment_error")),
+		"Methods":      payMethods,
+		"Money":        h.money(r.Context()),
 		"SEO": seo{
 			Title: "Order — " + h.shopName(r.Context()), Description: "Order confirmation", Canonical: h.base(r) + "/order/" + o.PublicID, OGType: "website",
 		},
@@ -227,8 +228,33 @@ func (h *HTTP) orderPay(w http.ResponseWriter, r *http.Request) {
 	provider := h.chosenMethod(r, methods)
 	url, perr := h.startPayment(r, publicID, provider)
 	if perr != nil {
-		http.Redirect(w, r, "/order/"+publicID+"?payment_error=1", http.StatusSeeOther)
+		http.Redirect(w, r, "/order/"+publicID+"?payment_error="+paymentErrorCode(perr), http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, url, http.StatusSeeOther)
+}
+
+// paymentErrorCode 只向店面公开固定错误类别，不泄漏网关原始响应或配置。
+func paymentErrorCode(err error) string {
+	switch {
+	case errors.Is(err, payment.ErrPaymentInProgress):
+		return "busy"
+	case errors.Is(err, payment.ErrPaymentConfigChanged):
+		return "config"
+	default:
+		return "1"
+	}
+}
+
+func paymentErrorMessage(code string) string {
+	switch code {
+	case "busy":
+		return "Your payment page is being prepared. Please wait a moment and try again."
+	case "config":
+		return "The store's payment settings changed. Please contact the store before paying this order."
+	case "1":
+		return "We could not open the payment page. Please try again; your existing payment attempt will be reused."
+	default:
+		return ""
+	}
 }

@@ -51,13 +51,15 @@ var (
 
 // OrderForPayment 是发起一次收款所需的最小订单信息。
 type OrderForPayment struct {
-	PublicID    string // 订单 public_id，写入网关 client_reference_id 作回调对账锚点
-	Email       string
-	Currency    string // 如 USD
-	AmountCents int64  // 应收总额（分），与 Webhook amount_total 比对
-	Description string // 收银台展示用一行描述
-	SuccessURL  string
-	CancelURL   string
+	IdempotencyKey string // 持久化的尝试 UUID；重试时保持不变
+	ExpiresAt      int64  // Stripe 会话绝对过期时间；随请求快照持久化
+	PublicID       string // 订单 public_id，写入网关 client_reference_id 作回调对账锚点
+	Email          string
+	Currency       string // 如 USD
+	AmountCents    int64  // 应收总额（分），与 Webhook amount_total 比对
+	Description    string // 收银台展示用一行描述
+	SuccessURL     string
+	CancelURL      string
 }
 
 // PaymentSession 是 CreatePayment 的结果：把买家引导到何处付款。

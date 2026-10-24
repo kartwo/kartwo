@@ -62,7 +62,11 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, ord OrderForPayment)
 
 	form := url.Values{}
 	form.Set("mode", "payment")
-	form.Set("expires_at", strconv.FormatInt(p.now().Add(30*time.Minute).Unix(), 10))
+	expiresAt := ord.ExpiresAt
+	if expiresAt == 0 {
+		expiresAt = p.now().Add(30 * time.Minute).Unix()
+	}
+	form.Set("expires_at", strconv.FormatInt(expiresAt, 10))
 	form.Set("success_url", ord.SuccessURL)
 	form.Set("cancel_url", ord.CancelURL)
 	form.Set("client_reference_id", ord.PublicID)
@@ -86,6 +90,9 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, ord OrderForPayment)
 	req.Header.Set("Authorization", "Bearer "+secret)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Stripe-Version", stripeAPIVersion)
+	if ord.IdempotencyKey != "" {
+		req.Header.Set("Idempotency-Key", ord.IdempotencyKey)
+	}
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
@@ -95,6 +102,15 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, ord OrderForPayment)
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 
 	if resp.StatusCode >= 400 {
+		var rejected struct {
+			Error struct {
+				Type  string `json:"type"`
+				Param string `json:"param"`
+			} `json:"error"`
+		}
+		if resp.StatusCode == http.StatusBadRequest && json.Unmarshal(body, &rejected) == nil && rejected.Error.Type == "invalid_request_error" && rejected.Error.Param == "expires_at" {
+			return PaymentSession{}, errCheckoutExpiryRejected
+		}
 		return PaymentSession{}, fmt.Errorf("payment: Stripe 建会话失败 (%d): %s", resp.StatusCode, stripeErrMsg(body))
 	}
 
@@ -105,7 +121,7 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, ord OrderForPayment)
 	if err := json.Unmarshal(body, &out); err != nil {
 		return PaymentSession{}, fmt.Errorf("payment: 解析 Stripe 响应失败: %w", err)
 	}
-	if out.URL == "" {
+	if out.ID == "" || !validCheckoutURL(out.URL) {
 		return PaymentSession{}, fmt.Errorf("payment: Stripe 未返回收银台 URL")
 	}
 	return PaymentSession{RedirectURL: out.URL, Reference: out.ID}, nil

@@ -31,11 +31,12 @@ import (
 type fakeGateway struct {
 	methods []string
 	url     string
+	err     error
 }
 
 func (f fakeGateway) AvailableMethods(context.Context) []string { return f.methods }
 func (f fakeGateway) StartCheckout(context.Context, string, payment.OrderForPayment) (string, error) {
-	return f.url, nil
+	return f.url, f.err
 }
 func (f fakeGateway) CapturePayPal(context.Context, string) (string, error) { return "", nil }
 
@@ -430,4 +431,41 @@ func TestCartCookieSecureFollowsRequestTLS(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestOrderPayExplainsRetryAndConfigErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		err           error
+		code, message string
+	}{
+		{"busy", payment.ErrPaymentInProgress, "busy", "payment page is being prepared"},
+		{"config", payment.ErrPaymentConfigChanged, "config", "payment settings changed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sf, _, db := setup(t)
+			if _, err := db.Exec(`INSERT INTO customer(public_id,email,name) VALUES('retry-customer','a@example.com','A')`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`INSERT INTO "order"(public_id,customer_id,status,email,ship_name,ship_address,currency,subtotal_cents,total_cents) SELECT 'retry-order',id,'pending',email,name,'Address','USD',1000,1000 FROM customer WHERE public_id='retry-customer'`); err != nil {
+				t.Fatal(err)
+			}
+			cfg := settings.New(db)
+			h := NewHTTP(sf, cart.New(db), order.New(db, cfg), cfg, fakeGateway{methods: []string{"stripe"}, err: tc.err}, redirect.New(db), "Shop", "https://shop", nil)
+			mux := http.NewServeMux()
+			h.Register(mux)
+			r := httptest.NewRequest(http.MethodPost, "/order/retry-order/pay", strings.NewReader("payment_method=stripe"))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, r)
+			if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/order/retry-order?payment_error="+tc.code {
+				t.Fatalf("code=%d location=%s", w.Code, w.Header().Get("Location"))
+			}
+			page := httptest.NewRecorder()
+			mux.ServeHTTP(page, httptest.NewRequest(http.MethodGet, w.Header().Get("Location"), nil))
+			if page.Code != 200 || !strings.Contains(page.Body.String(), tc.message) || strings.Contains(page.Body.String(), tc.err.Error()) {
+				t.Fatalf("safe user-facing explanation missing: status=%d", page.Code)
+			}
+		})
+	}
 }

@@ -86,44 +86,6 @@ func (s *Service) TestStripeConnection(ctx context.Context) error {
 // ErrOrderExpired 表示订单的 30 分钟库存预留已过期，禁止发起新的收款。
 var ErrOrderExpired = errors.New("payment: 订单库存预留已到期")
 
-// StartCheckout 用指定通道为订单发起一次收款，返回托管收银台/审批跳转 URL。
-func (s *Service) StartCheckout(ctx context.Context, provider string, ord OrderForPayment) (string, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return "", err
-	}
-	var orderID int64
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM "order" WHERE public_id=?`, ord.PublicID).Scan(&orderID); err != nil {
-		_ = tx.Rollback()
-		return "", err
-	}
-	expired, err := order.ExpirePendingTx(ctx, tx, orderID, time.Now())
-	if err != nil {
-		_ = tx.Rollback()
-		return "", err
-	}
-	var status string
-	if err := tx.QueryRowContext(ctx, `SELECT status FROM "order" WHERE id=?`, orderID).Scan(&status); err != nil {
-		_ = tx.Rollback()
-		return "", err
-	}
-	if err := tx.Commit(); err != nil {
-		return "", err
-	}
-	if expired || status != "pending" {
-		return "", ErrOrderExpired
-	}
-	prov := s.providerByName(provider)
-	if prov == nil || !s.providerReady(ctx, provider) {
-		return "", fmt.Errorf("payment: 支付方式 %q 不可用", provider)
-	}
-	sess, err := prov.CreatePayment(ctx, ord)
-	if err != nil {
-		return "", err
-	}
-	return sess.RedirectURL, nil
-}
-
 // CapturePayPal 对已审批的 PayPal 订单做 capture 并据其结果改单（已付判定=同步 capture）。
 // 校验：completed + custom_id 能对上库内订单 + 金额/币种一致；改单条件更新(pending->paid)幂等。返回订单 public_id。
 func (s *Service) CapturePayPal(ctx context.Context, paypalOrderID string) (string, error) {

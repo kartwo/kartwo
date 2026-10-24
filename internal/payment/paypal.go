@@ -7,6 +7,7 @@ package payment
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -137,7 +138,7 @@ func (p *PayPalProvider) CreatePayment(ctx context.Context, ord OrderForPayment)
 			},
 		},
 	}
-	raw, err := p.doJSON(ctx, token, http.MethodPost, "/v2/checkout/orders", reqBody)
+	raw, err := p.doJSON(ctx, token, http.MethodPost, "/v2/checkout/orders", reqBody, ord.IdempotencyKey)
 	if err != nil {
 		return PaymentSession{}, err
 	}
@@ -158,7 +159,7 @@ func (p *PayPalProvider) CreatePayment(ctx context.Context, ord OrderForPayment)
 			break
 		}
 	}
-	if href == "" {
+	if !validCheckoutURL(href) {
 		return PaymentSession{}, fmt.Errorf("payment: PayPal 未返回审批链接")
 	}
 	return PaymentSession{RedirectURL: href, Reference: out.ID}, nil
@@ -170,7 +171,7 @@ func (p *PayPalProvider) Capture(ctx context.Context, paypalOrderID string) (Cap
 	if err != nil {
 		return CaptureResult{}, err
 	}
-	raw, err := p.doJSON(ctx, token, http.MethodPost, "/v2/checkout/orders/"+url.PathEscape(paypalOrderID)+"/capture", map[string]any{})
+	raw, err := p.doJSON(ctx, token, http.MethodPost, "/v2/checkout/orders/"+url.PathEscape(paypalOrderID)+"/capture", map[string]any{}, fmt.Sprintf("%x", sha256.Sum256([]byte("capture:"+paypalOrderID)))[:32])
 	if err != nil {
 		return CaptureResult{}, err
 	}
@@ -331,7 +332,7 @@ func captureIDFromLinks(links []struct {
 }
 
 // doJSON 发一个带 Bearer 的 JSON 请求，返回响应体（4xx+ 视为错误）。
-func (p *PayPalProvider) doJSON(ctx context.Context, token, method, path string, payload any) ([]byte, error) {
+func (p *PayPalProvider) doJSON(ctx context.Context, token, method, path string, payload any, idempotencyKey ...string) ([]byte, error) {
 	buf, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("payment: 编码 PayPal 请求失败: %w", err)
@@ -342,6 +343,9 @@ func (p *PayPalProvider) doJSON(ctx context.Context, token, method, path string,
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
+	if len(idempotencyKey) > 0 && idempotencyKey[0] != "" {
+		req.Header.Set("PayPal-Request-Id", idempotencyKey[0])
+	}
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("payment: 调用 PayPal 失败: %w", err)

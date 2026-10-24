@@ -10,6 +10,7 @@
 {{if eq $o.Status "cancelled"}}<p>This order was not paid within 30 minutes, so its stock hold has ended. Please place a new order if you still want these items.</p>{{end}}
 
 {{if eq $o.Status "pending"}}
+{{if .PaymentError}}<p role="alert">{{.PaymentError}}</p>{{end}}
 <div class="panel" style="border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin:1rem 0">
   <strong>This order isn't paid yet.</strong>
   <p class="muted" style="font-size:.9rem;margin:.3rem 0 .6rem">Complete payment to confirm your order.</p>

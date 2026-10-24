@@ -256,6 +256,22 @@ type OrderItem struct {
 	LineCents    int64  `db:"line_cents" json:"line_cents"`
 }
 
+type PaymentAttempt struct {
+	ID                int64  `db:"id" json:"id"`
+	PublicID          string `db:"public_id" json:"public_id"`
+	OrderID           int64  `db:"order_id" json:"order_id"`
+	Provider          string `db:"provider" json:"provider"`
+	ConfigFingerprint string `db:"config_fingerprint" json:"config_fingerprint"`
+	RequestJson       string `db:"request_json" json:"request_json"`
+	State             string `db:"state" json:"state"`
+	ProviderReference string `db:"provider_reference" json:"provider_reference"`
+	RedirectUrl       string `db:"redirect_url" json:"redirect_url"`
+	LeaseToken        string `db:"lease_token" json:"lease_token"`
+	LeaseUntil        int64  `db:"lease_until" json:"lease_until"`
+	CreatedAt         string `db:"created_at" json:"created_at"`
+	UpdatedAt         string `db:"updated_at" json:"updated_at"`
+}
+
 type Product struct {
 	ID               int64          `db:"id" json:"id"`
 	PublicID         string         `db:"public_id" json:"public_id"`
