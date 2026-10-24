@@ -137,7 +137,7 @@ func TestDuplicatePaymentRequiresReviewAndPreservesOriginal(t *testing.T) {
 	if err := svc.recordPayment(context.Background(), "paypal", ev, false); err != nil {
 		t.Fatal(err)
 	}
-	refund := WebhookEvent{ID: "extra-refund", Type: "PAYMENT.CAPTURE.REFUNDED", PaymentRef: "cap-extra", RefundRef: "rf-extra", AmountCents: 2500, Currency: "USD"}
+	refund := WebhookEvent{ID: "extra-refund", Type: "PAYMENT.CAPTURE.REFUNDED", PaymentRef: "cap-extra", RefundRef: "rf-extra", AmountCents: 2500, RefundedCents: 2500, Currency: "USD"}
 	if err := svc.markRefundedFromWebhook(context.Background(), "paypal", refund); err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,14 @@ func TestPayPalPartialRefundDedupByRefundID(t *testing.T) {
 	svc, db := paypalWebhookSvc(t, "SUCCESS")
 	seedPaidPayPal(t, db, "pp", 9900, "cap")
 	send := func(event, refund, amount string) error {
-		body := []byte(fmt.Sprintf(`{"id":%q,"event_type":"PAYMENT.CAPTURE.REFUNDED","resource":{"id":%q,"amount":{"value":%q,"currency_code":"USD"},"links":[{"rel":"up","href":"https://api.paypal.com/v2/payments/captures/cap"}]}}`, event, refund, amount))
+		total := amount
+		if refund == "rf2" {
+			total = "99.00"
+			if amount == "80.00" {
+				total = "100.00"
+			}
+		}
+		body := []byte(fmt.Sprintf(`{"id":%q,"event_type":"PAYMENT.CAPTURE.REFUNDED","resource":{"id":%q,"seller_payable_breakdown":{"total_refunded_amount":{"value":%q,"currency_code":"USD"}},"amount":{"value":%q,"currency_code":"USD"},"links":[{"rel":"up","href":"https://api.paypal.com/v2/payments/captures/cap"}]}}`, event, refund, total, amount))
 		return svc.HandlePayPalWebhook(context.Background(), body, http.Header{})
 	}
 	if err := send("ev1", "rf1", "20.00"); err != nil {
@@ -375,7 +382,7 @@ func TestManualRefundThenWebhookDoesNotDoubleCount(t *testing.T) {
 	svc, db, _ := newTestSvc(t)
 	seedPaidOrder(t, db, "manual", 2500, "pi-manual")
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"id":"re-manual","status":"succeeded"}`))
+		successfulStripeRefund(w, r, "re-manual", "pi-manual", 2500)
 	}))
 	defer ts.Close()
 	svc.stripe.apiBase = ts.URL
@@ -418,5 +425,15 @@ func TestConcurrentPaymentNotificationsKeepOneReceipt(t *testing.T) {
 	assertLedger(t, db, 2500, 0, 1)
 	if eventCount(t, db) != workers || orderStatus(t, db, "parallel") != "paid" {
 		t.Fatal("concurrent notifications changed financial result")
+	}
+}
+
+// Full resource fixtures reflect the gateway contract (including refund identity
+// and cumulative amount); minimal acknowledgement alone cannot prove success.
+func successfulStripeRefund(w http.ResponseWriter, r *http.Request, id, paymentRef string, amount int64) {
+	if strings.HasPrefix(r.URL.Path, "/v1/charges/") {
+		_, _ = fmt.Fprintf(w, `{"id":"ch-test","payment_intent":%q,"currency":"usd","amount_refunded":%d}`, paymentRef, amount)
+	} else {
+		_, _ = fmt.Fprintf(w, `{"id":%q,"payment_intent":%q,"currency":"usd","amount":%d,"status":"succeeded","charge":"ch-test","metadata":{"kartwo_refund_id":%q}}`, id, paymentRef, amount, r.Header.Get("Idempotency-Key"))
 	}
 }

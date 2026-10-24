@@ -152,7 +152,7 @@ func (s *Service) markRefundedFromWebhook(ctx context.Context, provider string, 
 	if provider == "stripe" && (ev.RefundedCents <= 0 || ev.RefundedCents > ev.AmountCents) {
 		return ErrMismatch
 	}
-	if provider == "paypal" && ev.RefundRef == "" {
+	if provider == "paypal" && (ev.RefundRef == "" || ev.RefundedCents < ev.AmountCents) {
 		return ErrMismatch
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -202,40 +202,26 @@ func (s *Service) markRefundedFromWebhook(ctx context.Context, provider string, 
 			return err
 		}
 	} else {
+		if ev.RefundedCents > p.Amount {
+			return ErrMismatch
+		}
 		var receiptID, amount int64
 		err := tx.QueryRowContext(ctx, `SELECT receipt_id,amount_cents FROM payment_refund WHERE provider=? AND refund_ref=?`, provider, ev.RefundRef).Scan(&receiptID, &amount)
-		if err == nil {
-			if receiptID != p.ID || amount != ev.AmountCents {
-				return ErrMismatch
-			}
-		} else if errors.Is(err, sql.ErrNoRows) {
-			// Legacy/manual refund records must not be counted twice when the
-			// provider later sends the matching webhook.
-			var known int64
-			err := tx.QueryRowContext(ctx, `SELECT amount_cents FROM refund WHERE provider=? AND provider_refund_id=? AND order_id=?`, provider, ev.RefundRef, p.OrderID).Scan(&known)
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return err
-			}
-			delta := ev.AmountCents
-			if err == nil {
-				if known != ev.AmountCents {
-					return ErrMismatch
-				}
-				delta = 0
-			}
-			if ev.AmountCents > p.Amount || delta > p.Amount-p.Refunded {
-				return ErrMismatch
-			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO payment_refund(receipt_id,provider,refund_ref,amount_cents) VALUES(?,?,?,?)`, p.ID, provider, ev.RefundRef, ev.AmountCents); err != nil {
-				return err
-			}
-			if _, err := tx.ExecContext(ctx, `UPDATE payment_receipt SET refunded_cents=refunded_cents+?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`, delta, p.ID); err != nil {
-				return err
-			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO refund(order_id,provider,provider_refund_id,amount_cents) VALUES(?,?,?,?) ON CONFLICT(provider,provider_refund_id) DO NOTHING`, p.OrderID, provider, ev.RefundRef, ev.AmountCents); err != nil {
-				return err
-			}
-		} else {
+		if err == nil && (receiptID != p.ID || amount != ev.AmountCents) {
+			return ErrMismatch
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO payment_refund(receipt_id,provider,refund_ref,amount_cents) VALUES(?,?,?,?) ON CONFLICT(provider,refund_ref) DO NOTHING`, p.ID, provider, ev.RefundRef, ev.AmountCents); err != nil {
+			return err
+		}
+		// The authoritative cumulative amount includes refunds whose webhook has
+		// not arrived yet. Adding an unseen individual refund would double count.
+		if _, err := tx.ExecContext(ctx, `UPDATE payment_receipt SET refunded_cents=MAX(refunded_cents,?),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`, ev.RefundedCents, p.ID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO refund(order_id,provider,provider_refund_id,amount_cents) VALUES(?,?,?,?) ON CONFLICT(provider,provider_refund_id) DO NOTHING`, p.OrderID, provider, ev.RefundRef, ev.AmountCents); err != nil {
 			return err
 		}
 	}

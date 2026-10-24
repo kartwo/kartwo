@@ -220,33 +220,6 @@ func (p *PayPalProvider) Capture(ctx context.Context, paypalOrderID string) (Cap
 	return res, nil
 }
 
-// Refund 对 capture 整单全额退款：POST /v2/payments/captures/{capture}/refund（空 body=全额）。返回退款 ID。
-// v1 仅全额，故忽略 amountCents（空 body 让 PayPal 退全部已捕获金额）。
-func (p *PayPalProvider) Refund(ctx context.Context, captureID string, _ int64) (string, error) {
-	if captureID == "" {
-		return "", fmt.Errorf("payment: 缺 capture 引用，无法退款")
-	}
-	token, err := p.accessToken(ctx)
-	if err != nil {
-		return "", err
-	}
-	raw, err := p.doJSON(ctx, token, http.MethodPost, "/v2/payments/captures/"+url.PathEscape(captureID)+"/refund", map[string]any{}, fmt.Sprintf("%x", sha256.Sum256([]byte("refund-full:"+captureID)))[:32])
-	if err != nil {
-		return "", err
-	}
-	var out struct {
-		ID     string `json:"id"`
-		Status string `json:"status"`
-	}
-	if err := json.Unmarshal(raw, &out); err != nil || out.ID == "" {
-		return "", fmt.Errorf("payment: 解析 PayPal 退款响应失败")
-	}
-	if out.Status != "COMPLETED" {
-		return "", ErrRefundUnconfirmed
-	}
-	return out.ID, nil
-}
-
 // VerifyWebhook 接口占位——PayPal webhook 多头验签走 VerifyWebhookPayPal（不同签名），不经此通用接口。
 func (p *PayPalProvider) VerifyWebhook(_ []byte, _ string) (WebhookEvent, error) {
 	return WebhookEvent{}, ErrNotImplemented
@@ -304,6 +277,9 @@ func parsePayPalEvent(payload []byte) (WebhookEvent, error) {
 				Value        string `json:"value"`
 				CurrencyCode string `json:"currency_code"`
 			} `json:"amount"`
+			Breakdown struct {
+				Total paypalMoney `json:"total_refunded_amount"`
+			} `json:"seller_payable_breakdown"`
 			Links []struct {
 				Href string `json:"href"`
 				Rel  string `json:"rel"`
@@ -326,6 +302,13 @@ func parsePayPalEvent(payload []byte) (WebhookEvent, error) {
 		out.PaymentRef = ev.Resource.ID // capture id
 	case "PAYMENT.CAPTURE.REFUNDED":
 		out.RefundRef = ev.Resource.ID
+		if ev.Resource.Breakdown.Total.Value != "" {
+			var err error
+			out.RefundedCents, err = decimalToCents(ev.Resource.Breakdown.Total.Value)
+			if err != nil || !strings.EqualFold(ev.Resource.Breakdown.Total.Currency, out.Currency) {
+				return WebhookEvent{}, ErrMismatch
+			}
+		}
 		out.PaymentRef = captureIDFromLinks(ev.Resource.Links) // 退款事件：从 links 取 capture id
 	}
 	return out, nil

@@ -88,6 +88,4 @@ type PaymentProvider interface {
 	Name() string
 	CreatePayment(ctx context.Context, ord OrderForPayment) (PaymentSession, error)
 	VerifyWebhook(payload []byte, sigHeader string) (WebhookEvent, error)
-	// Refund 整数分退款，返回网关退款 ID（provider_refund_id）。
-	Refund(ctx context.Context, reference string, amountCents int64) (string, error)
 }

@@ -1026,11 +1026,14 @@ func TestPublicDemoSessionEnforcesOwnershipQuotaAndOwnerOnlyRoutes(t *testing.T)
 	if _, err := h.svc.db.Exec(`INSERT INTO payment_receipt(order_id,provider,payment_ref,amount_cents,currency) SELECT id,'stripe','pi-private-reference',1000,'USD' FROM "order" WHERE public_id='demo-order-sensitive'`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := h.svc.db.Exec(`INSERT INTO refund_request(public_id,client_key,order_id,receipt_id,provider,payment_ref,amount_cents,currency,initial_refunded_cents,config_fingerprint,state,gateway_ref) SELECT 'refund-public','private-browser-key',order_id,id,provider,payment_ref,100,currency,0,'private-config-fingerprint','pending','re-private-reference' FROM payment_receipt WHERE payment_ref='pi-private-reference'`); err != nil {
+		t.Fatal(err)
+	}
 	orderView := doJSON(t, mux, http.MethodGet, "/admin/api/orders/demo-order-sensitive", "", demo, "")
 	if orderView.StatusCode != http.StatusOK || !bytes.Contains(orderView.Body, []byte("已隐藏")) {
 		t.Fatalf("演示订单详情应可查看且完成脱敏: %d %s", orderView.StatusCode, orderView.Body)
 	}
-	for _, private := range []string{"private@example.com", "Private Name", "123456789", "Private Address", "pi-private-reference"} {
+	for _, private := range []string{"private@example.com", "Private Name", "123456789", "Private Address", "pi-private-reference", "re-private-reference", "private-browser-key", "private-config-fingerprint"} {
 		if bytes.Contains(orderView.Body, []byte(private)) {
 			t.Fatalf("演示订单详情泄露隐私 %q: %s", private, orderView.Body)
 		}

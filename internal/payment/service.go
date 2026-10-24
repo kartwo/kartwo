@@ -9,7 +9,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -141,6 +140,16 @@ func (s *Service) HandlePayPalWebhook(ctx context.Context, payload []byte, heade
 		}
 		return s.markPaid(ctx, "paypal", ev)
 	case "PAYMENT.CAPTURE.REFUNDED":
+		if ev.RefundedCents == 0 {
+			r, err := s.paypal.lookupRefund(ctx, ev.RefundRef)
+			if err != nil {
+				return err
+			}
+			if r.State != "succeeded" || r.PaymentRef != ev.PaymentRef || r.Amount != ev.AmountCents || !strings.EqualFold(r.Currency, ev.Currency) {
+				return ErrMismatch
+			}
+			ev.RefundedCents = r.TotalRefunded
+		}
 		return s.markRefundedFromWebhook(ctx, "paypal", ev)
 	default:
 		return nil
@@ -155,84 +164,6 @@ func (s *Service) markPaid(ctx context.Context, provider string, ev WebhookEvent
 
 // ErrNotRefundable 订单当前状态不可退款。
 var ErrNotRefundable = errors.New("payment: 订单当前状态不可退款")
-
-// Refund 后台手动整单全额退款：校验可退 → 调网关退款 → 事务内写退款记录 + 订单 paid->refunded。
-func (s *Service) Refund(ctx context.Context, orderPublicID string) error {
-	ord, err := s.q.GetOrderByPublicID(ctx, orderPublicID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return sql.ErrNoRows
-	} else if err != nil {
-		return fmt.Errorf("payment: 取订单失败: %w", err)
-	}
-	if ord.Status != "paid" && ord.Status != "payment_review" && ord.Status != "fulfilled" {
-		return ErrNotRefundable
-	}
-	if ord.PaymentRef == "" {
-		return fmt.Errorf("payment: 订单缺支付引用，无法退款")
-	}
-
-	// The current manual action is full-refund only. Never send the original
-	// total again after a partial refund; the amount-selecting workflow follows.
-	var refunded int64
-	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(refunded_cents),0) FROM payment_receipt WHERE provider=? AND payment_ref=?`, ord.PaymentProvider, ord.PaymentRef).Scan(&refunded); err != nil {
-		return err
-	}
-	if refunded > 0 {
-		return ErrNotRefundable
-	}
-	var duplicate bool
-	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM payment_receipt WHERE order_id=? AND review_reason='duplicate_payment' AND refunded_cents<amount_cents)`, ord.ID).Scan(&duplicate); err != nil {
-		return err
-	}
-	if duplicate {
-		return ErrNotRefundable
-	}
-
-	// 调网关退款（整数分，退到 payment_intent）。先退款再落库：退款成功才改状态。
-	prov := s.providerByName(ord.PaymentProvider)
-	if prov == nil {
-		return fmt.Errorf("payment: 未知支付通道 %q", ord.PaymentProvider)
-	}
-	refundID, err := prov.Refund(ctx, ord.PaymentRef, ord.TotalCents)
-	if err != nil {
-		return err
-	}
-
-	// 事务内：写退款记录 + 订单 paid->refunded（条件更新，幂等）。
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("payment: 开启事务失败: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := ensureLegacyReceipt(ctx, tx, ord); err != nil {
-		return err
-	}
-	p, err := getReceipt(ctx, tx, ord.PaymentProvider, ord.PaymentRef)
-	if err != nil {
-		return err
-	}
-	if p.OrderID != ord.ID {
-		return ErrMismatch
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO refund(order_id,provider,provider_refund_id,amount_cents) VALUES(?,?,?,?) ON CONFLICT(provider,provider_refund_id) DO NOTHING`, ord.ID, ord.PaymentProvider, refundID, ord.TotalCents); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO payment_refund(receipt_id,provider,refund_ref,amount_cents) VALUES(?,?,?,?) ON CONFLICT(provider,refund_ref) DO NOTHING`, p.ID, ord.PaymentProvider, refundID, ord.TotalCents); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE payment_receipt SET refunded_cents=amount_cents,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`, p.ID); err != nil {
-		return err
-	}
-	if err := reconcileOrderFinancialStatus(ctx, tx, ord.ID); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("payment: 提交事务失败: %w", err)
-	}
-	slog.Info("退款成功", "provider", ord.PaymentProvider, "order_ref", orderPublicID,
-		"refund_id", refundID, "amount_cents", ord.TotalCents)
-	return nil
-}
 
 // providerByName 按通道名取 provider。
 func (s *Service) providerByName(name string) PaymentProvider {

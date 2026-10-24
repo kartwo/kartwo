@@ -86,6 +86,7 @@ type Order struct {
 	PaymentStatus, FulfillmentStatus string
 	PaidCents, RefundedCents         int64
 	PaymentReview                    bool
+	RefundRequests                   []RefundRequestView
 }
 
 // OrderSummary 后台订单列表项。
@@ -346,6 +347,9 @@ func (s *Service) AdminGet(ctx context.Context, publicID string) (*Order, error)
 	}
 	if err := s.loadFinancials(ctx, o.ID, out); err != nil {
 		return nil, fmt.Errorf("order: 读取资金视图: %w", err)
+	}
+	if err := s.loadRefundRequests(ctx, o.ID, out); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

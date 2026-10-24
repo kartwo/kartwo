@@ -87,6 +87,9 @@ var staffRoutes = map[string]string{
 	"POST /admin/api/roles":                         "roles.manage",
 	"PATCH /admin/api/roles/{id}":                   "roles.manage",
 	"DELETE /admin/api/roles/{id}":                  "roles.manage",
+
+	"POST /admin/api/orders/{id}/refunds":                  "orders.refund",
+	"POST /admin/api/orders/{id}/refunds/{refund}/refresh": "orders.refund",
 }
 
 // ownerOnlyPermissions 不可授予员工，即使数据库被错误写入也不产生权限。

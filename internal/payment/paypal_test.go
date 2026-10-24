@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -172,7 +173,7 @@ func TestPayPalRefund(t *testing.T) {
 		case r.URL.Path == "/v1/oauth2/token":
 			_, _ = w.Write([]byte(`{"access_token":"tok","expires_in":3600}`))
 		case strings.HasSuffix(r.URL.Path, "/refund"):
-			_, _ = w.Write([]byte(`{"id":"RF1","status":"COMPLETED"}`))
+			_, _ = fmt.Fprintf(w, `{"id":"RF1","status":"COMPLETED","amount":{"value":"99.00","currency_code":"USD"},"custom_id":%q,"seller_payable_breakdown":{"total_refunded_amount":{"value":"99.00","currency_code":"USD"}},"links":[{"rel":"up","href":"https://api.paypal.com/v2/payments/captures/CAP1"}]}`, r.Header.Get("PayPal-Request-Id"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -251,7 +252,7 @@ func TestPayPalWebhookRefunded(t *testing.T) {
 	svc, db := paypalWebhookSvc(t, "SUCCESS")
 	ctx := context.Background()
 	seedPaidPayPal(t, db, "ORD-PP", 9900, "CAP1")
-	body := []byte(`{"id":"EVT2","event_type":"PAYMENT.CAPTURE.REFUNDED","resource":{"id":"RF9","amount":{"value":"99.00","currency_code":"USD"},"links":[{"rel":"up","href":"https://api/v2/payments/captures/CAP1"}]}}`)
+	body := []byte(`{"id":"EVT2","event_type":"PAYMENT.CAPTURE.REFUNDED","resource":{"id":"RF9","seller_payable_breakdown":{"total_refunded_amount":{"value":"99.00","currency_code":"USD"}},"amount":{"value":"99.00","currency_code":"USD"},"links":[{"rel":"up","href":"https://api/v2/payments/captures/CAP1"}]}}`)
 
 	if err := svc.HandlePayPalWebhook(ctx, body, http.Header{}); err != nil {
 		t.Fatalf("REFUNDED 应处理: %v", err)

@@ -165,6 +165,14 @@ func (h *HTTP) getOrder(w http.ResponseWriter, r *http.Request) {
 		}
 		receipts = append(receipts, map[string]any{"provider": p.Provider, "reference": ref, "currency": p.Currency, "amount_cents": p.AmountCents, "refunded_cents": p.RefundedCents, "review_reason": p.ReviewReason, "source": p.Source, "created_at": p.CreatedAt})
 	}
+	requests := make([]map[string]any, 0, len(o.RefundRequests))
+	for _, rr := range o.RefundRequests {
+		payRef, gatewayRef := rr.PaymentRef, rr.GatewayRef
+		if orderCustomerDataHidden(r) {
+			payRef, gatewayRef = "已隐藏", "已隐藏"
+		}
+		requests = append(requests, map[string]any{"public_id": rr.ID, "provider": rr.Provider, "payment_ref": payRef, "gateway_ref": gatewayRef, "currency": rr.Currency, "amount_cents": rr.AmountCents, "state": rr.State, "reason": rr.Reason, "created_at": rr.CreatedAt})
+	}
 	email, shipName, shipPhone, shipAddress := o.Email, o.ShipName, o.ShipPhone, o.ShipAddress
 	trackingNumber, trackingURL := o.TrackingNumber, o.TrackingURL
 	if orderCustomerDataHidden(r) {
@@ -177,7 +185,7 @@ func (h *HTTP) getOrder(w http.ResponseWriter, r *http.Request) {
 		"currency": o.Currency, "subtotal_cents": o.SubtotalCents, "total_cents": o.TotalCents,
 		"shipping_cents": o.ShippingCents, "shipping_rule_name": o.ShippingRuleName, "tracking_carrier": o.TrackingCarrier, "tracking_number": trackingNumber, "tracking_url": trackingURL,
 		"payment_provider": o.PaymentProvider, "created_at": o.CreatedAt,
-		"lines": lines, "refunds": refunds, "receipts": receipts,
+		"lines": lines, "refunds": refunds, "receipts": receipts, "refund_requests": requests,
 		"payment_status": o.PaymentStatus, "fulfillment_status": o.FulfillmentStatus, "paid_cents": o.PaidCents, "refunded_cents": o.RefundedCents, "payment_review": o.PaymentReview,
 	})
 }
@@ -225,7 +233,7 @@ func (h *HTTP) fulfillOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.orders.Fulfill(r.Context(), r.PathValue("id"), req.Carrier, req.TrackingNumber, req.TrackingURL); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeErr(w, 409, "订单当前状态不可发货（仅已付款订单可发货）")
+			writeErr(w, 409, "订单当前不可发货：需已付款且没有待处理退款")
 		} else {
 			writeErr(w, 400, "发货信息无效")
 		}

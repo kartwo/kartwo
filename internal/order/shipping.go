@@ -132,7 +132,7 @@ func (s *Service) Fulfill(ctx context.Context, id, carrier, number, link string)
 		return e
 	}
 	defer func() { _ = tx.Rollback() }()
-	r, e := tx.ExecContext(ctx, "UPDATE \"order\" SET status='fulfilled',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id=? AND status='paid'", id)
+	r, e := tx.ExecContext(ctx, "UPDATE \"order\" SET status='fulfilled',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id=? AND status='paid' AND NOT EXISTS(SELECT 1 FROM refund_request rr WHERE rr.order_id=\"order\".id AND rr.state IN ('prepared','pending','review'))", id)
 	if e != nil {
 		return e
 	}

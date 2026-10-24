@@ -169,6 +169,8 @@ export const api = {
   },
   getOrder: (id) => request('GET', '/orders/' + id),
   refundOrder: (id) => request('POST', '/orders/' + id + '/refund'),
+  createRefund: (id, payload) => request('POST', '/orders/' + encodeURIComponent(id) + '/refunds', payload),
+  refreshRefund: (id, refund, gatewayRef = '') => request('POST', '/orders/' + encodeURIComponent(id) + '/refunds/' + encodeURIComponent(refund) + '/refresh', { gateway_ref: gatewayRef }),
   fulfillOrder: (id, payload) => request('POST', '/orders/' + id + '/fulfill', payload),
 
   listMedia: (productId) => request('GET', '/products/' + productId + '/media'),

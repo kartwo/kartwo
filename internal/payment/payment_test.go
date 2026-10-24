@@ -362,11 +362,7 @@ func TestRefundHappyPathAndBlocksDouble(t *testing.T) {
 	svc, db, _ := newTestSvc(t)
 	ctx := context.Background()
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/refunds" {
-			_, _ = w.Write([]byte(`{"id":"re_test_1","status":"succeeded"}`))
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
+		successfulStripeRefund(w, r, "re_test_1", "pi_123", 2500)
 	}))
 	defer ts.Close()
 	svc.stripe.apiBase = ts.URL
@@ -632,8 +628,8 @@ func TestStripeVersionHeaderPinned(t *testing.T) {
 			}
 			checkoutExpiry <- expiry
 			_, _ = w.Write([]byte(`{"id":"cs_test_1","url":"https://checkout.stripe.test/x"}`))
-		case "/v1/refunds":
-			_, _ = w.Write([]byte(`{"id":"re_test_1","status":"succeeded"}`))
+		case "/v1/refunds", "/v1/charges/ch-test":
+			successfulStripeRefund(w, r, "re_test_1", "pi_test", 2500)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -649,7 +645,7 @@ func TestStripeVersionHeaderPinned(t *testing.T) {
 		t.Fatalf("CreatePayment 应成功: %v", err)
 	}
 	// 出站请求二：退款（直接调 provider，绕过订单状态编排）。
-	if _, err := svc.stripe.Refund(ctx, "pi_test", 2500); err != nil {
+	if _, err := svc.stripe.submitRefund(ctx, refundAttempt{RefundResult: RefundResult{ID: "refund-version-test", AmountCents: 2500}, PaymentRef: "pi_test"}); err != nil {
 		t.Fatalf("Refund 应成功: %v", err)
 	}
 
@@ -659,7 +655,7 @@ func TestStripeVersionHeaderPinned(t *testing.T) {
 	if expiry := <-checkoutExpiry; expiry != "1700001800" {
 		t.Fatalf("Stripe 收银会话应在 30 分钟后过期，实际 %q", expiry)
 	}
-	for _, path := range []string{"/v1/checkout/sessions", "/v1/refunds"} {
+	for _, path := range []string{"/v1/checkout/sessions", "/v1/refunds", "/v1/charges/ch-test"} {
 		got, ok := seen[path]
 		if !ok {
 			t.Fatalf("未捕获到 %s 的出站请求", path)

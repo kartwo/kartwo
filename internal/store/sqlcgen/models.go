@@ -344,6 +344,28 @@ type Refund struct {
 	CreatedAt        string `db:"created_at" json:"created_at"`
 }
 
+type RefundRequest struct {
+	ID                   int64  `db:"id" json:"id"`
+	PublicID             string `db:"public_id" json:"public_id"`
+	ClientKey            string `db:"client_key" json:"client_key"`
+	OrderID              int64  `db:"order_id" json:"order_id"`
+	ReceiptID            int64  `db:"receipt_id" json:"receipt_id"`
+	Provider             string `db:"provider" json:"provider"`
+	PaymentRef           string `db:"payment_ref" json:"payment_ref"`
+	AmountCents          int64  `db:"amount_cents" json:"amount_cents"`
+	Currency             string `db:"currency" json:"currency"`
+	InitialRefundedCents int64  `db:"initial_refunded_cents" json:"initial_refunded_cents"`
+	ConfigFingerprint    string `db:"config_fingerprint" json:"config_fingerprint"`
+	State                string `db:"state" json:"state"`
+	GatewayRef           string `db:"gateway_ref" json:"gateway_ref"`
+	Reason               string `db:"reason" json:"reason"`
+	FirstSentAt          int64  `db:"first_sent_at" json:"first_sent_at"`
+	LeaseToken           string `db:"lease_token" json:"lease_token"`
+	LeaseUntil           int64  `db:"lease_until" json:"lease_until"`
+	CreatedAt            string `db:"created_at" json:"created_at"`
+	UpdatedAt            string `db:"updated_at" json:"updated_at"`
+}
+
 type Session struct {
 	ID        int64  `db:"id" json:"id"`
 	Token     string `db:"token" json:"token"`

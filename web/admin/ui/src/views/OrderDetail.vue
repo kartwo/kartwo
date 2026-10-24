@@ -1,10 +1,17 @@
-<!-- 订单详情 + 退款 / Order Detail & Refund. 作者：仗键天涯(daxing) 3442535897@qq.com -->
+<!--
+订单详情与退款 / Order Detail & Refund
+功能：展示收款与履约记录，按付款及金额退款并继续核对未确认请求
+作者：仗键天涯(daxing)
+邮箱：3442535897@qq.com
+时间：2026-10-24 23:40:00
+-->
 <script setup>
 import { ref, computed, onMounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, APIError } from '../api.js'
 import { useToast } from '../toast.js'
 import { confirm } from '../confirm.js'
+import { refundCents } from '../refund-amount.js'
 import ErrorState from '../components/ErrorState.vue'
 
 const route = useRoute()
@@ -17,8 +24,23 @@ const o = ref(null)
 const err = ref('') // 仅页级：订单加载失败 / 404「订单不存在」的常驻错误（D2 保留 inline）
 const busy = ref(false)
 const shipment = ref({ carrier:'', tracking_number:'', tracking_url:'' })
-const canRefund = computed(() => o.value && ['paid','fulfilled','payment_review'].includes(o.value.status)
-  && !o.value.refunded_cents && !(o.value.receipts || []).some(p => p.review_reason === 'duplicate_payment' && p.refunded_cents < p.amount_cents))
+const selectedPayment = ref('')
+const refundAmount = ref('')
+const requestKey = ref('')
+const reconciliation = ref({})
+const refundable = computed(() => (o.value?.receipts || []).filter(p => p.refunded_cents < p.amount_cents && p.review_reason !== 'legacy_refund'))
+const selectedReceipt = computed(() => refundable.value.find(p => `${p.provider}:${p.reference}` === selectedPayment.value))
+function refundState(state) {
+  return { prepared:'待提交', pending:'处理中', succeeded:'已成功', failed:'未成功', review:'待核对' }[state] || state
+}
+function refundReason(reason) {
+  return { gateway_unconfirmed:'尚未确认网关结果，请继续原请求。', gateway_pending:'支付平台正在处理。', unknown_result:'请在支付平台找到这笔退款的编号，填写后核对。', result_mismatch:'返回信息不一致，请核对支付平台退款记录。', rejected:'支付平台拒绝了退款参数，请核对可退余额。', gateway_failed:'支付平台确认本次退款未成功。' }[reason] || ''
+}
+function choosePayment() {
+  const p = selectedReceipt.value
+  refundAmount.value = p ? ((p.amount_cents - p.refunded_cents) / 100).toFixed(2) : ''
+  requestKey.value = ''
+}
 function reviewText(reason) {
   return { late_payment:'超时到账', duplicate_payment:'重复付款', legacy_refund:'历史退款待核对' }[reason] || '正常收款'
 }
@@ -42,18 +64,34 @@ async function load() {
 
 async function refund() {
   if (busy.value) return
-  const ok = await confirm({
-    title: '确认退款',
-    message: '确认对该订单整单全额退款？此操作不可撤销。',
-    confirmText: '退款', danger: true,
-  })
-  if (!ok) return
+  const p = selectedReceipt.value
+  const amount = refundCents(refundAmount.value)
+  if (!p || amount === null || amount > p.amount_cents - p.refunded_cents) {
+    toast.error('请选择付款，并填写不超过可退余额的金额（最多两位小数）。'); return
+  }
+  const ok = await confirm({ title:'确认退款', message:`向 ${p.provider} 付款 ${p.reference} 退回 ${money(amount, p.currency)}？请核对付款和金额。`, confirmText:'提交退款', danger:true })
+  if (!ok || busy.value) return
+  busy.value = true
+  if (!requestKey.value) requestKey.value = crypto.randomUUID()
+  try {
+    const result = await api.createRefund(route.params.id, { request_key:requestKey.value, provider:p.provider, payment_ref:p.reference, amount_cents:amount, expected_refunded_cents:p.refunded_cents })
+    toast.success(`退款请求：${refundState(result.state)}。请查看下方处理记录。`)
+    requestKey.value = ''
+    await load()
+    selectedPayment.value = ''; refundAmount.value = ''
+  } catch (e) {
+    if (e instanceof APIError && e.status === 401) return onUnauthorized()
+    toast.error(e.message)
+    await load()
+  } finally { busy.value = false }
+}
+async function refreshRefund(r) {
+  if (busy.value) return
   busy.value = true
   try {
-    const r = await api.refundOrder(route.params.id)
-    o.value.status = r.status || 'refunded'
+    const result = await api.refreshRefund(route.params.id, r.public_id, reconciliation.value[r.public_id] || '')
+    toast.success(`退款请求：${refundState(result.state)}`)
     await load()
-    toast.success('退款结果已同步，请核对收款与退款记录。')
   } catch (e) {
     if (e instanceof APIError && e.status === 401) return onUnauthorized()
     toast.error(e.message)
@@ -83,7 +121,7 @@ onMounted(load)
       </div>
 	  <div v-if="o.payment_review || o.status === 'payment_review'" class="panel payment-warning">
 	    <strong>收款需要核对，请勿继续发货。</strong>
-	    <p>请检查下方每笔收款记录。超时到账、重复付款或历史退款需要分别核对；重复付款请按对应交易在支付平台处理，避免退错正常付款。</p>
+	    <p>请检查下方每笔收款记录。超时到账、重复付款或历史退款需要分别核对；重复付款请选中对应交易办理退款，避免退错正常付款。</p>
 	  </div>
 
       <template v-if="o.receipts?.length">
@@ -120,18 +158,45 @@ onMounted(load)
       </template>
 
       <div class="spacer"></div>
-      <div v-if="o.status === 'paid' && (accountRole !== 'staff' || accountPermissions.includes('orders.fulfill'))" class="panel"><h3>发货与追踪</h3><input v-model="shipment.carrier" placeholder="承运商，例如 DHL"/><input v-model="shipment.tracking_number" placeholder="运单号"/><input v-model="shipment.tracking_url" placeholder="追踪链接（可选，https://）"/><button class="primary" :disabled="busy" @click="fulfill">确认发货</button></div>
-      <button v-if="canRefund && accountRole !== 'staff'" class="danger" :disabled="busy" @click="refund">
-        {{ busy ? '退款中…' : '整单全额退款' }}
-      </button>
-      <p v-else-if="o.status === 'refunded'" class="muted">该订单已退款。</p>
-      <p v-else-if="accountRole === 'staff'" class="muted">退款仅限店主操作。</p>
-      <p v-else class="muted">当前无法整单退款。部分退款或重复收款请按上方交易在支付平台核对处理。</p>
+      <div v-if="o.status === 'paid' && !(o.refund_requests || []).some(r => ['prepared','pending','review'].includes(r.state)) && (accountRole !== 'staff' || accountPermissions.includes('orders.fulfill'))" class="panel"><h3>发货与追踪</h3><input v-model="shipment.carrier" placeholder="承运商，例如 DHL"/><input v-model="shipment.tracking_number" placeholder="运单号"/><input v-model="shipment.tracking_url" placeholder="追踪链接（可选，https://）"/><button class="primary" :disabled="busy" @click="fulfill">确认发货</button></div>
+      <section v-if="accountRole === 'owner' && refundable.length" class="panel refund-panel">
+        <h3>按付款退款</h3>
+        <label for="refund-payment">选择付款</label>
+        <select id="refund-payment" v-model="selectedPayment" :disabled="busy" @change="choosePayment">
+          <option value="">请选择要退款的付款</option>
+          <option v-for="p in refundable" :key="`${p.provider}:${p.reference}`" :value="`${p.provider}:${p.reference}`">
+            {{ p.provider }} · {{ p.reference }} · 可退 {{ money(p.amount_cents - p.refunded_cents, p.currency) }} · {{ reviewText(p.review_reason) }}
+          </option>
+        </select>
+        <label for="refund-amount">退款金额 {{ selectedReceipt?.currency || '' }}</label>
+        <input id="refund-amount" v-model="refundAmount" :disabled="busy" inputmode="decimal" maxlength="24" placeholder="例如 10.00" @input="requestKey = ''" />
+        <p class="muted">退款不会自动补回库存；已发货订单的运单会保留。</p>
+        <button class="danger" :disabled="busy || !selectedReceipt" @click="refund">{{ busy ? '处理中…' : '提交退款' }}</button>
+      </section>
+      <section v-if="o.refund_requests?.length" class="panel refund-panel">
+        <h3>退款请求</h3>
+        <article v-for="r in o.refund_requests" :key="r.public_id" class="refund-request">
+          <strong>{{ money(r.amount_cents, r.currency) }} · {{ r.provider }} · {{ refundState(r.state) }}</strong>
+          <p class="muted">{{ r.payment_ref }} · {{ r.created_at }}</p>
+          <p v-if="accountRole === 'owner'" class="muted">请求编号：{{ r.public_id }}<template v-if="r.gateway_ref"> · 支付平台退款编号：{{ r.gateway_ref }}</template></p>
+          <p v-if="r.reason">{{ refundReason(r.reason) }}</p>
+          <template v-if="accountRole === 'owner' && ['prepared','pending','review'].includes(r.state)">
+            <label v-if="r.state === 'review' && !r.gateway_ref">
+              支付平台退款编号
+              <input v-model="reconciliation[r.public_id]" :disabled="busy" placeholder="从这笔退款的支付平台记录中复制" />
+            </label>
+            <button :disabled="busy" @click="refreshRefund(r)">继续处理 / 核对结果</button>
+          </template>
+        </article>
+      </section>
+      <p v-if="accountRole === 'staff'" class="muted">退款仅限店主操作。</p>
     </template>
   </div>
 </template>
 
 <style scoped>
+.refund-panel{margin-top:var(--sp-3)}
+.refund-request{padding:var(--sp-3) 0;border-bottom:1px solid var(--border)}
 .lines{width:100%;border-collapse:collapse;margin:.5rem 0 1rem}
 .lines th,.lines td{text-align:left;padding:.4rem .6rem;border-bottom:1px solid var(--border)}
 .lines th{font-size:var(--fs-sm);color:var(--text-muted)}

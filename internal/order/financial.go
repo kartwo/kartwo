@@ -56,3 +56,26 @@ func (s *Service) loadFinancials(ctx context.Context, orderID int64, out *Order)
 	}
 	return nil
 }
+
+// RefundRequestView exposes saved intentions and status, separately from
+// completed refund transactions. Internal row IDs and credentials stay private.
+type RefundRequestView struct {
+	ID, Provider, PaymentRef, Currency, State, GatewayRef, Reason, CreatedAt string
+	AmountCents                                                              int64
+}
+
+func (s *Service) loadRefundRequests(ctx context.Context, orderID int64, out *Order) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT public_id,provider,payment_ref,currency,state,gateway_ref,reason,created_at,amount_cents FROM refund_request WHERE order_id=? ORDER BY id DESC`, orderID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var r RefundRequestView
+		if err := rows.Scan(&r.ID, &r.Provider, &r.PaymentRef, &r.Currency, &r.State, &r.GatewayRef, &r.Reason, &r.CreatedAt, &r.AmountCents); err != nil {
+			return err
+		}
+		out.RefundRequests = append(out.RefundRequests, r)
+	}
+	return rows.Err()
+}

@@ -33,6 +33,7 @@ function describe(event) {
     'market.settings_update': '更新市场设置',
     'smtp.settings_update': '更新邮件设置',
     'order.refund': '退款订单',
+    'order.refund_requested': '提交退款请求',
     'order.export': '导出订单 CSV',
     'media.upload': '上传商品图片',
     'media.delete': '删除商品图片',

@@ -7,7 +7,6 @@ package payment
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -213,50 +212,6 @@ func (p *StripeProvider) VerifyWebhook(payload []byte, sigHeader string) (Webhoo
 		RefundedCents: ev.Data.Object.AmountRefunded,
 		Currency:      ev.Data.Object.Currency,
 	}, nil
-}
-
-// Refund 整数分退款：POST /v1/refunds {payment_intent, amount}。退到 payment_intent（非 session）。
-func (p *StripeProvider) Refund(ctx context.Context, paymentIntent string, amountCents int64) (string, error) {
-	secret, ok := p.keys.secretKey()
-	if !ok {
-		return "", ErrLocked
-	}
-	if paymentIntent == "" {
-		return "", fmt.Errorf("payment: 缺支付引用(payment_intent)，无法退款")
-	}
-	form := url.Values{}
-	form.Set("payment_intent", paymentIntent)
-	form.Set("amount", strconv.FormatInt(amountCents, 10))
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.apiBase+"/v1/refunds", strings.NewReader(form.Encode()))
-	if err != nil {
-		return "", fmt.Errorf("payment: 构造 Stripe 退款请求失败: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+secret)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Stripe-Version", stripeAPIVersion)
-	req.Header.Set("Idempotency-Key", fmt.Sprintf("refund-full-%x", sha256.Sum256([]byte(paymentIntent))))
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("payment: 调用 Stripe 退款失败: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("payment: Stripe 退款失败 (%d): %s", resp.StatusCode, stripeErrMsg(body))
-	}
-	var out struct {
-		ID     string `json:"id"`
-		Status string `json:"status"`
-	}
-	if err := json.Unmarshal(body, &out); err != nil || out.ID == "" {
-		return "", fmt.Errorf("payment: 解析 Stripe 退款响应失败")
-	}
-	if out.Status != "succeeded" {
-		return "", ErrRefundUnconfirmed
-	}
-	return out.ID, nil
 }
 
 // stripeErrMsg 从 Stripe 错误响应里抽人话消息（失败则返回原文截断）。
