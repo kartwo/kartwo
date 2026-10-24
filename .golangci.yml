@@ -30,3 +30,52 @@ linters:
         text: "G101"
         linters:
           - gosec
+      # G120 未识别紧邻 ParseMultipartForm 之前的 MaxBytesReader；四处已有请求体硬上限。
+      - path: internal/admin/(blog|imports|media|shop)\.go
+        source: 'if err := r\.ParseMultipartForm\((4|5) << 20\);'
+        text: "G120:"
+        linters:
+          - gosec
+      # Secure 由 secureFor 校验 TLS/可信代理；CSRF Cookie 须供 SPA 读取，session 仍 HttpOnly。
+      # 既有 Cookie TLS/明文回归测试覆盖此部署兼容策略，仅豁免这些具体 SetCookie 调用。
+      - path: internal/(admin/http|storefront/cart_http|storefront/checkout_http)\.go
+        source: 'http\.SetCookie\(w, &http\.Cookie'
+        text: "G124:"
+        linters:
+          - gosec
+      # 路径先加根斜杠再 Clean，消除 .. 后 Join 到媒体根；Stat 仅拒绝目录，文件由 http.Dir 托管。
+      - path: internal/server/server\.go
+        source: 'os\.Stat\(filepath\.Join\(root, filepath\.Clean\("/"\+r\.URL\.Path\)\)\)'
+        text: "G703:"
+        linters:
+          - gosec
+      # 跳转地址来自服务端支付提供者的 HTTPS API 响应，非顾客提交的 return URL。
+      - path: internal/storefront/checkout_http\.go
+        source: 'http\.Redirect\(w, r, url, http\.StatusSeeOther\)'
+        text: "G710:"
+        linters:
+          - gosec
+      # 固定 /order/ 前缀与数据库订单 UUID 拼接，始终为站内路径。
+      - path: internal/storefront/checkout_http\.go
+        source: 'http\.Redirect\(w, r, "/order/"\+(publicID|orderRef)'
+        text: "G710:"
+        linters:
+          - gosec
+      # HTTPS 跳转仅在请求 Host 匹配配置域名时发生，目标域名来自服务配置。
+      - path: internal/server/tls\.go
+        source: 'http\.Redirect\(w, r, "https://"\+domain\+r\.URL\.RequestURI\(\)'
+        text: "G710:"
+        linters:
+          - gosec
+      # Shopify 旧链接仅跳固定 /p/ 前缀与数据库商品 slug，查询串附加在路径之后。
+      - path: internal/storefront/http\.go
+        source: 'http\.Redirect\(w, r, target, http\.StatusMovedPermanently\)'
+        text: "G710:"
+        linters:
+          - gosec
+      # robots.txt 显式 text/plain；统一中间件设置 nosniff，不作为 HTML 执行。
+      - path: internal/storefront/http\.go
+        source: 'fmt\.Fprintf\(w, "User-agent:'
+        text: "G705:"
+        linters:
+          - gosec

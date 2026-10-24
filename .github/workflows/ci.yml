@@ -13,10 +13,10 @@ on:
 
 # 钉死版本，不用浮动 latest（与 go.mod 一致）。
 env:
-  GO_VERSION: "1.26.10"
+  GO_VERSION: "1.27.3"
   NODE_VERSION: "24"
   SQLC_VERSION: "1.30.0"
-  GOLANGCI_LINT_VERSION: "v2.5.0"
+  GOLANGCI_LINT_VERSION: "v2.15.0"
   GOVULNCHECK_VERSION: "v1.1.4"
   GITLEAKS_VERSION: "v8.30.1"
 
