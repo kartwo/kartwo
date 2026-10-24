@@ -48,6 +48,20 @@ func newRefundServer(t *testing.T) (*refundServer, *httptest.Server) {
 				total += row.Amount
 			}
 		}
+		if r.URL.Path == "/v1/payment_intents/pi-refund" {
+			f.mu.Unlock()
+			_, _ = w.Write([]byte(`{"id":"pi-refund","currency":"usd","amount_received":2500,"status":"succeeded"}`))
+			return
+		}
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/refunds" {
+			data := make([]map[string]any, 0, len(f.records))
+			for _, row := range f.records {
+				data = append(data, map[string]any{"id": row.ID, "amount": row.Amount, "currency": "usd", "payment_intent": "pi-refund", "charge": "ch-refund", "status": row.State, "metadata": map[string]string{"kartwo_refund_id": row.Key}})
+			}
+			f.mu.Unlock()
+			_ = json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": data, "has_more": false})
+			return
+		}
 		if r.URL.Path == "/v1/charges/ch-refund" {
 			f.mu.Unlock()
 			_, _ = fmt.Fprintf(w, `{"id":"ch-refund","payment_intent":"pi-refund","currency":"usd","amount_refunded":%d}`, total)
@@ -437,6 +451,9 @@ func TestRefundRequestConfigurationChangeStopsRecovery(t *testing.T) {
 	}
 	if _, err := svc.RetryRefund(context.Background(), "config-refund", first.ID, ""); err != ErrPaymentConfigChanged {
 		t.Fatalf("changed credentials used: %v", err)
+	}
+	if _, err := svc.ReconcileRefunds(context.Background(), "config-refund", "stripe", "pi-refund"); err != ErrPaymentConfigChanged {
+		t.Fatalf("reconciliation used changed credentials: %v", err)
 	}
 	if posts, _ := f.counts(); posts != 1 {
 		t.Fatal("called gateway with changed credentials")

@@ -77,3 +77,33 @@ func (h *HTTP) refundRequestResponse(w http.ResponseWriter, r *http.Request, res
 	}
 	writeJSON(w, status, result)
 }
+
+// Reconciliation changes the local financial ledger, so it uses the same owner
+// and CSRF boundary as refunds even though provider requests are read-only.
+func (h *HTTP) reconcileRefunds(w http.ResponseWriter, r *http.Request) {
+	svc, ok := h.pay.(interface {
+		ReconcileRefunds(context.Context, string, string, string) (payment.RefundCheckResult, error)
+	})
+	if !ok {
+		writeErr(w, 503, "退款核对服务未就绪")
+		return
+	}
+	var in struct {
+		Provider   string `json:"provider"`
+		PaymentRef string `json:"payment_ref"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	result, err := svc.ReconcileRefunds(r.Context(), r.PathValue("id"), in.Provider, in.PaymentRef)
+	if err != nil {
+		if errors.Is(err, payment.ErrRefundUnconfirmed) {
+			writeErr(w, 409, "平台记录尚不完整或无法确认，请稍后重试并核对支付平台记录")
+			return
+		}
+		h.refundRequestResponse(w, r, payment.RefundResult{}, err)
+		return
+	}
+	h.recordAudit(r, authFrom(r.Context()).AdminID, "order.refund_reconciled", "order", r.PathValue("id"))
+	writeJSON(w, http.StatusOK, result)
+}

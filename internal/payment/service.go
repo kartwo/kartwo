@@ -119,6 +119,9 @@ func (s *Service) HandleWebhook(ctx context.Context, payload []byte, sigHeader s
 		}
 		return s.markPaid(ctx, "stripe", ev)
 	case "charge.refunded":
+		if handled, err := s.syncTrackedRefundEvent(ctx, "stripe", ev); handled || err != nil {
+			return err
+		}
 		return s.markRefundedFromWebhook(ctx, "stripe", ev)
 	case "refund.created", "refund.updated", "refund.failed":
 		return s.handleRefundStatus(ctx, "stripe", ev)

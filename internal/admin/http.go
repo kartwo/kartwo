@@ -234,6 +234,7 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("GET /admin/api/orders/{id}", protect(h.getOrder))
 	mux.Handle("POST /admin/api/orders/{id}/refund", owner(h.refundOrder))
 	mux.Handle("POST /admin/api/orders/{id}/refunds", owner(h.createRefundRequest))
+	mux.Handle("POST /admin/api/orders/{id}/refund-check", owner(h.reconcileRefunds))
 	mux.Handle("POST /admin/api/orders/{id}/refunds/{refund}/refresh", owner(h.retryRefundRequest))
 	mux.Handle("POST /admin/api/orders/{id}/fulfill", owner(h.fulfillOrder))
 	mux.Handle("GET /admin/api/settings/shipping/countries", protect(h.listShippingCountries))

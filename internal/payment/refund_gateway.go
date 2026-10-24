@@ -116,7 +116,7 @@ func (p *StripeProvider) lookupRefund(ctx context.Context, id string) (gatewayRe
 	}
 	return result, err
 }
-func (p *StripeProvider) decodeRefund(ctx context.Context, raw []byte) (gatewayRefund, error) {
+func parseStripeRefund(raw []byte) (gatewayRefund, string, error) {
 	var data struct {
 		ID, Status, Currency, Charge string
 		PaymentRef                   string `json:"payment_intent"`
@@ -126,11 +126,11 @@ func (p *StripeProvider) decodeRefund(ctx context.Context, raw []byte) (gatewayR
 		}
 	}
 	if err := json.Unmarshal(raw, &data); err != nil {
-		return gatewayRefund{}, err
+		return gatewayRefund{}, "", err
 	}
 	r := gatewayRefund{ID: data.ID, PaymentRef: data.PaymentRef, Currency: data.Currency, Amount: data.Amount, RequestID: data.Metadata.RequestID, State: "pending"}
 	if r.ID == "" || r.PaymentRef == "" || r.Amount <= 0 || r.Currency == "" {
-		return r, ErrMismatch
+		return r, "", ErrMismatch
 	}
 	switch data.Status {
 	case "succeeded":
@@ -139,15 +139,23 @@ func (p *StripeProvider) decodeRefund(ctx context.Context, raw []byte) (gatewayR
 		r.State = "failed"
 	case "pending", "requires_action":
 	default:
-		return r, ErrRefundUnconfirmed
+		return r, "", ErrRefundUnconfirmed
+	}
+	return r, data.Charge, nil
+}
+
+func (p *StripeProvider) decodeRefund(ctx context.Context, raw []byte) (gatewayRefund, error) {
+	r, chargeID, err := parseStripeRefund(raw)
+	if err != nil {
+		return r, err
 	}
 	if r.State != "succeeded" {
 		return r, nil
 	}
-	if !validRefundReference(data.Charge) {
+	if !validRefundReference(chargeID) {
 		return r, ErrMismatch
 	}
-	raw, err := p.refundHTTP(ctx, http.MethodGet, "/v1/charges/"+url.PathEscape(data.Charge), nil, "")
+	raw, err = p.refundHTTP(ctx, http.MethodGet, "/v1/charges/"+url.PathEscape(chargeID), nil, "")
 	if err != nil {
 		return r, err
 	}
@@ -156,7 +164,7 @@ func (p *StripeProvider) decodeRefund(ctx context.Context, raw []byte) (gatewayR
 		PaymentRef   string `json:"payment_intent"`
 		Refunded     int64  `json:"amount_refunded"`
 	}
-	if json.Unmarshal(raw, &charge) != nil || charge.ID != data.Charge || charge.PaymentRef != r.PaymentRef || !strings.EqualFold(charge.Currency, r.Currency) || charge.Refunded < r.Amount {
+	if json.Unmarshal(raw, &charge) != nil || charge.ID != chargeID || charge.PaymentRef != r.PaymentRef || !strings.EqualFold(charge.Currency, r.Currency) || charge.Refunded < r.Amount {
 		return r, ErrMismatch
 	}
 	r.TotalRefunded = charge.Refunded
@@ -245,6 +253,10 @@ func (p *PayPalProvider) lookupRefund(ctx context.Context, id string) (gatewayRe
 	return r, err
 }
 func decodePayPalRefund(raw []byte) (gatewayRefund, error) {
+	return parsePayPalRefund(raw, true)
+}
+
+func parsePayPalRefund(raw []byte, requireTotal bool) (gatewayRefund, error) {
 	var data struct {
 		ID, Status string
 		CustomID   string `json:"custom_id"`
@@ -274,7 +286,7 @@ func decodePayPalRefund(raw []byte) (gatewayRefund, error) {
 	default:
 		return r, ErrRefundUnconfirmed
 	}
-	if r.State == "succeeded" {
+	if r.State == "succeeded" && requireTotal {
 		r.TotalRefunded, err = decimalToCents(data.Breakdown.Total.Value)
 		if err != nil || r.TotalRefunded < r.Amount || !strings.EqualFold(data.Breakdown.Total.Currency, r.Currency) {
 			return r, ErrMismatch

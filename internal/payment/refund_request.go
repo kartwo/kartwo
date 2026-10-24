@@ -206,7 +206,7 @@ func (s *Service) claimRefund(ctx context.Context, publicID string, in RefundInp
 
 func (s *Service) executeRefund(ctx context.Context, a refundAttempt) (RefundResult, error) {
 	if a.State == "succeeded" || a.State == "failed" || a.State == "review" {
-		return a.RefundResult, nil
+		return s.checkRefundAttempt(ctx, a, a.RefundResult)
 	}
 	gateway := s.refundGateway(a.Provider)
 	var result gatewayRefund
@@ -218,7 +218,11 @@ func (s *Service) executeRefund(ctx context.Context, a refundAttempt) (RefundRes
 	}
 	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	return s.saveRefundResult(saveCtx, a, result, err)
+	saved, saveErr := s.saveRefundResult(saveCtx, a, result, err)
+	if saveErr != nil {
+		return saved, saveErr
+	}
+	return s.checkRefundAttempt(ctx, a, saved)
 }
 
 func (s *Service) saveRefundResult(ctx context.Context, a refundAttempt, r gatewayRefund, callErr error) (RefundResult, error) {
@@ -276,7 +280,18 @@ func (s *Service) saveRefundResult(ctx context.Context, a refundAttempt, r gatew
 		if _, err := tx.ExecContext(ctx, `INSERT INTO refund(order_id,provider,provider_refund_id,amount_cents) VALUES(?,?,?,?) ON CONFLICT(provider,provider_refund_id) DO NOTHING`, a.OrderID, a.Provider, r.ID, r.Amount); err != nil {
 			return a.RefundResult, err
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE payment_receipt SET refunded_cents=MAX(refunded_cents,?),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`, r.TotalRefunded, p.ID); err != nil {
+		tracked, err := receiptUsesRefundChecks(ctx, tx, p.ID)
+		if err != nil {
+			return a.RefundResult, err
+		}
+		if tracked {
+			// Publish no cumulative amount after a correction. Hold this receipt
+			// until a complete inventory confirms the new refund and net balance.
+			_, err = tx.ExecContext(ctx, `INSERT INTO refund_reconciliation(public_id,receipt_id,provider,refund_ref,amount_cents,observed_state) VALUES(?,?,?,?,?,'succeeded') ON CONFLICT(provider,refund_ref) DO UPDATE SET state='open',observed_state='succeeded'`, uuid.Must(uuid.NewV7()).String(), p.ID, a.Provider, r.ID, r.Amount)
+		} else {
+			_, err = tx.ExecContext(ctx, `UPDATE payment_receipt SET refunded_cents=MAX(refunded_cents,?),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?`, r.TotalRefunded, p.ID)
+		}
+		if err != nil {
 			return a.RefundResult, err
 		}
 		if err := reconcileOrderFinancialStatus(ctx, tx, a.OrderID); err != nil {
@@ -322,4 +337,35 @@ func (s *Service) Refund(ctx context.Context, publicID string) error {
 		return nil
 	}
 	return ErrRefundUnconfirmed
+}
+
+// A receipt that has been corrected stays on full-inventory accounting for all
+// later refunds, including worker retries and requests recovered after a crash.
+func (s *Service) checkRefundAttempt(ctx context.Context, a refundAttempt, result RefundResult) (RefundResult, error) {
+	localCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	var tracked bool
+	if err := s.db.QueryRowContext(localCtx, `SELECT EXISTS(SELECT 1 FROM refund_check WHERE receipt_id=?)`, a.ReceiptID).Scan(&tracked); err != nil {
+		return result, err
+	}
+	if !tracked {
+		return result, nil
+	}
+	if ctx.Err() != nil {
+		result.State = "review"
+		result.Reason = "refund_status_changed"
+		result.Completed = false
+		return result, nil
+	}
+	var orderID string
+	if err := s.db.QueryRowContext(ctx, `SELECT public_id FROM "order" WHERE id=?`, a.OrderID).Scan(&orderID); err != nil {
+		return result, err
+	}
+	if _, err := s.ReconcileRefunds(ctx, orderID, a.Provider, a.PaymentRef); err != nil {
+		return result, err
+	}
+	current, err := scanRefund(s.db.QueryRowContext(ctx, `SELECT `+refundColumns+` FROM refund_request WHERE public_id=?`, a.ID))
+	current.Created = result.Created
+	current.Completed = result.Completed && current.State == "succeeded"
+	return current.RefundResult, err
 }

@@ -189,6 +189,11 @@ func (s *Service) markRefundedFromWebhook(ctx context.Context, provider string, 
 	} else if err != nil {
 		return err
 	}
+	if tracked, err := receiptUsesRefundChecks(ctx, tx, p.ID); err != nil {
+		return err
+	} else if tracked {
+		return ErrRefundBusy
+	}
 	if !strings.EqualFold(p.Currency, ev.Currency) {
 		return ErrMismatch
 	}

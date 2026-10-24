@@ -15,7 +15,7 @@ import (
 	"github.com/kartwo/kartwo/internal/payment"
 )
 
-type fakeRefundRequests struct{ calls, refreshes int }
+type fakeRefundRequests struct{ calls, refreshes, checks int }
 
 func (*fakeRefundRequests) Refund(context.Context, string) error { return nil }
 func (f *fakeRefundRequests) RequestRefund(_ context.Context, _ string, in payment.RefundInput) (payment.RefundResult, error) {
@@ -80,5 +80,55 @@ func TestHTTPRefundRequestsCSRFAndAudit(t *testing.T) {
 	}
 	if fake.calls != 2 {
 		t.Fatal("demo reached refund service")
+	}
+}
+
+func (f *fakeRefundRequests) ReconcileRefunds(context.Context, string, string, string) (payment.RefundCheckResult, error) {
+	f.checks++
+	return payment.RefundCheckResult{ID: "check-public", RefundedCents: 500}, nil
+}
+func TestHTTPRefundCheckCSRFAndAudit(t *testing.T) {
+	h, mux := newHTTP(t)
+	h.ConfigureDemo(DemoConfig{Enabled: true, SessionTTL: 45 * time.Minute, MaxProducts: 3, MaxImageBytes: 2 << 20, CleanupInterval: 5 * time.Minute})
+	fake := &fakeRefundRequests{}
+	h.pay = fake
+	sess, csrf := loginAndCookies(t, mux)
+	path := "/admin/api/orders/order-public/refund-check"
+	body := `{"provider":"stripe","payment_ref":"pi-public"}`
+	if r := doJSON(t, mux, "POST", path, body, nil, ""); r.StatusCode != 401 {
+		t.Fatal(r.StatusCode)
+	}
+	if r := doJSON(t, mux, "POST", path, body, []*http.Cookie{sess}, ""); r.StatusCode != 403 {
+		t.Fatal(r.StatusCode)
+	}
+	if fake.checks != 0 {
+		t.Fatal("unauthorized provider call")
+	}
+	if r := doJSON(t, mux, "POST", path, body, []*http.Cookie{sess}, csrf); r.StatusCode != 200 {
+		t.Fatal(r.StatusCode)
+	}
+	audits := doJSON(t, mux, "GET", "/admin/api/audit-events", "", []*http.Cookie{sess}, "")
+	if bytes.Count(audits.Body, []byte(`"action":"order.refund_reconciled"`)) != 1 {
+		t.Fatalf("no check audit: %s", audits.Body)
+	}
+	demo := doJSON(t, mux, "POST", "/admin/api/demo-session", "", nil, "")
+	var session *http.Cookie
+	var token string
+	for _, c := range demo.Cookies {
+		if c.Name == sessionCookie {
+			session = c
+		}
+		if c.Name == csrfCookie {
+			token = c.Value
+		}
+	}
+	if session == nil {
+		t.Fatal("no demo session")
+	}
+	if r := doJSON(t, mux, "POST", path, body, []*http.Cookie{session}, token); r.StatusCode != 403 {
+		t.Fatal(r.StatusCode)
+	}
+	if fake.checks != 1 {
+		t.Fatal("demo reached provider")
 	}
 }

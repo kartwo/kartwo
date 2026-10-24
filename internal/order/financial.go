@@ -11,6 +11,7 @@ import "context"
 // payment inferred from fulfillment. Reference is restricted by the admin API.
 type ReceiptView struct {
 	Provider, Reference, Currency, ReviewReason, Source, CreatedAt string
+	RefundCheckedAt                                                string
 	AmountCents, RefundedCents                                     int64
 	RefundReconciliationRequired                                   bool
 }
@@ -24,7 +25,7 @@ func (s *Service) loadFinancials(ctx context.Context, orderID int64, out *Order)
 	if shipped {
 		out.FulfillmentStatus = "fulfilled"
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT provider,payment_ref,currency,review_reason,source,created_at,amount_cents,refunded_cents,EXISTS(SELECT 1 FROM refund_reconciliation r WHERE r.receipt_id=payment_receipt.id AND r.state='open') FROM payment_receipt WHERE order_id=? ORDER BY id`, orderID)
+	rows, err := s.db.QueryContext(ctx, `SELECT provider,payment_ref,currency,review_reason,source,created_at,amount_cents,refunded_cents,EXISTS(SELECT 1 FROM refund_reconciliation r WHERE r.receipt_id=payment_receipt.id AND r.state='open') ,COALESCE((SELECT created_at FROM refund_check c WHERE c.receipt_id=payment_receipt.id ORDER BY id DESC LIMIT 1),'') FROM payment_receipt WHERE order_id=? ORDER BY id`, orderID)
 	if err != nil {
 		return err
 	}
@@ -32,7 +33,7 @@ func (s *Service) loadFinancials(ctx context.Context, orderID int64, out *Order)
 	out.PaymentStatus = "unrecorded"
 	for rows.Next() {
 		var p ReceiptView
-		if err := rows.Scan(&p.Provider, &p.Reference, &p.Currency, &p.ReviewReason, &p.Source, &p.CreatedAt, &p.AmountCents, &p.RefundedCents, &p.RefundReconciliationRequired); err != nil {
+		if err := rows.Scan(&p.Provider, &p.Reference, &p.Currency, &p.ReviewReason, &p.Source, &p.CreatedAt, &p.AmountCents, &p.RefundedCents, &p.RefundReconciliationRequired, &p.RefundCheckedAt); err != nil {
 			return err
 		}
 		out.Receipts = append(out.Receipts, p)
@@ -79,6 +80,23 @@ func (s *Service) loadRefundRequests(ctx context.Context, orderID int64, out *Or
 			return err
 		}
 		out.RefundRequests = append(out.RefundRequests, r)
+	}
+	return rows.Err()
+}
+
+func (s *Service) loadRefundStates(ctx context.Context, orderID int64, out *Order) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT r.provider,r.refund_ref,r.observed_state FROM refund_reconciliation r JOIN payment_receipt p ON p.id=r.receipt_id WHERE p.order_id=?`, orderID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	out.RefundStates = make(map[string]string)
+	for rows.Next() {
+		var provider, ref, state string
+		if err := rows.Scan(&provider, &ref, &state); err != nil {
+			return err
+		}
+		out.RefundStates[provider+":"+ref] = state
 	}
 	return rows.Err()
 }

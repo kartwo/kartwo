@@ -85,6 +85,18 @@ async function refund() {
     await load()
   } finally { busy.value = false }
 }
+async function checkRefunds(p) {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const result = await api.reconcileRefunds(route.params.id, p.provider, p.reference)
+    toast.success(result.pending ? '已核对金额，平台仍有处理中退款，请稍后继续核对。' : '已按支付平台记录校正退款金额。')
+    await load()
+  } catch (e) {
+    if (e instanceof APIError && e.status === 401) return onUnauthorized()
+    toast.error(e.message)
+  } finally { busy.value = false }
+}
 async function refreshRefund(r) {
   if (busy.value) return
   busy.value = true
@@ -133,7 +145,9 @@ onMounted(load)
             {{ p.provider }} · {{ money(p.amount_cents, p.currency) }} · 已退 {{ money(p.refunded_cents, p.currency) }}
             · {{ reviewText(p.review_reason) }}{{ p.source === 'legacy' ? '（历史记录）' : '' }}
             <p class="muted">{{ p.reference }}</p>
-            <p v-if="p.refund_reconciliation_required" class="payment-warning">平台退款状态与原记账结果不一致。以上为原记账金额，当前暂停继续退款与发货，需完成对账后确认。</p>
+            <button v-if="accountRole === 'owner'" :disabled="busy" @click="checkRefunds(p)">核对平台退款记录</button>
+            <p v-if="p.refund_checked_at" class="muted">最近核对：{{ p.refund_checked_at }}（只查询平台记录，不发起退款）</p>
+            <p v-if="p.refund_reconciliation_required" class="payment-warning">平台仍有待确认退款，或状态与原记账结果不一致。请核对平台退款记录；确认前暂停继续退款与发货。</p>
           </li>
         </ul>
       </template>
@@ -150,10 +164,11 @@ onMounted(load)
       </table>
 
       <template v-if="o.refunds && o.refunds.length">
-        <h3>退款记录</h3>
+        <h3>历史退款入账记录</h3>
+        <p class="muted">以下保留历史入账；平台后来失败的退款不再计入上方已退金额。当前结果请查看核对状态。</p>
         <ul>
           <li v-for="(rf, i) in o.refunds" :key="i" class="muted">
-            {{ money(rf.amount_cents, o.currency) }} · {{ rf.provider }} · {{ rf.provider_refund_id }} · {{ (rf.created_at || '').slice(0,19).replace('T',' ') }}
+            {{ money(rf.amount_cents, o.currency) }} · {{ rf.provider }} · {{ rf.provider_refund_id }} · {{ rf.observed_state ? refundState(rf.observed_state) : '待核对当前状态' }} · {{ (rf.created_at || '').slice(0,19).replace('T',' ') }}
           </li>
         </ul>
       </template>

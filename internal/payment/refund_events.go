@@ -45,6 +45,10 @@ func (s *Service) handleRefundStatus(ctx context.Context, provider string, ev We
 	if r.ID != ev.RefundRef || ev.PaymentRef != "" && r.PaymentRef != ev.PaymentRef || ev.AmountCents > 0 && r.Amount != ev.AmountCents || ev.Currency != "" && !strings.EqualFold(r.Currency, ev.Currency) {
 		return ErrMismatch
 	}
+	ev.PaymentRef = r.PaymentRef
+	if handled, err := s.syncTrackedRefundEvent(ctx, provider, ev); handled || err != nil {
+		return err
+	}
 	// Some event payloads omit metadata. The authenticated resource lookup can
 	// still identify a request whose original POST response was lost.
 	if !known && r.RequestID != "" {
@@ -112,6 +116,11 @@ func (s *Service) recordRefundObservation(ctx context.Context, provider string, 
 	}
 	if err != nil {
 		return err // Refund before receipt: roll back event deduplication for replay.
+	}
+	if tracked, err := receiptUsesRefundChecks(ctx, tx, p.ID); err != nil {
+		return err
+	} else if tracked {
+		return ErrRefundBusy
 	}
 	if r.Amount <= 0 || r.Amount > p.Amount || !strings.EqualFold(r.Currency, p.Currency) {
 		return ErrMismatch

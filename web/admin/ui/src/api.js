@@ -169,6 +169,7 @@ export const api = {
   },
   getOrder: (id) => request('GET', '/orders/' + id),
   refundOrder: (id) => request('POST', '/orders/' + id + '/refund'),
+  reconcileRefunds: (id, provider, paymentRef) => request('POST', '/orders/' + encodeURIComponent(id) + '/refund-check', { provider, payment_ref: paymentRef }),
   createRefund: (id, payload) => request('POST', '/orders/' + encodeURIComponent(id) + '/refunds', payload),
   refreshRefund: (id, refund, gatewayRef = '') => request('POST', '/orders/' + encodeURIComponent(id) + '/refunds/' + encodeURIComponent(refund) + '/refresh', { gateway_ref: gatewayRef }),
   fulfillOrder: (id, payload) => request('POST', '/orders/' + id + '/fulfill', payload),

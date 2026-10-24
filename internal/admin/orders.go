@@ -154,7 +154,7 @@ func (h *HTTP) getOrder(w http.ResponseWriter, r *http.Request) {
 		}
 		refunds = append(refunds, map[string]any{
 			"provider": rf.Provider, "provider_refund_id": providerRefundID,
-			"amount_cents": rf.AmountCents, "created_at": rf.CreatedAt,
+			"amount_cents": rf.AmountCents, "created_at": rf.CreatedAt, "observed_state": o.RefundStates[rf.Provider+":"+rf.ProviderRefundID],
 		})
 	}
 	receipts := make([]map[string]any, 0, len(o.Receipts))
@@ -163,7 +163,7 @@ func (h *HTTP) getOrder(w http.ResponseWriter, r *http.Request) {
 		if orderCustomerDataHidden(r) {
 			ref = "已隐藏"
 		}
-		receipts = append(receipts, map[string]any{"provider": p.Provider, "reference": ref, "refund_reconciliation_required": p.RefundReconciliationRequired, "currency": p.Currency, "amount_cents": p.AmountCents, "refunded_cents": p.RefundedCents, "review_reason": p.ReviewReason, "source": p.Source, "created_at": p.CreatedAt})
+		receipts = append(receipts, map[string]any{"provider": p.Provider, "reference": ref, "refund_reconciliation_required": p.RefundReconciliationRequired, "refund_checked_at": p.RefundCheckedAt, "currency": p.Currency, "amount_cents": p.AmountCents, "refunded_cents": p.RefundedCents, "review_reason": p.ReviewReason, "source": p.Source, "created_at": p.CreatedAt})
 	}
 	requests := make([]map[string]any, 0, len(o.RefundRequests))
 	for _, rr := range o.RefundRequests {

@@ -63,6 +63,7 @@ type OrderLine struct {
 
 // Order 订单视图。
 type Order struct {
+	RefundStates                     map[string]string
 	PublicID                         string
 	Status                           string
 	Email                            string
@@ -347,6 +348,9 @@ func (s *Service) AdminGet(ctx context.Context, publicID string) (*Order, error)
 	}
 	if err := s.loadFinancials(ctx, o.ID, out); err != nil {
 		return nil, fmt.Errorf("order: 读取资金视图: %w", err)
+	}
+	if err := s.loadRefundStates(ctx, o.ID, out); err != nil {
+		return nil, err
 	}
 	if err := s.loadRefundRequests(ctx, o.ID, out); err != nil {
 		return nil, err
