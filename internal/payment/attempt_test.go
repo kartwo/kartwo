@@ -215,7 +215,7 @@ func TestPayPalAttemptAndCaptureIdempotencyHeaders(t *testing.T) {
 				t.Error("capture key changed")
 			}
 			captureKey = key
-			_, _ = w.Write([]byte(`{"status":"COMPLETED","purchase_units":[{"payments":{"captures":[{"id":"CAP1","custom_id":"attempt-paypal","amount":{"currency_code":"USD","value":"25.00"}}]}}]}`))
+			_, _ = w.Write([]byte(`{"status":"COMPLETED","purchase_units":[{"payments":{"captures":[{"id":"CAP1","status":"COMPLETED","custom_id":"attempt-paypal","amount":{"currency_code":"USD","value":"25.00"}}]}}]}`))
 		default:
 			http.NotFound(w, r)
 		}

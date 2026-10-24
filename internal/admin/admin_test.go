@@ -1023,11 +1023,14 @@ func TestPublicDemoSessionEnforcesOwnershipQuotaAndOwnerOnlyRoutes(t *testing.T)
 			t.Fatalf("演示只读接口 %s 泄露订单隐私: %s", path, view.Body)
 		}
 	}
+	if _, err := h.svc.db.Exec(`INSERT INTO payment_receipt(order_id,provider,payment_ref,amount_cents,currency) SELECT id,'stripe','pi-private-reference',1000,'USD' FROM "order" WHERE public_id='demo-order-sensitive'`); err != nil {
+		t.Fatal(err)
+	}
 	orderView := doJSON(t, mux, http.MethodGet, "/admin/api/orders/demo-order-sensitive", "", demo, "")
 	if orderView.StatusCode != http.StatusOK || !bytes.Contains(orderView.Body, []byte("已隐藏")) {
 		t.Fatalf("演示订单详情应可查看且完成脱敏: %d %s", orderView.StatusCode, orderView.Body)
 	}
-	for _, private := range []string{"private@example.com", "Private Name", "123456789", "Private Address"} {
+	for _, private := range []string{"private@example.com", "Private Name", "123456789", "Private Address", "pi-private-reference"} {
 		if bytes.Contains(orderView.Body, []byte(private)) {
 			t.Fatalf("演示订单详情泄露隐私 %q: %s", private, orderView.Body)
 		}

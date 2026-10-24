@@ -4,8 +4,12 @@
 -- NOTE: ASCII-only comments here (sqlc v1.30 multibyte-span bug; see DECISIONS.md). All aggregation in SQL (no N+1).
 
 -- name: DashboardOrderWindow :one
--- Orders created at/after a boundary: total count (any status) + sales sum counting paid/fulfilled only (D6). Refunded orders leave paid/fulfilled so are fully excluded. CAST keeps sqlc types as int64.
-SELECT COUNT(*) AS order_count, CAST(COALESCE(SUM(CASE WHEN status IN ('paid', 'fulfilled') THEN total_cents ELSE 0 END), 0) AS INTEGER) AS sales_cents FROM "order" WHERE created_at >= ?;
+-- Net sales by order creation window. Exception payments are not sales.
+SELECT COUNT(*) AS order_count, CAST(COALESCE(SUM(CASE
+    WHEN EXISTS(SELECT 1 FROM payment_receipt p WHERE p.order_id=o.id)
+    THEN COALESCE((SELECT SUM(p.amount_cents-p.refunded_cents) FROM payment_receipt p WHERE p.order_id=o.id AND p.review_reason=''),0)
+    WHEN o.status IN ('paid','fulfilled') THEN o.total_cents ELSE 0 END),0) AS INTEGER) AS sales_cents
+FROM "order" o WHERE o.created_at >= ?;
 
 -- name: DashboardPendingFulfillment :one
 -- Backlog needing action: paid orders not yet fulfilled (D2). Not time-windowed.

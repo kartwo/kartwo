@@ -272,6 +272,29 @@ type PaymentAttempt struct {
 	UpdatedAt         string `db:"updated_at" json:"updated_at"`
 }
 
+type PaymentReceipt struct {
+	ID            int64  `db:"id" json:"id"`
+	OrderID       int64  `db:"order_id" json:"order_id"`
+	Provider      string `db:"provider" json:"provider"`
+	PaymentRef    string `db:"payment_ref" json:"payment_ref"`
+	AmountCents   int64  `db:"amount_cents" json:"amount_cents"`
+	Currency      string `db:"currency" json:"currency"`
+	RefundedCents int64  `db:"refunded_cents" json:"refunded_cents"`
+	ReviewReason  string `db:"review_reason" json:"review_reason"`
+	Source        string `db:"source" json:"source"`
+	CreatedAt     string `db:"created_at" json:"created_at"`
+	UpdatedAt     string `db:"updated_at" json:"updated_at"`
+}
+
+type PaymentRefund struct {
+	ID          int64  `db:"id" json:"id"`
+	ReceiptID   int64  `db:"receipt_id" json:"receipt_id"`
+	Provider    string `db:"provider" json:"provider"`
+	RefundRef   string `db:"refund_ref" json:"refund_ref"`
+	AmountCents int64  `db:"amount_cents" json:"amount_cents"`
+	CreatedAt   string `db:"created_at" json:"created_at"`
+}
+
 type Product struct {
 	ID               int64          `db:"id" json:"id"`
 	PublicID         string         `db:"public_id" json:"public_id"`

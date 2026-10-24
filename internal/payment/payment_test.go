@@ -39,8 +39,8 @@ func signStripe(secret string, ts int64, body []byte) string {
 
 func eventBody(id, ref, payStatus string, amount int64, currency string) []byte {
 	return []byte(fmt.Sprintf(
-		`{"id":%q,"type":"checkout.session.completed","data":{"object":{"client_reference_id":%q,"payment_status":%q,"amount_total":%d,"currency":%q}}}`,
-		id, ref, payStatus, amount, currency))
+		`{"id":%q,"type":"checkout.session.completed","data":{"object":{"client_reference_id":%q,"payment_status":%q,"amount_total":%d,"currency":%q,"payment_intent":%q}}}`,
+		id, ref, payStatus, amount, currency, "pi_"+ref))
 }
 
 // ---- 验签纯函数 ----
@@ -355,7 +355,7 @@ func refundCount(t *testing.T, db *sql.DB) int {
 }
 
 func chargeRefundedBody(id, paymentIntent string) []byte {
-	return []byte(fmt.Sprintf(`{"id":%q,"type":"charge.refunded","data":{"object":{"payment_intent":%q,"currency":"usd"}}}`, id, paymentIntent))
+	return []byte(fmt.Sprintf(`{"id":%q,"type":"charge.refunded","data":{"object":{"payment_intent":%q,"currency":"usd","amount":2500,"amount_refunded":2500}}}`, id, paymentIntent))
 }
 
 func TestRefundHappyPathAndBlocksDouble(t *testing.T) {
@@ -363,7 +363,7 @@ func TestRefundHappyPathAndBlocksDouble(t *testing.T) {
 	ctx := context.Background()
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/refunds" {
-			_, _ = w.Write([]byte(`{"id":"re_test_1"}`))
+			_, _ = w.Write([]byte(`{"id":"re_test_1","status":"succeeded"}`))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -633,7 +633,7 @@ func TestStripeVersionHeaderPinned(t *testing.T) {
 			checkoutExpiry <- expiry
 			_, _ = w.Write([]byte(`{"id":"cs_test_1","url":"https://checkout.stripe.test/x"}`))
 		case "/v1/refunds":
-			_, _ = w.Write([]byte(`{"id":"re_test_1"}`))
+			_, _ = w.Write([]byte(`{"id":"re_test_1","status":"succeeded"}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

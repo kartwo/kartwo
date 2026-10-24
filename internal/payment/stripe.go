@@ -7,6 +7,7 @@ package payment
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -179,9 +180,11 @@ func (p *StripeProvider) VerifyWebhook(payload []byte, sigHeader string) (Webhoo
 			Object struct {
 				ClientReferenceID string `json:"client_reference_id"` // checkout.session
 				PaymentStatus     string `json:"payment_status"`      // checkout.session
-				AmountTotal       int64  `json:"amount_total"`        // checkout.session
-				Currency          string `json:"currency"`            // 二者皆有
-				PaymentIntent     string `json:"payment_intent"`      // 二者皆有（退款引用锚点）
+				Amount            int64  `json:"amount"`
+				AmountRefunded    int64  `json:"amount_refunded"`
+				AmountTotal       int64  `json:"amount_total"`   // checkout.session
+				Currency          string `json:"currency"`       // 二者皆有
+				PaymentIntent     string `json:"payment_intent"` // 二者皆有（退款引用锚点）
 				Metadata          struct {
 					OrderRef string `json:"order_ref"`
 				} `json:"metadata"`
@@ -196,13 +199,18 @@ func (p *StripeProvider) VerifyWebhook(payload []byte, sigHeader string) (Webhoo
 	if ref == "" {
 		ref = ev.Data.Object.Metadata.OrderRef
 	}
+	amount := ev.Data.Object.AmountTotal
+	if ev.Type == "charge.refunded" {
+		amount = ev.Data.Object.Amount
+	}
 	return WebhookEvent{
 		ID:            ev.ID,
 		Type:          ev.Type,
 		OrderRef:      ref,
 		PaymentRef:    ev.Data.Object.PaymentIntent,
 		PaymentStatus: ev.Data.Object.PaymentStatus,
-		AmountCents:   ev.Data.Object.AmountTotal,
+		AmountCents:   amount,
+		RefundedCents: ev.Data.Object.AmountRefunded,
 		Currency:      ev.Data.Object.Currency,
 	}, nil
 }
@@ -227,6 +235,7 @@ func (p *StripeProvider) Refund(ctx context.Context, paymentIntent string, amoun
 	req.Header.Set("Authorization", "Bearer "+secret)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Stripe-Version", stripeAPIVersion)
+	req.Header.Set("Idempotency-Key", fmt.Sprintf("refund-full-%x", sha256.Sum256([]byte(paymentIntent))))
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
@@ -238,10 +247,14 @@ func (p *StripeProvider) Refund(ctx context.Context, paymentIntent string, amoun
 		return "", fmt.Errorf("payment: Stripe 退款失败 (%d): %s", resp.StatusCode, stripeErrMsg(body))
 	}
 	var out struct {
-		ID string `json:"id"`
+		ID     string `json:"id"`
+		Status string `json:"status"`
 	}
 	if err := json.Unmarshal(body, &out); err != nil || out.ID == "" {
 		return "", fmt.Errorf("payment: 解析 Stripe 退款响应失败")
+	}
+	if out.Status != "succeeded" {
+		return "", ErrRefundUnconfirmed
 	}
 	return out.ID, nil
 }

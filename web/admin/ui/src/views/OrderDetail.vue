@@ -1,6 +1,6 @@
 <!-- 订单详情 + 退款 / Order Detail & Refund. 作者：仗键天涯(daxing) 3442535897@qq.com -->
 <script setup>
-import { ref, onMounted, inject } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, APIError } from '../api.js'
 import { useToast } from '../toast.js'
@@ -17,6 +17,12 @@ const o = ref(null)
 const err = ref('') // 仅页级：订单加载失败 / 404「订单不存在」的常驻错误（D2 保留 inline）
 const busy = ref(false)
 const shipment = ref({ carrier:'', tracking_number:'', tracking_url:'' })
+const canRefund = computed(() => o.value && ['paid','fulfilled','payment_review'].includes(o.value.status)
+  && !o.value.refunded_cents && !(o.value.receipts || []).some(p => p.review_reason === 'duplicate_payment' && p.refunded_cents < p.amount_cents))
+function reviewText(reason) {
+  return { late_payment:'超时到账', duplicate_payment:'重复付款', legacy_refund:'历史退款待核对' }[reason] || '正常收款'
+}
+
 
 function money(cents, cur) { return (cents / 100).toFixed(2) + ' ' + (cur || '') }
 function statusText(s) {
@@ -47,7 +53,7 @@ async function refund() {
     const r = await api.refundOrder(route.params.id)
     o.value.status = r.status || 'refunded'
     await load()
-    toast.success('退款成功，订单已转为「已退款」。')
+    toast.success('退款结果已同步，请核对收款与退款记录。')
   } catch (e) {
     if (e instanceof APIError && e.status === 401) return onUnauthorized()
     toast.error(e.message)
@@ -75,11 +81,23 @@ onMounted(load)
         <p><strong>支付通道：</strong>{{ o.payment_provider || '—' }}</p>
         <p class="muted">{{ (o.created_at || '').slice(0, 19).replace('T', ' ') }}</p>
       </div>
-	  <div v-if="o.status === 'payment_review'" class="panel payment-warning">
-	    <strong>已收到超时订单的付款，请勿发货。</strong>
-	    <p>该订单的库存预留已释放。请核对支付平台交易，并由店主在这里办理整单退款。</p>
+	  <div v-if="o.payment_review || o.status === 'payment_review'" class="panel payment-warning">
+	    <strong>收款需要核对，请勿继续发货。</strong>
+	    <p>请检查下方每笔收款记录。超时到账、重复付款或历史退款需要分别核对；重复付款请按对应交易在支付平台处理，避免退错正常付款。</p>
 	  </div>
 
+      <template v-if="o.receipts?.length">
+        <h3>收款与退款</h3>
+        <p>累计收款 {{ money(o.paid_cents, o.currency) }} · 已退 {{ money(o.refunded_cents, o.currency) }}</p>
+        <p>履约：{{ o.fulfillment_status === 'fulfilled' ? '已发货（退款不删除发货记录）' : '未发货' }}</p>
+        <ul>
+          <li v-for="(p, i) in o.receipts" :key="i">
+            {{ p.provider }} · {{ money(p.amount_cents, p.currency) }} · 已退 {{ money(p.refunded_cents, p.currency) }}
+            · {{ reviewText(p.review_reason) }}{{ p.source === 'legacy' ? '（历史记录）' : '' }}
+            <p class="muted">{{ p.reference }}</p>
+          </li>
+        </ul>
+      </template>
       <h3>商品</h3>
       <table class="lines">
         <thead><tr><th>商品</th><th>规格</th><th>单价</th><th>数量</th><th>小计</th></tr></thead>
@@ -103,12 +121,12 @@ onMounted(load)
 
       <div class="spacer"></div>
       <div v-if="o.status === 'paid' && (accountRole !== 'staff' || accountPermissions.includes('orders.fulfill'))" class="panel"><h3>发货与追踪</h3><input v-model="shipment.carrier" placeholder="承运商，例如 DHL"/><input v-model="shipment.tracking_number" placeholder="运单号"/><input v-model="shipment.tracking_url" placeholder="追踪链接（可选，https://）"/><button class="primary" :disabled="busy" @click="fulfill">确认发货</button></div>
-      <button v-if="(o.status === 'paid' || o.status === 'payment_review') && accountRole !== 'staff'" class="danger" :disabled="busy" @click="refund">
+      <button v-if="canRefund && accountRole !== 'staff'" class="danger" :disabled="busy" @click="refund">
         {{ busy ? '退款中…' : '整单全额退款' }}
       </button>
       <p v-else-if="o.status === 'refunded'" class="muted">该订单已退款。</p>
       <p v-else-if="accountRole === 'staff'" class="muted">退款仅限店主操作。</p>
-      <p v-else class="muted">仅「已付款」或「收款异常待处理」订单可退款。</p>
+      <p v-else class="muted">当前无法整单退款。部分退款或重复收款请按上方交易在支付平台核对处理。</p>
     </template>
   </div>
 </template>

@@ -33,6 +33,8 @@ const (
 )
 
 var (
+	// ErrRefundUnconfirmed 网关已接收但尚未确认退款成功，不能提前记为已退。
+	ErrRefundUnconfirmed = errors.New("payment: 网关尚未确认退款成功，请等待退款回调或在支付平台核对")
 	// ErrLocked 收款密钥未解锁（进程重启后无人登录过）；Webhook 据此返回非 2xx 交给网关重投。
 	ErrLocked = errors.New("payment: 收款密钥未解锁（请登录一次后台以激活收款）")
 	// ErrBadSignature Webhook 签名校验失败（伪造/篡改/过期）；下游一律拒绝改单。
@@ -77,6 +79,8 @@ type WebhookEvent struct {
 	PaymentStatus string // 如 paid（不假设事件类型即已付，须显式校验）
 	AmountCents   int64  // 网关侧成交总额（分）
 	Currency      string // 网关侧币种
+	RefundRef     string // PayPal 单笔退款 ID
+	RefundedCents int64  // Stripe charge 的累计已退金额
 }
 
 // PaymentProvider 支付通道抽象（ARCHITECTURE §9）。双校验在 VerifyWebhook 内：验签 + 由调用方比对订单/金额。

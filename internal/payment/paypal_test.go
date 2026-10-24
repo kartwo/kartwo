@@ -106,7 +106,7 @@ func TestPayPalStartCheckout(t *testing.T) {
 func TestCapturePayPalMarksPaid(t *testing.T) {
 	// 还原 PayPal capture 响应真实结构：custom_id 在 capture 对象上（而非 purchase_unit 顶层）。
 	// 回归护栏——曾因读错层级导致 custom_id 恒空、钱已扣却订单不转 paid（见 DECISIONS 2026-06-25）。
-	body := `{"status":"COMPLETED","purchase_units":[{"payments":{"captures":[{"id":"CAP1","custom_id":"ORD-PP","amount":{"currency_code":"USD","value":"99.00"}}]}}]}`
+	body := `{"status":"COMPLETED","purchase_units":[{"payments":{"captures":[{"id":"CAP1","status":"COMPLETED","custom_id":"ORD-PP","amount":{"currency_code":"USD","value":"99.00"}}]}}]}`
 	svc, db, _ := newPayPalSvc(t, paypalMock(body))
 	ctx := context.Background()
 	seedOrder(t, db, "ORD-PP", 9900, "USD")
@@ -131,7 +131,7 @@ func TestCapturePayPalMarksPaid(t *testing.T) {
 
 func TestCapturePayPalCustomIDAtPurchaseUnit(t *testing.T) {
 	// 兼容性护栏：部分流程把 custom_id 放在 purchase_unit 顶层——顶层在时优先取，回退不应吞掉它。
-	body := `{"status":"COMPLETED","purchase_units":[{"custom_id":"ORD-PP","payments":{"captures":[{"id":"CAP1","amount":{"currency_code":"USD","value":"99.00"}}]}}]}`
+	body := `{"status":"COMPLETED","purchase_units":[{"custom_id":"ORD-PP","payments":{"captures":[{"id":"CAP1","status":"COMPLETED","amount":{"currency_code":"USD","value":"99.00"}}]}}]}`
 	svc, db, _ := newPayPalSvc(t, paypalMock(body))
 	ctx := context.Background()
 	seedOrder(t, db, "ORD-PP", 9900, "USD")
@@ -251,7 +251,7 @@ func TestPayPalWebhookRefunded(t *testing.T) {
 	svc, db := paypalWebhookSvc(t, "SUCCESS")
 	ctx := context.Background()
 	seedPaidPayPal(t, db, "ORD-PP", 9900, "CAP1")
-	body := []byte(`{"id":"EVT2","event_type":"PAYMENT.CAPTURE.REFUNDED","resource":{"id":"RF9","links":[{"rel":"up","href":"https://api/v2/payments/captures/CAP1"}]}}`)
+	body := []byte(`{"id":"EVT2","event_type":"PAYMENT.CAPTURE.REFUNDED","resource":{"id":"RF9","amount":{"value":"99.00","currency_code":"USD"},"links":[{"rel":"up","href":"https://api/v2/payments/captures/CAP1"}]}}`)
 
 	if err := svc.HandlePayPalWebhook(ctx, body, http.Header{}); err != nil {
 		t.Fatalf("REFUNDED 应处理: %v", err)
@@ -278,7 +278,7 @@ func TestPayPalWebhookBadSignature(t *testing.T) {
 func errorIsBadSig(err error) bool { return errors.Is(err, ErrBadSignature) }
 
 func TestCapturePayPalAmountMismatch(t *testing.T) {
-	body := `{"status":"COMPLETED","purchase_units":[{"custom_id":"ORD-PP","payments":{"captures":[{"id":"CAP1","amount":{"currency_code":"USD","value":"1.00"}}]}}]}`
+	body := `{"status":"COMPLETED","purchase_units":[{"custom_id":"ORD-PP","payments":{"captures":[{"id":"CAP1","status":"COMPLETED","amount":{"currency_code":"USD","value":"1.00"}}]}}]}`
 	svc, db, _ := newPayPalSvc(t, paypalMock(body))
 	ctx := context.Background()
 	seedOrder(t, db, "ORD-PP", 9900, "USD") // 库内 9900，capture 报 100

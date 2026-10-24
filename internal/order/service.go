@@ -63,25 +63,29 @@ type OrderLine struct {
 
 // Order 订单视图。
 type Order struct {
-	PublicID         string
-	Status           string
-	Email            string
-	ShipName         string
-	ShipPhone        string
-	ShipAddress      string
-	ShipCountry      string
-	Currency         string
-	SubtotalCents    int64
-	TotalCents       int64
-	ShippingCents    int64
-	ShippingRuleName string
-	TrackingCarrier  string
-	TrackingNumber   string
-	TrackingURL      string
-	PaymentProvider  string
-	CreatedAt        string
-	Lines            []OrderLine
-	Refunds          []RefundView // 仅后台详情填充
+	PublicID                         string
+	Status                           string
+	Email                            string
+	ShipName                         string
+	ShipPhone                        string
+	ShipAddress                      string
+	ShipCountry                      string
+	Currency                         string
+	SubtotalCents                    int64
+	TotalCents                       int64
+	ShippingCents                    int64
+	ShippingRuleName                 string
+	TrackingCarrier                  string
+	TrackingNumber                   string
+	TrackingURL                      string
+	PaymentProvider                  string
+	CreatedAt                        string
+	Lines                            []OrderLine
+	Refunds                          []RefundView  // 仅后台详情填充
+	Receipts                         []ReceiptView // 仅后台详情填充
+	PaymentStatus, FulfillmentStatus string
+	PaidCents, RefundedCents         int64
+	PaymentReview                    bool
 }
 
 // OrderSummary 后台订单列表项。
@@ -340,14 +344,17 @@ func (s *Service) AdminGet(ctx context.Context, publicID string) (*Order, error)
 			Provider: r.Provider, ProviderRefundID: r.ProviderRefundID, AmountCents: r.AmountCents, CreatedAt: r.CreatedAt,
 		})
 	}
+	if err := s.loadFinancials(ctx, o.ID, out); err != nil {
+		return nil, fmt.Errorf("order: 读取资金视图: %w", err)
+	}
 	return out, nil
 }
 
 // DashboardStats 概览订单聚合：今日 / 近 7 日订单数与销售额、待处理数、展示货币。
 //   - 时间口径（D1）：按服务器本地自然日——今日=[本地今日零点, 现在]；近 7 日=[本地(今日-6天)零点, 现在]。
 //     本地零点换算为 UTC ISO8601 与库内 created_at（UTC）按字符串字典序比较（下界 .000，词法比较安全）。
-//   - 销售额口径（D6）：仅计 paid/fulfilled 合计；refunded 单转 refunded 状态、天然不计入（=全额扣除），
-//     且不依赖 refund 记录（webhook 同步的退款可能无记录）。部分退款是 v1 之后，届时改按 refund.amount_cents 扣减。
+//   - 销售额口径：有收款账本时计正常收款减已退金额；迟到/重复/历史待核对款不计销售额。
+//     无支付引用的历史订单仍沿用 paid/fulfilled 金额；此值为订单窗口净销售额，不代表银行结算到账。
 //   - 只读、无事务：单连接上顺序跑 3 个聚合查询（不开事务再发独立查询，见 DECISIONS 单连接纪律）。
 type DashboardStats struct {
 	TodayCount         int64

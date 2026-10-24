@@ -80,6 +80,7 @@ onMounted(load)
       <input v-model="s.publishable" placeholder="pk_test_…" autocomplete="off" :disabled="s.readonly" />
       <label>Secret key（sk_… 或 rk_…，推荐 rk_）</label>
       <input v-model="s.secret" type="password" :placeholder="s.readonly ? '由环境变量提供' : (s.has_secret ? '已保存，留空不改' : 'sk_test_…')" autocomplete="off" :disabled="s.readonly" />
+      <p class="muted">Stripe 回调需订阅 checkout.session.completed、checkout.session.async_payment_succeeded 和 charge.refunded，以同步即时/异步付款及退款。</p>
       <label>Webhook 签名密钥（whsec_…）<span class="chip" :class="{ on: s.has_webhook }">{{ s.has_webhook ? '已配置' : '未配置' }}</span></label>
       <input v-model="s.webhook_secret" type="password" :placeholder="s.readonly ? '由环境变量提供' : (s.has_webhook ? '已保存，留空不改' : 'whsec_…')" autocomplete="off" :disabled="s.readonly" />
       <div class="spacer"></div>

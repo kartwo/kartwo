@@ -23,7 +23,11 @@ func (q *Queries) CountActiveProducts(ctx context.Context) (int64, error) {
 
 const dashboardOrderWindow = `-- name: DashboardOrderWindow :one
 
-SELECT COUNT(*) AS order_count, CAST(COALESCE(SUM(CASE WHEN status IN ('paid', 'fulfilled') THEN total_cents ELSE 0 END), 0) AS INTEGER) AS sales_cents FROM "order" WHERE created_at >= ?
+SELECT COUNT(*) AS order_count, CAST(COALESCE(SUM(CASE
+    WHEN EXISTS(SELECT 1 FROM payment_receipt p WHERE p.order_id=o.id)
+    THEN COALESCE((SELECT SUM(p.amount_cents-p.refunded_cents) FROM payment_receipt p WHERE p.order_id=o.id AND p.review_reason=''),0)
+    WHEN o.status IN ('paid','fulfilled') THEN o.total_cents ELSE 0 END),0) AS INTEGER) AS sales_cents
+FROM "order" o WHERE o.created_at >= ?
 `
 
 type DashboardOrderWindowRow struct {
@@ -35,7 +39,7 @@ type DashboardOrderWindowRow struct {
 // Purpose: overview stats - order counts/sales by time window, pending fulfillment, product count, stock alerts
 // Author: daxing  Email: 3442535897@qq.com  Time: 2026-07-07 18:47:01
 // NOTE: ASCII-only comments here (sqlc v1.30 multibyte-span bug; see DECISIONS.md). All aggregation in SQL (no N+1).
-// Orders created at/after a boundary: total count (any status) + sales sum counting paid/fulfilled only (D6). Refunded orders leave paid/fulfilled so are fully excluded. CAST keeps sqlc types as int64.
+// Net sales by order creation window. Exception payments are not sales.
 func (q *Queries) DashboardOrderWindow(ctx context.Context, createdAt string) (DashboardOrderWindowRow, error) {
 	row := q.db.QueryRowContext(ctx, dashboardOrderWindow, createdAt)
 	var i DashboardOrderWindowRow
