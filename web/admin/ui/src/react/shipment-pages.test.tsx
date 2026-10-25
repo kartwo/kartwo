@@ -18,6 +18,7 @@ import { businessPages } from './BusinessPages'
 import { PageLoading } from './SettingsPages'
 import { account, fakeAPI, deferred } from './test-fixtures'
 import type { Session } from './contracts'
+import { saleFixture } from './after-sale-fixtures'
 import { orderA } from './order-fixtures'
 import { legacyShipmentFixture, shipmentFixture, shippedOrder, noticeA, noticeBID, revisionA } from './shipment-fixtures'
 import { noticeActionPayload, parseShipmentHistory, prepareShipmentIntent, shipmentAPI } from './shipment-api'
@@ -36,6 +37,7 @@ async function mount(session: Session = account(), id = shippedOrder.public_id) 
 }
 function fixture(order: () => Order = () => shippedOrder, history: () => unknown = shipmentFixture, handle?: (url: string, options: RequestInit) => Response | Promise<Response> | undefined) {
   const fetch = vi.fn(async (url: string, options: RequestInit) => {
+    if (options.method === 'GET' && url.endsWith('/after-sales')) return response(saleFixture([], order()))
     const handled = await handle?.(url, options); if (handled) return handled
     if (options.method === 'GET') return response(url.endsWith('/shipment') ? history() : order())
     throw new Error(`Unexpected fixture write ${url}`)

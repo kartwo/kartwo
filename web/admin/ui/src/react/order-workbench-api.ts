@@ -7,7 +7,7 @@
 import { bool, choice, integer, record } from './api-values'
 import { orderExportURL, parseOrders, type OrderStatus, type OrderSummary } from './order-api'
 import { request } from './transport'
-export const orderViews = { all: '全部订单', awaiting_payment: '待付款', ready_to_fulfill: '可发货', needs_review: '资金待核对', refunds_pending: '退款待处理', shipped: '已发货' } as const
+export const orderViews = { all: '全部订单', awaiting_payment: '待付款', ready_to_fulfill: '可发货', needs_review: '资金待核对', refunds_pending: '退款 / 售后待处理', shipped: '已发货' } as const
 export type OrderView = keyof typeof orderViews
 export interface OrderFilters { term: string; status: OrderStatus | ''; provider: '' | 'stripe' | 'paypal'; from: string; to: string }
 export interface OrderSearch extends OrderFilters { view: OrderView; page: number; page_size: number }

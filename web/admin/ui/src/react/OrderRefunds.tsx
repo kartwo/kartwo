@@ -30,7 +30,7 @@ export function NewRefund({ order }: { order: Order }) {
     try { setConfirming(refundDraft(order, values.payment, values.amount)); setError('') }
     catch (failure) { setError(failure instanceof Error ? failure.message : '退款金额无效') }
   }
-  return <Card title="按付款退款">{error && <Alert type="error" showIcon title={error} />}
+  return <Card id="order-refund-form" title="按付款退款">{error && <Alert type="error" showIcon title={error} />}
     <Form form={form} layout="vertical" disabled={disabled} onFinish={prepare}>
       <Form.Item name="payment" label="选择付款" rules={[{ required: true, message: '请选择要退款的付款' }]}><Select options={receipts.map(receipt => ({ value: receiptKey(receipt), label: `${receipt.provider} · ${receipt.reference} · 可退 ${money(receipt.amount_cents - receipt.refunded_cents, receipt.currency)} · ${reviewText(receipt.review_reason)}` }))} onChange={key => { const receipt = receipts.find(item => receiptKey(item) === key); form.setFieldValue('amount', receipt ? centsToMoney(receipt.amount_cents - receipt.refunded_cents) : '') }} /></Form.Item>
       <Form.Item name="amount" label="退款金额" rules={[{ required: true, message: '请输入退款金额' }]}><Input inputMode="decimal" maxLength={24} placeholder="例如 10.00" /></Form.Item>
