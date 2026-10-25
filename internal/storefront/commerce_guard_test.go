@@ -196,3 +196,48 @@ func TestCommerceGuardRejectsOversizedChunkedForm(t *testing.T) {
 		t.Fatalf("carts=%d err=%v", count, err)
 	}
 }
+
+func TestNoReferrerNativeFormsRequireSameOriginMetadata(t *testing.T) {
+	h, mux := newHTTP(t)
+	var variant string
+	if err := h.svc.db.QueryRow(`SELECT public_id FROM variant ORDER BY id LIMIT 1`).Scan(&variant); err != nil {
+		t.Fatal(err)
+	}
+	for _, site := range []string{"", "none", "same-site", "cross-site"} {
+		r := httptest.NewRequest("POST", "https://shop.example/cart/items", strings.NewReader(`{"variant":"`+variant+`","quantity":1}`))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Origin", "null")
+		r.Header.Set("Sec-Fetch-Site", site)
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		if w.Code != 403 {
+			t.Fatalf("null origin site=%q accepted: %d", site, w.Code)
+		}
+	}
+	var count int
+	if err := h.svc.db.QueryRow(`SELECT COUNT(*) FROM cart`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("cross-origin requests wrote carts=%d err=%v", count, err)
+	}
+	// This is the native browser request actually observed with no-referrer.
+	r := httptest.NewRequest("POST", "https://shop.example/cart/items", strings.NewReader(`{"variant":"`+variant+`","quantity":1}`))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Origin", "null")
+	r.Header.Set("Sec-Fetch-Site", "same-origin")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("same-origin native form denied: %d %s", w.Code, w.Body.String())
+	}
+	if err := h.svc.db.QueryRow(`SELECT COUNT(*) FROM cart`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("same-origin cart missing: %d err=%v", count, err)
+	}
+	// A contradictory explicit foreign origin never inherits metadata trust.
+	r = httptest.NewRequest("POST", "https://shop.example/checkout", nil)
+	r.Header.Set("Origin", "https://outside.invalid")
+	r.Header.Set("Sec-Fetch-Site", "same-origin")
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != 403 {
+		t.Fatal("foreign explicit origin bypassed check")
+	}
+}
