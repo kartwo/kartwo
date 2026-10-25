@@ -15,4 +15,7 @@ export const businessPages = {
   '/imports/csv': lazy(() => import('./pages/ImportCSV')),
   '/categories': lazy(() => import('./pages/CategoryManagement')),
   '/merchandising': lazy(() => import('./pages/Merchandising')),
+  '/blog': lazy(() => import('./pages/BlogPosts')),
+  '/blog/new': lazy(() => import('./pages/BlogPostEdit')),
+  '/blog/:id': lazy(() => import('./pages/BlogPostEdit')),
 }

@@ -63,6 +63,23 @@
 .content-columns { display: grid; grid-template-columns: minmax(240px,1fr) minmax(320px,1.4fr); gap: var(--sp-4); }
 .content-page-row { display: flex; align-items: center; gap: var(--sp-2); padding-block: var(--sp-3); border-bottom: 1px solid var(--border); }
 .content-title-button.ant-btn { flex: 1; height: auto; white-space: normal; text-align: start; justify-content: start; overflow-wrap: anywhere; }
+.blog-title-link { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.blog-slug-controls { display: flex; gap: var(--sp-2); }
+.blog-slug-controls > .ant-input { flex: 1; min-width: 0; }
+.blog-cover-preview { display: block; max-width: min(320px,100%); max-height: 180px; object-fit: contain; margin-top: var(--sp-3); border-radius: var(--radius-md); }
+.blog-rich-toolbar { border: 1px solid var(--border); border-bottom: 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0; background: var(--surface); }
+.blog-toolbar-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); padding: var(--sp-2); border-bottom: 1px solid var(--border); }
+.blog-toolbar-row:last-child { border-bottom: 0; }
+.blog-toolbar-row .ant-select { min-width: 100px; }
+.blog-rich-editor { min-height: 360px; max-height: 70vh; overflow: auto; border: 1px solid var(--border); border-radius: 0 0 var(--radius-sm) var(--radius-sm); padding: var(--sp-4); background: var(--surface); color: var(--text); overflow-wrap: anywhere; white-space: pre-wrap; }
+.blog-rich-editor:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.blog-rich-editor:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
+.blog-rich-editor[aria-readonly=true] { background: var(--bg); }
+.blog-rich-editor img,.blog-rich-editor iframe { max-width: 100%; }
+.blog-rich-editor iframe { width: min(640px,100%); aspect-ratio: 16/9; border: 0; }
+.blog-rich-editor table { border-collapse: collapse; max-width: 100%; }
+.blog-rich-editor td,.blog-rich-editor th { border: 1px solid var(--border); padding: var(--sp-2); min-width: 40px; }
+.blog-image-input { display: none; }
 @media(max-width:760px) { .category-fields,.content-columns { grid-template-columns: 1fr; } }
 @media(max-width:760px) { .inbox-columns { grid-template-columns: 1fr; } }
 @media(max-width:520px) { .policy-estimate { grid-template-columns: 1fr; } .shipping-country-grid { grid-template-columns: 1fr; } }
