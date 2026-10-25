@@ -12,11 +12,6 @@ import { errorMessage } from './transport'
 
 interface Credentials { username: string; password: string }
 interface Invitation { password: string; confirm: string }
-export function InsecureNotice() {
-  const insecure = location.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]', '::1'].includes(location.hostname)
-  return insecure ? <Alert type="warning" showIcon title="当前连接没有加密" description="这是配置阶段的临时状态。域名和证书配好后，请使用 HTTPS 网址访问后台。" /> : null
-}
-
 function InvitationForm({ token }: { token: string }) {
   const { controller } = useSession()
   const [inviteForm] = Form.useForm<Invitation>()

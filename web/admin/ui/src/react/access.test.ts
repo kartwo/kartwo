@@ -4,17 +4,27 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 10:13:54
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { adminRoutes, can, canVisit, homePath, matchRoute, navigation, selectedPath } from './access'
 import { account } from './test-fixtures'
 import { parseSession, parseStatus, parseWizard } from './contracts'
+import { pageComponents } from './PageRouter'
 
 describe('路由迁移清单', () => {
   it('保留旧后台的每个业务路由和三个非业务入口', () => {
-    const source = readFileSync('src/main.js', 'utf8')
-    const original = [...source.matchAll(/path: '([^']+)'/g)].map(match => match[1])
+    // Frozen from the last Vue entry at b3dfbfa, so removing the old runtime does not weaken URL parity.
+    const original = ['/', '/dashboard', '/diagnostics', '/export', '/backup', '/audit', '/products', '/products/new', '/products/:id', '/imports/csv', '/market', '/payment', '/shop', '/domain', '/smtp', '/translation', '/orders', '/contact', '/contact-settings', '/about', '/orders/:id', '/merchandising', '/blog', '/blog/new', '/blog/:id', '/blog-settings', '/categories', '/shipping', '/policies', '/account', '/users', '/accept-invite']
     expect(new Set([...adminRoutes.map(route => route.path), '/', '/market', '/accept-invite'])).toEqual(new Set(original))
+    expect(new Set(Object.keys(pageComponents))).toEqual(new Set(adminRoutes.map(route => route.path)))
+  })
+  it('唯一入口为 React，已移除 Vue 源码/依赖和迁移专用构建', () => {
+    const manifest = JSON.parse(readFileSync('package.json', 'utf8')) as { dependencies: Record<string, string>; devDependencies: Record<string, string>; scripts: Record<string, string> }
+    expect(manifest.dependencies).not.toHaveProperty('vue'); expect(manifest.dependencies).not.toHaveProperty('vue-router'); expect(manifest.devDependencies).not.toHaveProperty('@vitejs/plugin-vue')
+    expect(manifest.scripts).not.toHaveProperty('build:react')
+    expect(readdirSync('src', { recursive: true }).some(path => String(path).endsWith('.vue'))).toBe(false)
+    expect(existsSync('vite.react.config.ts')).toBe(false); expect(existsSync('src/main.js')).toBe(false)
+    expect(readFileSync('index.html', 'utf8')).toContain('/src/react/main.tsx')
   })
   it('新建与编辑分别匹配，不吞掉多层未知路径', () => {
     expect(matchRoute('/products/new')?.permission).toBe('products.create')

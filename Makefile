@@ -11,7 +11,7 @@ TOOLPATH := PATH="$(BIN):$$PATH"
 
 all: check
 
-web:           ## 构建 Admin 前端(Vue3+Vite) 到 web/admin/dist（供 go build embed）
+web:           ## 构建 Admin 前端(React+TypeScript+Vite+Ant Design) 到 web/admin/dist（供 go build embed）
 	cd web/admin/ui && npm ci && npm audit --registry=https://registry.npmjs.org --audit-level=high && npm run build
 
 tools:         ## 安装钉死版本的开发工具到 ./.bin（版本与 CI 一致）

@@ -40,11 +40,13 @@ it('文章契约白名单拒绝重复 ID、未知状态和非法封面，不回�
   expect(() => parsePost({ ...postA, status: 'unknown' })).toThrow()
   expect(() => parsePost({ ...postA, cover_path: '../private' })).toThrow()
   expect(parsePost({ ...postA, admin_password: 'not-a-real-value' })).not.toHaveProperty('admin_password')
-  const fetch = vi.fn(async (_url: string, _options: RequestInit) => response({ ok: true })); vi.stubGlobal('fetch', fetch)
+  const fetch = vi.fn(async (_url: string, options: RequestInit) => response(options.method === 'POST' ? { public_id: postA.public_id } : { ok: true })); vi.stubGlobal('fetch', fetch)
+  await blogAPI.create(postA)
   await blogAPI.update(postA.public_id, postA)
-  const options = fetch.mock.calls[0]?.[1] as RequestInit | undefined
+  const options = fetch.mock.calls[1]?.[1] as RequestInit | undefined
+  expect(JSON.parse(fetch.mock.calls[0]![1].body as string).body_html).toBe(postA.body_html)
   expect(options?.method).toBe('PUT'); expect(JSON.parse(options?.body as string)).toEqual({ title: postA.title, slug: postA.slug, excerpt: postA.excerpt, seo_description: postA.seo_description, cover_path: cover, body_html: postA.body_html, body_markdown: '', status: 'active' })
-  expect(() => blogAPI.remove('../private')).toThrow(); expect(fetch).toHaveBeenCalledTimes(1)
+  expect(() => blogAPI.remove('../private')).toThrow(); expect(fetch).toHaveBeenCalledTimes(2)
 })
 it('媒体 API 仅接收支持的非空图片，拒绝外部 URL、伪造路径和非法尺寸', async () => {
   const fetch = vi.fn(async () => response({ path: uploaded, url: 'https://outside.invalid/x', width: 100, height: 100 })); vi.stubGlobal('fetch', fetch)

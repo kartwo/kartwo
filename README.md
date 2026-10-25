@@ -139,6 +139,8 @@ Environment=KARTWO_DEMO_CLEANUP_INTERVAL=5m
 
 要求 Go 与 Node 版本见 [CI 配置](.github/workflows/ci.yml)。
 
+开发分支后台使用 React + TypeScript + Vite + Ant Design；保留原 `/admin/#/...` 地址和细分权限。Vite 构建到 `web/admin/dist` 后嵌入 Go 二进制，服务器运行时无需 Node。迁移状态和分批人工步骤见 [后台验收清单](web/admin/ui/MIGRATION.md)。
+
 ```bash
 make gen
 cd web/admin/ui && npm ci && npm run build && cd ../../..
@@ -147,6 +149,8 @@ make check
 ```
 
 `make check` 包含 vet、race test、build、lint、govulncheck 与 gitleaks。发布工作流会重新构建 Admin 后再嵌入二进制，避免提交产物陈旧。
+
+本机开发可在 `web/admin/ui` 运行 `npm run dev`，API 与媒体默认代理到 `http://127.0.0.1:8080`；后端监听其他端口时，使用 `KARTWO_DEV_PROXY=http://127.0.0.1:8189 npm run dev`。Vite 只监听本机；发布仍以 Go 内嵌页面为准。
 
 ## 许可
 

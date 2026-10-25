@@ -1,19 +1,20 @@
 // 后台入口组合 / Admin Root Composition
-// 功能：组合鉴权、路由权限与开店向导；业务页迁移后以惰性组件接入
+// 功能：组合鉴权、路由权限和向导，按会话状态惰性加载认证或导航外壳
 // 作者：仗键天涯(daxing)
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 10:12:07
 
-import { useState, type ReactNode } from 'react'
+import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { Alert, Button, Result, Space, Steps } from 'antd'
 import { Navigate, useLocation } from 'react-router-dom'
 import { canVisit, homePath, matchRoute, type AdminRoute } from './access'
 import type { WizardStep } from './contracts'
-import { AuthScreen, InsecureNotice } from './AuthScreen'
-import { AdminShell } from './AdminShell'
+import { InsecureNotice } from './InsecureNotice'
 import { useSession } from './SessionProvider'
-import { WizardSettings } from './SettingsPages'
+import { WizardSettings, PageLoading } from './SettingsPages'
 import { WizardActivity } from './WizardActivity'
+const AuthScreen = lazy(() => import('./AuthScreen').then(module => ({ default: module.AuthScreen })))
+const AdminShell = lazy(() => import('./AdminShell').then(module => ({ default: module.AdminShell })))
 
 interface Props {
   renderPage: (route: AdminRoute) => ReactNode
@@ -25,7 +26,8 @@ export function AdminRoot({ renderPage, renderWizard }: Props) {
   const session = state.session
   const [wizardBusy, setWizardBusy] = useState(false)
   let content: ReactNode
-  if (pathname === '/accept-invite' || state.phase !== 'ready' || !session) content = <AuthScreen />
+  if (state.phase === 'loading' && pathname !== '/accept-invite') content = <div className="auth-screen"><PageLoading /></div>
+  else if (pathname === '/accept-invite' || state.phase !== 'ready' || !session) content = <AuthScreen />
   else if (state.wizard) {
     const step = state.wizard
     const stepNumber = ['payment', 'domain', 'smtp'].indexOf(step)
@@ -47,5 +49,7 @@ export function AdminRoot({ renderPage, renderWizard }: Props) {
     content = <AdminShell>{!route ? <Result status="404" title="页面不存在" /> : !canVisit(session, route) ?
       <Result status="403" title="当前账号没有访问此页面的权限" /> : renderPage(route)}</AdminShell>
   }
-  return <><InsecureNotice />{content}</>
+  // Private branches must unmount on identity/state changes. The public one-time invitation is independent of bootstrap authentication.
+  const branchKey = pathname === '/accept-invite' ? 'invitation' : `${state.phase}:${session?.public_id ?? ''}`
+  return <><InsecureNotice /><Suspense key={branchKey} fallback={<PageLoading />}>{content}</Suspense></>
 }

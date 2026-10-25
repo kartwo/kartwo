@@ -1,8 +1,12 @@
 /* React 后台布局 / React Admin Layout
- * 功能：使用公共设计变量布局 Ant Design 组件，不影响旧后台
+ * 功能：使用公共设计变量布局唯一 Ant Design 后台
  * 作者：仗键天涯(daxing)
  * 邮箱：3442535897@qq.com
  * 时间：2026-10-25 10:12:07 */
+body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; font-size: var(--fs-base); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.admin-sidebar a,.admin-drawer a { color: inherit; }
 .auth-screen { min-height:100vh;display:flex;align-items:center;justify-content:center;gap:var(--sp-4);padding:var(--sp-6);background:linear-gradient(135deg,var(--login-start),var(--login-middle),var(--login-end)); }
 .auth-card { width:min(460px,100%);box-shadow:var(--shadow-login); }
 .auth-card .ant-alert { margin-bottom:var(--sp-4); }
