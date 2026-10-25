@@ -106,19 +106,30 @@ it('手机菜单选择当前页面也收起抽屉，不依赖地址变化', asyn
 })
 
 it('桌面导航收起后，手机抽屉仍显示完整的授权菜单', async () => {
-  const controller = new SessionController(fakeAPI(account('staff', ['orders.view', 'blog.view'])))
-  mount(controller, '/orders')
-  await screen.findByText('已加载：订单')
-  await userEvent.click(screen.getByRole('button', { name: '收起导航' }))
-  expect(screen.getByRole('button', { name: '展开导航' }).getAttribute('aria-expanded')).toBe('false')
-  await waitFor(() => expect(screen.getByRole('menuitem', { name: '经营' }).getAttribute('aria-expanded')).toBe('false'))
-  await userEvent.click(screen.getByRole('button', { name: '打开菜单' }))
-  const dialog = await screen.findByRole('dialog', { name: 'Kartwo 菜单' })
-  expect(within(dialog).getByRole('link', { name: '订单' })).toBeTruthy()
-  expect(within(dialog).getByRole('link', { name: '博客文章' })).toBeTruthy()
-  expect(within(dialog).queryByRole('link', { name: '用户与角色' })).toBeNull()
-  await userEvent.click(within(dialog).getByRole('link', { name: '博客文章' }))
-  expect(await screen.findByText('已加载：博客文章')).toBeTruthy()
-  await userEvent.click(screen.getByRole('button', { name: '展开导航' }))
-  expect(screen.getByRole('button', { name: '收起导航' }).getAttribute('aria-expanded')).toBe('true')
+  // rc-component intentionally returns the same "test-id" for Tooltip and Drawer
+  // in test mode. Exercise React's real unique IDs so aria-labelledby resolves
+  // the drawer title while the preceding tooltip is still leaving.
+  vi.stubEnv('NODE_ENV', 'development')
+  try {
+    // Keep pointer state across clicks so leaving the collapse button closes its Tooltip.
+    const user = userEvent.setup()
+    const controller = new SessionController(fakeAPI(account('staff', ['orders.view', 'blog.view'])))
+    mount(controller, '/orders')
+    await screen.findByText('已加载：订单')
+    await user.click(screen.getByRole('button', { name: '收起导航' }))
+    expect(screen.getByRole('button', { name: '展开导航' }).getAttribute('aria-expanded')).toBe('false')
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: '经营' }).getAttribute('aria-expanded')).toBe('false'))
+    await user.click(screen.getByRole('button', { name: '打开菜单' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Kartwo 菜单' })
+    const titleID = dialog.getAttribute('aria-labelledby')
+    expect(titleID).not.toBe('test-id')
+    expect(document.getElementById(titleID!)?.textContent).toBe('Kartwo 菜单')
+    expect(within(dialog).getByRole('link', { name: '订单' })).toBeTruthy()
+    expect(within(dialog).getByRole('link', { name: '博客文章' })).toBeTruthy()
+    expect(within(dialog).queryByRole('link', { name: '用户与角色' })).toBeNull()
+    await user.click(within(dialog).getByRole('link', { name: '博客文章' }))
+    expect(await screen.findByText('已加载：博客文章')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: '展开导航' }))
+    expect(screen.getByRole('button', { name: '收起导航' }).getAttribute('aria-expanded')).toBe('true')
+  } finally { vi.unstubAllEnvs() }
 })

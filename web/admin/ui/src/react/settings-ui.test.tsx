@@ -153,6 +153,12 @@ it('保存返回 401 清空页面并回到登录，避免保留凭证输入', as
   vi.stubGlobal('fetch', fetch)
   const { controller } = mount('/payment')
   await screen.findByLabelText('Publishable key'); field(/Secret key（/, 'fixture-secret'); submit('Publishable key')
+  // Check private DOM removal before waiting for the real lazy authentication chunk.
+  await waitFor(() => {
+    expect(controller.getSnapshot().session).toBeNull()
+    expect(screen.queryByLabelText(/Secret key（/)).toBeNull()
+  })
+  await act(async () => { await import('./AuthScreen') })
   expect(await screen.findByLabelText('用户名')).toBeTruthy()
   expect(controller.getSnapshot().session).toBeNull()
   expect(screen.queryByLabelText(/Secret key（/)).toBeNull()

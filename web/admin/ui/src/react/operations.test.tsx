@@ -58,6 +58,7 @@ it('快速切换留言只展示最后选择，旧响应即使晚返回也不能�
   const late = deferred<Response>()
   const fetch = vi.fn(async (url: string) => url.endsWith('/messages') ? response({ messages: [alice, bob] }) : url.endsWith('/message-fixture-a') ? late.promise : response(bob))
   vi.stubGlobal('fetch', fetch); mount('/contact')
+  await screen.findByRole('heading', { name: '客服留言', level: 2 })
   await userEvent.setup().click(await screen.findByRole('button', { name: /Alice Fixture/ }))
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
   await userEvent.setup().click(screen.getByRole('button', { name: /Bob Fixture/ }))
@@ -71,6 +72,7 @@ it('只读客服员工可读资料，正文按文本显示，不提供写入按�
   const body = '<img src=x onerror="alert(1)">\nSecond line'
   const fetch = vi.fn(async (url: string) => response(url.endsWith('/messages') ? { messages: [alice] } : { ...alice, body })); vi.stubGlobal('fetch', fetch)
   mount('/contact', account('staff', ['contact.view']))
+  await screen.findByRole('heading', { name: '客服留言', level: 2 })
   await userEvent.setup().click(await screen.findByRole('button', { name: /Alice Fixture/ }))
   await screen.findByText('alice@example.com')
   expect(screen.getByText(/<img src=x/).textContent).toBe(body)

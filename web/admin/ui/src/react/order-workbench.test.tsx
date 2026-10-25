@@ -71,7 +71,7 @@ it('无效日期、页码、体积、控制字符和未知过滤值在出站前�
   for (const invalid of [{ term: 'a'.repeat(161) }, { term: 'a\u0000b' }, { page: -1 }, { page: 1.5 }, { page_size: 101 }, { from: '2026-02-30' }, { from: '2026-10-02', to: '2026-10-01' }, { view: 'invalid' }, { provider: 'invalid' }]) expect(() => orderSearchPayload({ ...base, ...invalid } as OrderSearch)).toThrow()
 })
 it('输入只修改草稿，提交后服务端查询；条件不写 URL，导出仍独立设置', async () => {
-  const fetch = fixtureFetch(); mount(); await screen.findByRole('link', { name: 'order-fixture-a' })
+  const fetch = fixtureFetch(); mount(); await screen.findByRole('heading', { name: '订单', level: 2 }); await screen.findByRole('link', { name: 'order-fixture-a' })
   text('搜索订单', 'fixture@example.invalid'); expect(fetch).toHaveBeenCalledTimes(1); expect(screen.getByText(/筛选条件已修改/)).toBeTruthy()
   fireEvent.change(screen.getByLabelText('订单开始日期'), { target: { value: '2026-10-01' } }); fireEvent.change(screen.getByLabelText('订单结束日期'), { target: { value: '2026-10-25' } })
   await userEvent.click(screen.getByRole('button', { name: '查询订单' })); await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))

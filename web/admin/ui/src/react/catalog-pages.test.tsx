@@ -120,6 +120,7 @@ it('内容详情快速切换时只保留当前对象，正文 HTML 只是文本�
   const late = deferred<Response>()
   const fetch = vi.fn(async (url: string) => url.endsWith('/content-pages') ? response({ pages: [pageA, pageB] }) : url.endsWith('/content-fixture-a') ? late.promise : response({ ...pageB, body_markdown: '<img src=x>\nBody B' }))
   vi.stubGlobal('fetch', fetch); mount('/merchandising')
+  await screen.findByRole('heading', { name: '内容', level: 2 })
   await userEvent.setup().click(await screen.findByRole('button', { name: 'Page A' }))
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
   await userEvent.setup().click(screen.getByRole('button', { name: 'Page B' }))
