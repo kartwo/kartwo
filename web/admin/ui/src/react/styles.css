@@ -47,4 +47,11 @@
 .role-permissions fieldset { border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--sp-3); margin-bottom: var(--sp-3); }
 .role-permissions legend { font-weight: 700; }
 .role-permissions .ant-checkbox-group { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: var(--sp-3); width: 100%; }
+.read-page,.inbox-page { display: grid; gap: var(--sp-4); }
+.read-page-toolbar { display: flex; justify-content: space-between; align-items: start; gap: var(--sp-3); flex-wrap: wrap; }
+.inbox-columns { display: grid; grid-template-columns: minmax(240px,1fr) minmax(320px,1.5fr); gap: var(--sp-4); }
+.inbox-message-button.ant-btn { height: auto; white-space: normal; text-align: start; align-items: stretch; display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.inbox-message-button > span { overflow-wrap: anywhere; }
+.inbox-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media(max-width:760px) { .inbox-columns { grid-template-columns: 1fr; } }
 @media(max-width:520px) { .policy-estimate { grid-template-columns: 1fr; } .shipping-country-grid { grid-template-columns: 1fr; } }

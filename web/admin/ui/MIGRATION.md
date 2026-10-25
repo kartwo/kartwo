@@ -6,7 +6,7 @@
 
 最终仅保留 React + TypeScript + Vite + Ant Design 后台，删除 Vue 运行时、旧页面及迁移专用构建配置。保留现有 `/admin/#/...` 地址、Go API 和单二进制 embed 托管。菜单权限仅优化界面体验，服务端鉴权仍是授权依据。
 
-当前处于分批迁移：`src/react` 已实现请求传输、会话/登录/初始化/邀请、向导流程、导航外壳和路由访问控制；收款、域名和 SMTP 三个实际配置页已接入向导；店铺品牌、博客开关及客服留存设置也已迁移，账号安全、翻译和备份设置也已迁移，配送和店铺政策设置也已迁移，用户与角色管理也已迁移，十二个设置页均按需加载。`index.html` 仍连接现有后台，**未切换正式入口、未发布 React 后台**。新组件由 `build:react` 独立编译验证到忽略目录 `.react-build`，不进入 Go embed；这项临时验证在正式入口切换时移除。
+当前处于分批迁移：`src/react` 已实现请求传输、会话/登录/初始化/邀请、向导流程、导航外壳和路由访问控制；收款、域名和 SMTP 三个实际配置页已接入向导；店铺品牌、博客开关及客服留存设置也已迁移，账号安全、翻译和备份设置也已迁移，配送和店铺政策设置也已迁移，用户与角色管理也已迁移，十二个设置页均按需加载；客服收件箱、日志与诊断三个业务/系统页也已迁移。`index.html` 仍连接现有后台，**未切换正式入口、未发布 React 后台**。新组件由 `build:react` 独立编译验证到忽略目录 `.react-build`，不进入 Go embed；这项临时验证在正式入口切换时移除。
 
 ## 共用能力
 
@@ -32,16 +32,16 @@
 |---|---|---|
 | About | 未迁移 | 组合页面/静态内容，核对其子组件 |
 | AccountSettings | React 已实现，待统一浏览器验收 | `getAccount`、`updateAccount`、`updateStaffPassword` |
-| AuditEvents | 未迁移 | `auditEvents` |
+| AuditEvents | React 已实现，待统一浏览器验收 | `auditEvents` |
 | BackupSettings | React 已实现，待统一浏览器验收 | `getBackupSettings`、`setBackupSettings`、`testBackup` |
 | BlogPostEdit | 未迁移 | `createBlogPost`、`getBlogPost`、`listBlogPosts`、`previewBlog`、`updateBlogPost`、`uploadBlogImage` |
 | BlogPosts | 未迁移 | `deleteBlogPost`、`listBlogPosts` |
 | BlogSettings | React 已实现，待统一浏览器验收 | `getBlogSettings`、`setBlogSettings` |
 | CategoryManagement | 未迁移 | `createCategory`、`deleteCategory`、`listCategories`、`updateCategory` |
-| ContactInbox | 未迁移 | `contactMessage`、`contactMessages`、`updateContactStatus` |
+| ContactInbox | React 已实现，待统一浏览器验收 | `contactMessage`、`contactMessages`、`updateContactStatus` |
 | ContactSettings | React 已实现，待统一浏览器验收 | `contactSettings`、`saveContactSettings` |
 | Dashboard | 未迁移 | `dashboard` |
-| Diagnostics | 未迁移 | `diagnostics` |
+| Diagnostics | React 已实现，待统一浏览器验收 | `diagnostics` |
 | DomainSettings | React 已实现，待统一浏览器验收 | `getDomain`、`setDomain` |
 | DomainWizard | React 已实现，待统一浏览器验收 | `wizardDomainSkip` |
 | ExportData | 未迁移 | 组合页面/静态内容，核对其子组件 |
@@ -73,7 +73,9 @@
 
 用户与角色页面仅店主可访问；预设角色名称固定但权限可编辑，自定义角色可创建、改名、改权和删除，店主超管单独展示且无员工操作入口。角色依赖按现有服务端规则校验，用户/角色/会话/退款等店主专属权限不出现在可分配清单。邀请、停用/恢复、角色调整、密码重置和退出设备沿用原接口；重置、退出设备和删角色均先确认，仍有员工的角色须先调整。邀请链接严格限定本站固定入口与令牌格式，仅保留当前页面内存，支持复制/隐藏，跳页或会话过期清除。写入成功而列表刷新失败保留刚生成的邀请及成功结果，明确提示刷新核对，不误报写入失败或自动重发。
 
-十二个页面已使用独立动态导入；其余页面及最终生产包体仍待迁移和审查。接口桩测试验证请求内容与界面结果，不代表已完成真实支付平台、SMTP 或浏览器布局验收。
+客服收件箱保留状态筛选、私密详情、处理人/结案人快照、可信国家与 IP、匿名化和结案/重开。contact.view 只读、contact.manage 可处理；演示即使错误返回真实内容也不展示。选中变化取消旧读取并核对对象 ID，旧详情不能覆盖当前对象；状态写入期间锁定切换和重复提交，401 清除内容。审计保留最近 100 条、操作时用户名、未知动作文本回退和演示标识脱敏，读取失败显示重试。诊断保留数据库、媒体、磁盘和备份/升级快照；未知状态或错误不冒充正常，磁盘探测失败仍展示其他诊断。
+
+十二个设置页及三个业务/系统页已使用独立动态导入；其余页面及最终生产包体仍待迁移和审查。接口桩测试验证请求内容与界面结果，不代表已完成真实支付平台、SMTP 或浏览器布局验收。
 
 ## 验证方式
 
