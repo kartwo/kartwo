@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 10:55:07
 
+import { ApiOutlined, SaveOutlined } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
 import { Alert, App, Button, Card, Form, Input, Space, Switch, Typography } from 'antd'
 import { backupKeys, securitySettingsAPI, type BackupFields, type BackupKey } from '../security-settings-api'
@@ -69,8 +70,8 @@ export default function BackupSettings() {
         <Form.Item name="webdav_username" label="WebDAV 用户名"><Input disabled={disabled('webdav_username')} autoComplete="off" /></Form.Item>
         <Form.Item name="webdav_password" label="WebDAV 密码 / 授权码" extra="留空保留原密码，密码中的空格原样保存。"><Input.Password disabled={disabled('webdav_password')} autoComplete="new-password" placeholder={data.webdav_password_set ? '已配置，留空保持不变' : '请输入密码'} /></Form.Item>
         <Space wrap>
-          {writable && <Button type="primary" htmlType="submit" loading={task.busy && operation === 'save'}>保存备份设置</Button>}
-          <Button disabled={!owner || task.busy} loading={task.busy && operation === 'test'} onClick={() => void test()}>{writable ? '保存并测试连接' : '测试已配置连接'}</Button>
+          {writable && <Button icon={<SaveOutlined aria-hidden />} type="primary" htmlType="submit" loading={task.busy && operation === 'save'}>保存备份设置</Button>}
+          <Button icon={<ApiOutlined aria-hidden />} disabled={!owner || task.busy} loading={task.busy && operation === 'test'} onClick={() => void test()}>{writable ? '保存并测试连接' : '测试已配置连接'}</Button>
         </Space>
       </Form>
       <Typography.Paragraph className="settings-result" type="secondary">测试会使用保存后的配置，在远端写入一个临时文件。无人值守的启动即上传仍须通过 KARTWO_BACKUP_WEBDAV_* 环境变量提供完整配置。</Typography.Paragraph>

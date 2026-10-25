@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 11:01:04
 
+import { FormOutlined, SaveOutlined } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
 import { Alert, App, Button, Card, Checkbox, Form, Input, InputNumber, Modal, Select, Space, Typography } from 'antd'
 import { policyAPI, type PolicyProfile } from '../policy-api'
@@ -76,7 +77,7 @@ export default function PolicySettings() {
               <Form.Item name={[field.name, 'max_business_days']} label={`${title} 最多天数`} dependencies={[[ 'delivery_estimates', field.name, 'min_business_days' ]]} rules={[{ required: true, type: 'integer', min: 1, max: 120, message: '请输入 1–120 的整数' }, ({ getFieldValue }) => ({ validator: (_, value: number) => value >= getFieldValue(['delivery_estimates', field.name, 'min_business_days']) ? Promise.resolve() : Promise.reject(new Error('最多天数不能小于最少天数')) })]}><InputNumber min={1} max={120} /></Form.Item>
             </div>
           })}</Form.List>
-          {writable && <Button type="primary" htmlType="submit" loading={task.busy}>保存资料</Button>}
+          {writable && <Button icon={<SaveOutlined aria-hidden />} type="primary" htmlType="submit" loading={task.busy}>保存资料</Button>}
         </Form>
       </Card>
       <Card title="生成页脚内容">
@@ -84,7 +85,7 @@ export default function PolicySettings() {
         <Checkbox checked={publish} disabled={!canGenerate || task.busy || !!overwrite} onChange={event => setPublish(event.target.checked)}>新建页面后直接发布到店面页脚</Checkbox>
         <Typography.Paragraph className="settings-result" type="secondary">生成缺少页面不会改动现有同链接页面；重新生成会覆盖标准页面正文，并保留现有草稿/发布状态。生成前会先保存当前资料。</Typography.Paragraph>
         {!canGenerate && writable && <Alert type="info" title="当前账号可编辑政策资料；生成页面还需内容管理权限。" />}
-        {canGenerate && <Space wrap><Button type="primary" disabled={task.busy || !!overwrite} onClick={() => void beginGeneration(false)}>生成缺少页面</Button><Button danger disabled={task.busy || !!overwrite} onClick={() => void beginGeneration(true)}>重新生成并覆盖正文</Button></Space>}
+        {canGenerate && <Space wrap><Button icon={<FormOutlined aria-hidden />} type="primary" disabled={task.busy || !!overwrite} onClick={() => void beginGeneration(false)}>生成缺少页面</Button><Button icon={<FormOutlined aria-hidden />} danger disabled={task.busy || !!overwrite} onClick={() => void beginGeneration(true)}>重新生成并覆盖正文</Button></Space>}
       </Card>
       <Modal open={!!overwrite} title="覆盖标准页面正文" okText="重新生成" cancelText="取消" confirmLoading={task.busy} okButtonProps={{ danger: true }} onCancel={() => { if (!task.busy) setOverwrite(null) }} onOk={() => { if (overwrite) void generate(overwrite, true) }}>将按当前资料重新生成 7 个标准页面的正文。原有草稿/发布状态会保留，手工修改的正文会被覆盖。确定继续？</Modal>
     </>}

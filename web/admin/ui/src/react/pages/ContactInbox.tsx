@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 11:17:21
 
+import { CheckCircleOutlined, ClockCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useCallback, useRef, useState } from 'react'
 import { Alert, App, Button, Card, Descriptions, Empty, Select, Space, Typography } from 'antd'
 import { contactAPI, contactStatuses, contactTopics, type ContactStatus } from '../contact-api'
@@ -39,7 +40,7 @@ export default function ContactInbox() {
   }
   return <div className="inbox-page">
     <Typography.Paragraph type="secondary">访客留言仅在后台可见；没有公开展示或普通删除操作。回复请使用商家邮箱。请勿索取密码或完整银行卡信息。</Typography.Paragraph>
-    <Space wrap><label htmlFor="contact-filter">留言状态</label><Select id="contact-filter" value={status} disabled={task.busy} onChange={filter} options={[{ value: '', label: '全部' }, ...Object.entries(contactStatuses).map(([value, label]) => ({ value, label }))]} /><Button disabled={list.loading || task.busy} onClick={() => void refresh()}>刷新留言</Button></Space>
+    <Space wrap><label htmlFor="contact-filter">留言状态</label><Select id="contact-filter" value={status} disabled={task.busy} onChange={filter} options={[{ value: '', label: '全部' }, ...Object.entries(contactStatuses).map(([value, label]) => ({ value, label }))]} /><Button icon={<ReloadOutlined aria-hidden />} disabled={list.loading || task.busy} onClick={() => void refresh()}>刷新留言</Button></Space>
     {task.error && <Alert type="error" showIcon title={task.error} />}
     <PageState {...list} retry={list.refresh}>{list.data && <>
       {list.data.demo_hidden && <Alert type="info" title="公开演示不会展示真实顾客留言、邮箱或 IP。正式部署并开启后，这里显示私密收件箱。" />}
@@ -60,7 +61,7 @@ export default function ContactInbox() {
             { key: 'ip', label: 'IP 地址', children: row.ip_address || '已清除 / 未记录' }, { key: 'country', label: '大致所属地', children: countryName(row.country_code) },
             { key: 'time', label: '时间', children: row.created_at }, { key: 'body', label: '内容', children: <span className="inbox-body">{row.body || '已匿名化'}</span> },
           ]} />
-          {row.anonymized_at ? <Alert className="settings-result" type="info" title="此留言已到期匿名化，无法再修改处理状态。" /> : canManage && <Space wrap className="settings-result"><Button disabled={task.busy || row.status === 'processing'} onClick={() => void changeStatus('processing')}>标记处理中</Button><Button disabled={task.busy || row.status === 'closed'} onClick={() => void changeStatus('closed')}>结案</Button><Button disabled={task.busy || row.status === 'new'} onClick={() => void changeStatus('new')}>重开</Button></Space>}
+          {row.anonymized_at ? <Alert className="settings-result" type="info" title="此留言已到期匿名化，无法再修改处理状态。" /> : canManage && <Space wrap className="settings-result"><Button icon={<ClockCircleOutlined aria-hidden />} disabled={task.busy || row.status === 'processing'} onClick={() => void changeStatus('processing')}>标记处理中</Button><Button icon={<CheckCircleOutlined aria-hidden />} disabled={task.busy || row.status === 'closed'} onClick={() => void changeStatus('closed')}>结案</Button><Button icon={<ReloadOutlined aria-hidden />} disabled={task.busy || row.status === 'new'} onClick={() => void changeStatus('new')}>重开</Button></Space>}
           <Typography.Paragraph className="settings-result" type="secondary">IP 所属地仅在可信代理提供国家码时显示，不代表精确位置。</Typography.Paragraph>
         </>}
       </PageState></Card></div>

@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 10:34:00
 
+import { SaveOutlined } from '@ant-design/icons'
 import { useEffect } from 'react'
 import { Alert, App, Button, Card, Form, InputNumber, Switch, Typography } from 'antd'
 import { storeSettingsAPI, type ContactSettings as Fields } from '../store-settings-api'
@@ -33,7 +34,7 @@ export default function ContactSettings() {
         <Form.Item name="retention_months" label="结案后保留完整留言（月）" rules={[{ required: true, type: 'integer', min: 1, max: 24, message: '请输入 1–24 的整数' }]}><InputNumber min={1} max={24} /></Form.Item>
         <Form.Item name="ip_retention_days" label="IP 地址保留（天）" rules={[{ required: true, type: 'integer', min: 7, max: 90, message: '请输入 7–90 的整数' }]}><InputNumber min={7} max={90} /></Form.Item>
         <Typography.Paragraph type="secondary">默认：结案后 12 个月匿名化姓名、邮箱、正文和订单号；IP 从提交起最多保留 90 天。未结案留言保留处理所需内容。记录本身不会从后台普通操作中删除。到期清理任务每日运行。</Typography.Paragraph>
-        {writable && <Button type="primary" htmlType="submit" loading={task.busy}>保存设置</Button>}
+        {writable && <Button icon={<SaveOutlined aria-hidden />} type="primary" htmlType="submit" loading={task.busy}>保存设置</Button>}
       </Form>
     </Card>}
   </PageState></div>

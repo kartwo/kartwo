@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 12:46:12
 
+import { RollbackOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Descriptions, Empty, Table, Typography } from 'antd'
 import { orderStatuses, refundStates, type Order } from './order-api'
 import { money, reviewText, paymentTexts } from './order-model'
@@ -28,7 +29,7 @@ export function OrderRecords({ order }: { order: Order }) {
       {!order.receipts.length && <Empty description="尚无收款账本记录，不能仅凭订单状态发起退款。" />}
       {order.receipts.map((receipt, index) => <div className="order-record" key={index}><strong>{receipt.provider} · {money(receipt.amount_cents, receipt.currency)} · 已退 {money(receipt.refunded_cents, receipt.currency)}</strong>
         <Typography.Paragraph>{reviewText(receipt.review_reason)}{receipt.source === 'legacy' ? '（历史记录）' : ''}</Typography.Paragraph><Typography.Paragraph className="order-reference" type="secondary">{receipt.reference}</Typography.Paragraph>
-        {actions.owner && <Button disabled={actions.busy} aria-label={`核对平台退款记录：${index + 1}`} onClick={() => actions.check(receipt)}>核对平台退款记录</Button>}
+        {actions.owner && <Button icon={<RollbackOutlined aria-hidden />} disabled={actions.busy} aria-label={`核对平台退款记录：${index + 1}`} onClick={() => actions.check(receipt)}>核对平台退款记录</Button>}
         <Typography.Paragraph type="secondary">{receipt.refund_checked_at ? `最近核对：${receipt.refund_checked_at}。` : ''}核对只查询平台记录并校正本地记账，不新增退款。</Typography.Paragraph>
         {receipt.refund_reconciliation_required && <Alert type="warning" title="平台退款尚待确认，或与原入账状态不一致。核对完成前暂停此付款的新退款和订单发货。" />}
       </div>)}

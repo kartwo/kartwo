@@ -4,6 +4,8 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 10:34:00
 
+import { FilePicker } from '../FilePicker'
+import { DeleteOutlined, SaveOutlined } from '@ant-design/icons'
 import { useEffect, type ChangeEvent } from 'react'
 import { Alert, App, Button, Card, Form, Input, Typography } from 'antd'
 import { storeSettingsAPI } from '../store-settings-api'
@@ -51,7 +53,7 @@ export default function ShopSettings() {
         <Form.Item name="name" label="店铺名称" extra="最多 120 个字符。" rules={[{ required: true, whitespace: true, message: '请填写店铺名称' }, { validator: (_, value: string) => Array.from((value ?? '').trim()).length <= 120 && !/[\u0000-\u001f\u007f-\u009f]/.test(value ?? '') ? Promise.resolve() : Promise.reject(new Error('店铺名称最多 120 个字符，不能含控制字符')) }]}>
           <Input autoComplete="organization" />
         </Form.Item>
-        {writable && <Button type="primary" htmlType="submit" loading={task.busy}>保存店铺名称</Button>}
+        {writable && <Button icon={<SaveOutlined aria-hidden />} type="primary" htmlType="submit" loading={task.busy}>保存店铺名称</Button>}
       </Form>
       <div className="settings-test">
         <Typography.Title level={3}>店铺 Logo</Typography.Title>
@@ -59,8 +61,8 @@ export default function ShopSettings() {
         {data.logo_url && <div className="brand-logo-preview"><img src={data.logo_url} alt={`${data.name} Logo`} /></div>}
         <div className="brand-logo-actions">
           <label htmlFor="shop-logo">{data.logo_url ? '更换 Logo' : '上传 Logo'}</label>
-          <input id="shop-logo" type="file" accept="image/jpeg,image/png,image/webp" disabled={!writable || task.busy} onChange={event => void upload(event)} />
-          {writable && data.logo_url && <Button danger disabled={task.busy} onClick={() => void remove()}>删除 Logo</Button>}
+          <FilePicker label="店铺 Logo" buttonLabel="选择 Logo 文件" id="shop-logo" accept="image/jpeg,image/png,image/webp" disabled={!writable || task.busy} onChange={event => void upload(event)} />
+          {writable && data.logo_url && <Button icon={<DeleteOutlined aria-hidden />} danger disabled={task.busy} onClick={() => void remove()}>删除 Logo</Button>}
         </div>
       </div>
     </Card>}

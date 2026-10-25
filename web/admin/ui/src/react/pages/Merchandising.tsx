@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 11:34:25
 
+import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, App, Button, Card, Empty, Form, Input, Modal, Select, Tag, Typography } from 'antd'
 import { catalogAPI, emptyContent, writeAndReload, type ContentFields, type ContentPage } from '../catalog-api'
@@ -21,7 +22,7 @@ function ContentEditor({ page, writable, busy, save }: { page: ContentPage | nul
       <Form.Item name="seo_description" label="SEO 描述"><Input.TextArea rows={2} /></Form.Item>
       <Form.Item name="body_markdown" label="内容（安全 Markdown）"><Input.TextArea rows={12} /></Form.Item>
       <Form.Item name="status" label="状态"><Select options={[{ value: 'draft', label: '草稿' }, { value: 'active', label: '发布' }]} /></Form.Item>
-      {writable && <Button type="primary" htmlType="submit" loading={busy}>保存内容页</Button>}
+      {writable && <Button icon={<SaveOutlined aria-hidden />} type="primary" htmlType="submit" loading={busy}>保存内容页</Button>}
     </Form>
   </Card>
 }
@@ -63,9 +64,9 @@ export default function Merchandising() {
     {!writable && <Alert type="info" title="公开演示中内容页为只读，可选择页面查看原文。" />}
     {task.error && !deleting && <Alert type="error" showIcon title={task.error} />}{warning && <Alert type="warning" title={warning} />}
     <PageState {...resource} retry={resource.refresh}>{resource.data && <div className="content-columns"><Card title="内容页">
-      {writable && <Button type="primary" disabled={task.busy} onClick={reset}>新建内容页</Button>}
+      {writable && <Button icon={<PlusOutlined aria-hidden />} type="primary" disabled={task.busy} onClick={reset}>新建内容页</Button>}
       {!resource.data.length && <Empty description="尚无内容页" />}
-      {resource.data.map(item => <div className="content-page-row" key={item.public_id}><Button className="content-title-button" type="text" disabled={task.busy} onClick={() => open(item.public_id)}>{item.title}</Button><Tag>{item.status === 'active' ? '已发布' : '草稿'}</Tag>{writable && <Button danger aria-label={`删除内容页：${item.title}`} disabled={task.busy} onClick={() => { task.clearError(); setDeleting(item) }}>删除</Button>}</div>)}
+      {resource.data.map(item => <div className="content-page-row" key={item.public_id}><Button className="content-title-button" type="text" disabled={task.busy} onClick={() => open(item.public_id)}>{item.title}</Button><Tag>{item.status === 'active' ? '已发布' : '草稿'}</Tag>{writable && <Button icon={<DeleteOutlined aria-hidden />} danger aria-label={`删除内容页：${item.title}`} disabled={task.busy} onClick={() => { task.clearError(); setDeleting(item) }}>删除</Button>}</div>)}
     </Card><div>{selected ? <PageState {...detail} retry={detail.refresh}>{page && <ContentEditor key={page.public_id} page={page} writable={writable} busy={task.busy} save={values => void save(values)} />}</PageState> : <ContentEditor key={newPage?.public_id ?? 'new'} page={newPage} writable={writable} busy={task.busy} save={values => void save(values)} />}</div></div>}</PageState>
     <Modal open={!!deleting} title="删除内容页" okText="删除" cancelText="取消" confirmLoading={task.busy} okButtonProps={{ danger: true }} onCancel={() => { if (!task.busy) setDeleting(null) }} onOk={() => void remove()}>{task.error && <Alert type="error" showIcon title={task.error} />}确定删除「{deleting?.title}」？</Modal>
   </div>

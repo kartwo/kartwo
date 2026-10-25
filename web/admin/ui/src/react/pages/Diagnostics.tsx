@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 11:17:21
 
+import { ReloadOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Descriptions, Tag } from 'antd'
 import { observabilityAPI, formatBytes, backupTime } from '../observability-api'
 import { useResource } from '../useResource'
@@ -11,7 +12,7 @@ import { PageState } from '../PageState'
 export default function Diagnostics() {
   const resource = useResource(observabilityAPI.diagnostics), data = resource.data
   return <div className="read-page">
-    <div className="read-page-toolbar"><span>查看本机数据库、媒体磁盘与本地保护点状态。</span><Button disabled={resource.loading} onClick={() => void resource.refresh()}>刷新诊断</Button></div>
+    <div className="read-page-toolbar"><span>查看本机数据库、媒体磁盘与本地保护点状态。</span><Button icon={<ReloadOutlined aria-hidden />} disabled={resource.loading} onClick={() => void resource.refresh()}>刷新诊断</Button></div>
     <PageState {...resource} retry={resource.refresh}>{data && <>
       <Card title="数据库"><Descriptions column={1} items={[{ key: 'connection', label: '连接', children: <Tag color="success">正常</Tag> }]} /></Card>
       <Card title="媒体文件"><Descriptions column={{ xs: 1, sm: 2 }} items={[

@@ -1,52 +1,52 @@
 /* 后台设计变量 / Admin Design Tokens
- * 功能：旧界面与 React 迁移期间共用的唯一视觉变量源
+ * 功能：Ant Design 标准蓝灰主题的统一视觉变量源
  * 作者：仗键天涯(daxing)
  * 邮箱：3442535897@qq.com
  * 时间：2026-10-25 10:12:07 */
-/* 后台基调：深蓝导航 + 暖白工作区 + 柔和分层卡片。 */
+/* 与当前 Ant Design 默认色板、间距和圆角对齐；不影响店面主题。 */
 :root {
   /* —— 色板 —— */
-  --bg: #f7f5f2;
+  --bg: #f5f5f5;
   --surface: #ffffff;      /* 卡片/面板 */
-  --surface-2: #faf8f5;
-  --border: #e9e2dc;
-  --border-strong: #cfc0b6;
-  --text: #302b29;
-  --text-muted: #695f5a;
-  --text-subtle: #958984;
-  --accent: #975448;
-  --accent-hover: #7f4138;
+  --surface-2: #fafafa;
+  --border: #f0f0f0;
+  --border-strong: #d9d9d9;
+  --text: rgba(0, 0, 0, .88);
+  --text-muted: rgba(0, 0, 0, .65);
+  --text-subtle: rgba(0, 0, 0, .45);
+  --accent: #1677ff;
+  --accent-hover: #4096ff;
   --on-accent: #ffffff;    /* 主色上文字 */
-  --focus-ring: rgba(151, 84, 72, .2);
-  --sidebar-bg: #102344;
-  --sidebar-hover: #1c355a;
-  --sidebar-active: #31517e;
-  --sidebar-text: #f1f5fb;
-  --sidebar-muted: #c6d3e7;
-  --sidebar-subtle: #98a9c6;
-  --sidebar-border: #324666;
-  --sidebar-focus: #b4cfff;
+  --focus-ring: rgba(5, 145, 255, .1);
+  --sidebar-bg: #001529;
+  --sidebar-hover: #001529;
+  --sidebar-active: #1677ff;
+  --sidebar-text: #ffffff;
+  --sidebar-muted: rgba(255, 255, 255, .65);
+  --sidebar-subtle: rgba(255, 255, 255, .45);
+  --sidebar-border: rgba(255, 255, 255, .12);
+  --sidebar-focus: #91caff;
   --intro-start: #ffffff;
-  --intro-end: #f8ede6;
-  --login-start: #f5e5df;
-  --login-middle: #faf7f3;
-  --login-end: #e6e6db;
-  --login-glow: #f3d6ca;
-  --success: #0e7c4a;      /* 成功文字 */
-  --success-bg: #e3f6ec;   /* 成功底 */
-  --danger: #df1b41;       /* 危险/错误文字 */
-  --danger-bg: #fce8ec;    /* 危险底 */
-  --warn: #a35b02;         /* 提醒文字（非错误，如草稿态） */
-  --warn-bg: #fdf3e3;      /* 提醒底 */
+  --intro-end: #e6f4ff;
+  --login-start: #f5f5f5;
+  --login-middle: #f5f5f5;
+  --login-end: #f5f5f5;
+  --login-glow: #e6f4ff;
+  --success: #52c41a;
+  --success-bg: #f6ffed;
+  --danger: #ff4d4f;
+  --danger-bg: #fff2f0;
+  --warn: #faad14;
+  --warn-bg: #fffbe6;
   /* —— 间距（4px 基） —— */
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px;
   /* —— 圆角 —— */
-  --radius-sm: 8px; --radius-md: 10px; --radius-lg: 18px; --radius-pill: 999px;
+  --radius-sm: 4px; --radius-md: 6px; --radius-lg: 8px; --radius-pill: 999px;
   /* —— 阴影（弱分层） —— */
-  --shadow-sm: 0 4px 18px rgba(58, 39, 27, .045);
-  --shadow-md: 0 12px 36px rgba(58, 39, 27, .09);
-  --shadow-login: 0 28px 76px rgba(74, 51, 43, .16);
-  --nav-overlay: rgba(16, 24, 40, .35);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, .08);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, .08);
+  --shadow-login: 0 6px 16px rgba(0, 0, 0, .08);
+  --nav-overlay: rgba(0, 0, 0, .45);
   /* —— 字阶 —— */
   --fs-xs: .75rem; --fs-sm: .8125rem; --fs-base: .875rem; --fs-md: 1rem; --fs-lg: 1.25rem; --fs-xl: 2rem;
   /* —— 旧 token 名别名：使既有组件的 var(--panel/--line/--muted/--ok) 自动吃新浅色值，无需逐页改 —— */

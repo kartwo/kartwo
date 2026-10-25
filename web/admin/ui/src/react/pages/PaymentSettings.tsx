@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 10:23:15
 
+import { ApiOutlined, SaveOutlined } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
 import { Alert, App, Button, Card, Form, Input, Select, Space, Tag, Typography } from 'antd'
 import { settingsAPI, type StripeFields, type PayPalFields } from '../settings-api'
@@ -64,10 +65,10 @@ export default function PaymentSettings() {
             <Form.Item name="secret" label="Secret key（推荐使用受限密钥 rk_）" extra="仅授予所需权限；留空保留已保存的密钥。"><Input.Password autoComplete="new-password" placeholder={secretPlaceholder(!stripeWritable, data.stripe.has_secret)} /></Form.Item>
             <Form.Item name="webhook_secret" label={<Space>Webhook 签名密钥<Tag color={data.stripe.has_webhook ? 'success' : 'default'}>{data.stripe.has_webhook ? '已配置' : '未配置'}</Tag></Space>}><Input.Password autoComplete="new-password" placeholder={secretPlaceholder(!stripeWritable, data.stripe.has_webhook)} /></Form.Item>
             <Typography.Paragraph type="secondary">回调地址为店面域名下的 <Typography.Text code>/webhooks/stripe</Typography.Text>。请订阅 checkout.session.completed、checkout.session.async_payment_succeeded、charge.refunded、refund.created、refund.updated 和 refund.failed，同步付款与退款结果。</Typography.Paragraph>
-            {stripeWritable && <Button type="primary" htmlType="submit" loading={task.busy && operation === 'stripe'}>保存 Stripe</Button>}
+            {stripeWritable && <Button icon={<SaveOutlined aria-hidden />} type="primary" htmlType="submit" loading={task.busy && operation === 'stripe'}>保存 Stripe</Button>}
           </Form>
           <div className="settings-test">
-            <Button loading={task.busy && operation === 'test'} disabled={!owner || !data.stripe.has_secret || data.stripe.source === 'demo' || task.busy} onClick={() => void testStripe()}>测试 Stripe 连接</Button>
+            <Button icon={<ApiOutlined aria-hidden />} loading={task.busy && operation === 'test'} disabled={!owner || !data.stripe.has_secret || data.stripe.source === 'demo' || task.busy} onClick={() => void testStripe()}>测试 Stripe 连接</Button>
             <Typography.Paragraph type="secondary">使用已保存的配置测试，不保存输入框中尚未提交的内容。</Typography.Paragraph>
           </div>
         </Card>
@@ -80,7 +81,7 @@ export default function PaymentSettings() {
             <Form.Item name="secret" label="PayPal Secret"><Input.Password autoComplete="new-password" placeholder={secretPlaceholder(!paypalWritable, data.paypal.has_secret)} /></Form.Item>
             <Form.Item name="webhook_id" label="Webhook ID（收款及退款对账必填）"><Input autoComplete="off" /></Form.Item>
             <Typography.Paragraph type="secondary">回调地址为店面域名下的 <Typography.Text code>/webhooks/paypal</Typography.Text>。请订阅 PAYMENT.CAPTURE.COMPLETED、PAYMENT.CAPTURE.REFUNDED、PAYMENT.REFUND.PENDING 和 PAYMENT.REFUND.FAILED。</Typography.Paragraph>
-            {paypalWritable && <Button type="primary" htmlType="submit" loading={task.busy && operation === 'paypal'}>保存 PayPal</Button>}
+            {paypalWritable && <Button icon={<SaveOutlined aria-hidden />} type="primary" htmlType="submit" loading={task.busy && operation === 'paypal'}>保存 PayPal</Button>}
           </Form>
         </Card>
       </>}

@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 12:22:28
 
+import { DeleteOutlined, FormOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons'
 import { useState } from 'react'
 import { Alert, App, Button, Card, Empty, Form, Input, Modal, Space, Table, Typography } from 'antd'
 import type { Product, Variant } from './product-api'
@@ -25,8 +26,8 @@ export function NewVariants({ matrix, change }: { matrix: Matrix; change: (matri
   try { stale = !!matrix.rows.length && matrix.signature !== JSON.stringify(parseAxes(matrix.axes)) } catch { stale = !!matrix.rows.length }
   return <div className="product-matrix">
     <Typography.Title level={4}>变体轴</Typography.Title>
-    {matrix.axes.map((axis, index) => <div className="product-axis" key={index}><Input aria-label={`轴 ${index + 1} 名称`} value={axis.name} disabled={task.busy} onChange={event => updateAxis(index, { name: event.target.value })} /><Input aria-label={`轴 ${index + 1} 取值`} placeholder="以英文逗号分隔" value={axis.valuesText} disabled={task.busy} onChange={event => updateAxis(index, { valuesText: event.target.value })} /><Button danger disabled={task.busy} aria-label={`删除轴 ${index + 1}`} onClick={() => change({ ...matrix, axes: matrix.axes.filter((_, i) => i !== index) })}>删除</Button></div>)}
-    <Space wrap><Button disabled={task.busy} onClick={() => change({ ...matrix, axes: [...matrix.axes, { name: '', valuesText: '' }] })}>添加轴</Button><Button disabled={task.busy} onClick={() => { setError(''); if (matrix.rows.length) setConfirming(true); else generate() }}>生成变体组合</Button></Space>
+    {matrix.axes.map((axis, index) => <div className="product-axis" key={index}><Input aria-label={`轴 ${index + 1} 名称`} value={axis.name} disabled={task.busy} onChange={event => updateAxis(index, { name: event.target.value })} /><Input aria-label={`轴 ${index + 1} 取值`} placeholder="以英文逗号分隔" value={axis.valuesText} disabled={task.busy} onChange={event => updateAxis(index, { valuesText: event.target.value })} /><Button icon={<DeleteOutlined aria-hidden />} danger disabled={task.busy} aria-label={`删除轴 ${index + 1}`} onClick={() => change({ ...matrix, axes: matrix.axes.filter((_, i) => i !== index) })}>删除</Button></div>)}
+    <Space wrap><Button icon={<PlusOutlined aria-hidden />} disabled={task.busy} onClick={() => change({ ...matrix, axes: [...matrix.axes, { name: '', valuesText: '' }] })}>添加轴</Button><Button icon={<FormOutlined aria-hidden />} disabled={task.busy} onClick={() => { setError(''); if (matrix.rows.length) setConfirming(true); else generate() }}>生成变体组合</Button></Space>
     {error && !confirming && <Alert type="error" title={error} />}{stale && <Alert type="warning" title="变体轴已改变，请重新生成组合后再保存；现有输入尚未清空。" />}
     {matrix.rows.length > 0 && <Table<DraftVariant & { index: number }> aria-label="新商品变体" rowKey="index" size="small" scroll={{ x: true }} pagination={{ pageSize: 20, showSizeChanger: false }} dataSource={matrix.rows.map((row, index) => ({ ...row, index }))} columns={[
       { title: '组合', key: 'selection', render: (_, row) => row.selections.map(item => `${item.option}=${item.value}`).join(' × ') },
@@ -52,7 +53,7 @@ function VariantRow({ variant, price, inventory }: { variant: Variant; price: bo
     <Form form={form} name={`variant-${variant.public_id}`} layout="vertical" initialValues={{ price: centsToMoney(variant.price_cents), quantity: String(variant.quantity) }} onFinish={save}>
       <Form.Item name="price" label="价格（主币种单位）"><Input aria-label={`价格：${variant.public_id}`} inputMode="decimal" disabled={!price || task.busy} /></Form.Item>
       <Form.Item name="quantity" label="库存"><Input aria-label={`库存：${variant.public_id}`} inputMode="numeric" disabled={!inventory || task.busy} /></Form.Item>
-      {(price || inventory) && <Button disabled={task.busy} htmlType="submit" aria-label={`保存变体：${variant.public_id}`}>保存此行</Button>}
+      {(price || inventory) && <Button icon={<SaveOutlined aria-hidden />} disabled={task.busy} htmlType="submit" aria-label={`保存变体：${variant.public_id}`}>保存此行</Button>}
     </Form>
     {warning && <Alert type="warning" showIcon title={warning} />}
   </div>

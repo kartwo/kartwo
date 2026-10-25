@@ -7,6 +7,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ClipboardEvent, type DragEvent } from 'react'
 import { Alert, App, Button, Input, Modal, Select } from 'antd'
 import { sanitizeRichHTML, safeRichLink, videoEmbedURL } from './rich-html'
+import { AlignLeftOutlined, BgColorsOutlined, BoldOutlined, CheckSquareOutlined, ColumnHeightOutlined, CommentOutlined, FontColorsOutlined, FontSizeOutlined, ItalicOutlined, LinkOutlined, MenuFoldOutlined, MenuUnfoldOutlined, OrderedListOutlined, PictureOutlined, RedoOutlined, SmileOutlined, StrikethroughOutlined, TableOutlined, UnderlineOutlined, UndoOutlined, UnorderedListOutlined, VideoCameraOutlined } from '@ant-design/icons'
+const formatIcons: Record<string, typeof BoldOutlined> = { 引用: CommentOutlined, 加粗: BoldOutlined, 斜体: ItalicOutlined, 下划线: UnderlineOutlined, 删除线: StrikethroughOutlined, 项目列表: UnorderedListOutlined, 编号列表: OrderedListOutlined, 待办列表: CheckSquareOutlined, 增加缩进: MenuUnfoldOutlined, 减少缩进: MenuFoldOutlined, 撤销: UndoOutlined, 重做: RedoOutlined }
+const selectIcons: Record<string, typeof BoldOutlined> = { 文字颜色: FontColorsOutlined, 背景颜色: BgColorsOutlined, 字号: FontSizeOutlined, 字体: FontSizeOutlined, 行高: ColumnHeightOutlined, 对齐方式: AlignLeftOutlined, 插入表情: SmileOutlined, 插入表格: TableOutlined }
 export interface RichTextHandle { getHTML: () => string; insertImage: (url: string) => void }
 interface Props { initialHTML: string; disabled: boolean; upload: (file: File) => void }
 // These are merchant content colors, not application UI colors; the server keeps only safe color literals.
@@ -100,8 +103,8 @@ export const RichTextEditor = forwardRef<RichTextHandle, Props>(function RichTex
     }
     setDialog(null)
   }
-  const button = (label: string, text: string, command: string, value?: string) => <Button key={label} aria-label={label} title={label} disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => run(command, value)}>{text}</Button>
-  const select = (label: string, values: readonly (readonly string[])[], change: (value: string) => void) => <Select aria-label={label} placeholder={label} value={null} disabled={disabled} onMouseDown={remember} onChange={change} options={values.map(([value, text]) => ({ value: value!, label: text! }))} />
+  const button = (label: string, text: string, command: string, value?: string) => { const Icon = formatIcons[label]; return <Button key={label} icon={Icon ? <Icon aria-hidden /> : undefined} aria-label={label} title={label} disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => run(command, value)}>{Icon ? undefined : text}</Button> }
+  const select = (label: string, values: readonly (readonly string[])[], change: (value: string) => void) => { const Icon = selectIcons[label]; return <Select prefix={Icon && <Icon aria-hidden />} aria-label={label} placeholder={label} value={null} disabled={disabled} onMouseDown={remember} onChange={change} options={values.map(([value, text]) => ({ value: value!, label: text! }))} /> }
   return <div className="blog-rich-text">
     <div className="blog-rich-toolbar" role="toolbar" aria-label="正文排版">
       <div className="blog-toolbar-row">
@@ -117,11 +120,11 @@ export const RichTextEditor = forwardRef<RichTextHandle, Props>(function RichTex
         {select('对齐方式', [['left', '左对齐'], ['center', '居中'], ['right', '右对齐'], ['justify', '两端对齐']], value => block('textAlign', value))}
         {button('增加缩进', '⇥', 'indent')}{button('减少缩进', '⇤', 'outdent')}
         {select('插入表情', [['😀', '😀'], ['❤️', '❤️'], ['👍', '👍'], ['✨', '✨']], value => run('insertText', value))}
-        <Button aria-label="图片" disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => { remember(); imageInput.current?.click() }}>图片</Button>
-        <Button aria-label="视频" disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => open('video')}>视频</Button>
+        <Button icon={<PictureOutlined aria-hidden />} aria-label="图片" disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => { remember(); imageInput.current?.click() }}>图片</Button>
+        <Button icon={<VideoCameraOutlined aria-hidden />} aria-label="视频" disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => open('video')}>视频</Button>
       </div>
       <div className="blog-toolbar-row">
-        <Button aria-label="链接" disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => open('link')}>链接</Button>
+        <Button icon={<LinkOutlined aria-hidden />} aria-label="链接" disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => open('link')}>链接</Button>
         {select('插入表格', [['2', '2 × 2'], ['3', '3 × 3'], ['4', '4 × 4']], value => { const n = Number(value); insert(`<table><tbody>${Array.from({ length: n }, () => `<tr>${'<td><br></td>'.repeat(n)}</tr>`).join('')}</tbody></table><p><br></p>`) })}
         {button('撤销', '↶', 'undo')}{button('重做', '↷', 'redo')}
       </div>

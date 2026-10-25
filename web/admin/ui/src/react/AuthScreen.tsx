@@ -9,6 +9,7 @@ import { Alert, Button, Card, Form, Input, Result, Space, Spin, Typography } fro
 import { Link, useLocation } from 'react-router-dom'
 import { useSession } from './SessionProvider'
 import { errorMessage } from './transport'
+import { LockOutlined, LoginOutlined, PlayCircleOutlined, ReloadOutlined, ShopOutlined, UserOutlined } from '@ant-design/icons'
 
 interface Credentials { username: string; password: string }
 interface Invitation { password: string; confirm: string }
@@ -31,9 +32,9 @@ function InvitationForm({ token }: { token: string }) {
         <Typography.Paragraph>此链接一次有效，请设置至少 8 位的独立登录密码。</Typography.Paragraph>
         {invite.error && <Alert type="error" showIcon title={invite.error} />}
         <Form form={inviteForm} layout="vertical" onFinish={accept} disabled={invite.busy}>
-          <Form.Item name="password" label="新密码" rules={[{ required: true, min: 8, message: '密码至少 8 位' }]}><Input.Password autoComplete="new-password" /></Form.Item>
+          <Form.Item name="password" label="新密码" rules={[{ required: true, min: 8, message: '密码至少 8 位' }]}><Input.Password prefix={<LockOutlined aria-hidden />} autoComplete="new-password" /></Form.Item>
           <Form.Item name="confirm" label="确认密码" dependencies={['password']} rules={[{ required: true, message: '请再次输入密码' }, ({ getFieldValue }) => ({ validator: (_, value: unknown) => value === getFieldValue('password') ? Promise.resolve() : Promise.reject(new Error('两次输入的密码不一致')) })]}><Input.Password autoComplete="new-password" /></Form.Item>
-          <Button type="primary" htmlType="submit" loading={invite.busy} block>设置密码</Button>
+          <Button icon={<LockOutlined aria-hidden />} type="primary" htmlType="submit" loading={invite.busy} block>设置密码</Button>
         </Form>
       </>}
   </Card></div>
@@ -44,7 +45,7 @@ function LoginForm() {
   const [form] = Form.useForm<Credentials>()
   const setup = state.phase === 'setup'
   return <div className="auth-screen"><Card className="auth-card">
-    <div className="auth-brand"><span className="brand-mark" aria-hidden="true">K</span><strong>Kartwo</strong></div>
+    <div className="auth-brand"><span className="brand-mark"><ShopOutlined aria-hidden /></span><strong>Kartwo</strong></div>
     <Typography.Title level={2}>{setup ? '初始化 Kartwo' : '欢迎回来，继续经营你的店铺。'}</Typography.Title>
     <Typography.Paragraph type="secondary">{setup ? '创建管理员并设置主口令，用于登录与配置加密。' : '管理商品、订单和店面内容。'}</Typography.Paragraph>
     {state.error && <Alert type="error" showIcon title={state.error} />}
@@ -52,11 +53,11 @@ function LoginForm() {
       void controller.authenticate(setup ? 'setup' : 'login', values.username, values.password)
       form.setFieldValue('password', '')
     }}>
-      <Form.Item name="username" label={setup ? '管理员用户名' : '用户名'} rules={[{ required: true, whitespace: true, message: '请输入用户名' }]}><Input autoComplete="username" /></Form.Item>
-      <Form.Item name="password" label={setup ? '主口令（至少 8 位）' : '口令'} rules={[{ required: true, message: '请输入口令' }, ...(setup ? [{ min: 8, message: '口令至少 8 位' }] : [])]}><Input.Password autoComplete={setup ? 'new-password' : 'current-password'} /></Form.Item>
+      <Form.Item name="username" label={setup ? '管理员用户名' : '用户名'} rules={[{ required: true, whitespace: true, message: '请输入用户名' }]}><Input prefix={<UserOutlined aria-hidden />} autoComplete="username" /></Form.Item>
+      <Form.Item name="password" label={setup ? '主口令（至少 8 位）' : '口令'} rules={[{ required: true, message: '请输入口令' }, ...(setup ? [{ min: 8, message: '口令至少 8 位' }] : [])]}><Input.Password prefix={<LockOutlined aria-hidden />} autoComplete={setup ? 'new-password' : 'current-password'} /></Form.Item>
       <Space orientation="vertical" className="full-width">
-        <Button type="primary" htmlType="submit" block loading={state.busy}>{setup ? '创建并登录' : '登录后台'}</Button>
-        {!setup && state.demoAvailable && <Button block disabled={state.busy} onClick={() => void controller.authenticate('demo')}>体验公开演示</Button>}
+        <Button icon={<LoginOutlined aria-hidden />} type="primary" htmlType="submit" block loading={state.busy}>{setup ? '创建并登录' : '登录后台'}</Button>
+        {!setup && state.demoAvailable && <Button icon={<PlayCircleOutlined aria-hidden />} block disabled={state.busy} onClick={() => void controller.authenticate('demo')}>体验公开演示</Button>}
       </Space>
     </Form>
   </Card></div>
@@ -68,6 +69,6 @@ export function AuthScreen() {
   const token = new URLSearchParams(search).get('token') ?? ''
   if (pathname === '/accept-invite') return <InvitationForm key={token} token={token} />
   if (state.phase === 'loading') return <div className="auth-screen" role="status"><Spin /><span>加载中…</span></div>
-  if (state.phase === 'error') return <Result status="error" title="无法连接后台" subTitle={state.error} extra={<Button onClick={() => void controller.refresh()}>重试</Button>} />
+  if (state.phase === 'error') return <Result status="error" title="无法连接后台" subTitle={state.error} extra={<Button icon={<ReloadOutlined aria-hidden />} onClick={() => void controller.refresh()}>重试</Button>} />
   return <LoginForm key={state.phase} />
 }

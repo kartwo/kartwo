@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 12:46:12
 
+import { RollbackOutlined, SyncOutlined } from '@ant-design/icons'
 import { useState } from 'react'
 import { Alert, Button, Card, Descriptions, Form, Input, Modal, Select, Typography } from 'antd'
 import { refundStates, type Order, type RefundDraft, type RefundRequest } from './order-api'
@@ -15,9 +16,9 @@ export function RefundRecovery() {
   if (!actions.owner) return null
   if (intent) return <Card title="原退款请求尚未确认"><Alert type="warning" showIcon title="当前付款、金额和请求键已锁定。请继续原请求或刷新订单核对，离开页面前先核对结果。" />
     <Typography.Paragraph className="order-reference">{intent.provider} · {intent.payment_ref} · {money(intent.amount_cents, intent.currency)}</Typography.Paragraph>
-    <Button danger disabled={actions.busy} onClick={actions.resume}>继续原退款请求</Button>
+    <Button icon={<RollbackOutlined aria-hidden />} danger disabled={actions.busy} onClick={actions.resume}>继续原退款请求</Button>
   </Card>
-  return ack && actions.stale ? <Card title="已收到退款请求结果"><Typography.Paragraph>请求编号：{ack.public_id} · {money(ack.amount_cents, ack.currency)} · {refundStates[ack.state]}</Typography.Paragraph>{activeRefund(ack.state) && <Button disabled={actions.busy} onClick={() => actions.refreshRefund(ack, '')}>核对此退款请求</Button>}</Card> : null
+  return ack && actions.stale ? <Card title="已收到退款请求结果"><Typography.Paragraph>请求编号：{ack.public_id} · {money(ack.amount_cents, ack.currency)} · {refundStates[ack.state]}</Typography.Paragraph>{activeRefund(ack.state) && <Button icon={<RollbackOutlined aria-hidden />} disabled={actions.busy} onClick={() => actions.refreshRefund(ack, '')}>核对此退款请求</Button>}</Card> : null
 }
 export function NewRefund({ order }: { order: Order }) {
   const actions = useOrderOperations(), [form] = Form.useForm<{ payment: string; amount: string }>()
@@ -34,7 +35,7 @@ export function NewRefund({ order }: { order: Order }) {
       <Form.Item name="payment" label="选择付款" rules={[{ required: true, message: '请选择要退款的付款' }]}><Select options={receipts.map(receipt => ({ value: receiptKey(receipt), label: `${receipt.provider} · ${receipt.reference} · 可退 ${money(receipt.amount_cents - receipt.refunded_cents, receipt.currency)} · ${reviewText(receipt.review_reason)}` }))} onChange={key => { const receipt = receipts.find(item => receiptKey(item) === key); form.setFieldValue('amount', receipt ? centsToMoney(receipt.amount_cents - receipt.refunded_cents) : '') }} /></Form.Item>
       <Form.Item name="amount" label="退款金额" rules={[{ required: true, message: '请输入退款金额' }]}><Input inputMode="decimal" maxLength={24} placeholder="例如 10.00" /></Form.Item>
       <Typography.Paragraph type="secondary">退款不会自动补回库存；已发货订单的运单会保留。请逐笔核对付款与币种。</Typography.Paragraph>
-      <Button danger htmlType="submit" disabled={disabled}>提交退款</Button>
+      <Button icon={<RollbackOutlined aria-hidden />} danger htmlType="submit" disabled={disabled}>提交退款</Button>
     </Form>
     <Modal open={!!confirming} title="确认退款" okText="提交退款" cancelText="取消" okButtonProps={{ danger: true, disabled }} onCancel={() => setConfirming(null)} onOk={() => { if (confirming && !disabled) { const draft = confirming; setConfirming(null); actions.submit(draft) } }}>
       {confirming && <Descriptions column={1} items={[{ key: 'provider', label: '支付通道', children: confirming.provider }, { key: 'payment', label: '付款', children: <span className="order-reference">{confirming.payment_ref}</span> }, { key: 'amount', label: '退款金额', children: money(confirming.amount_cents, confirming.currency) }]} />}
@@ -50,7 +51,7 @@ function RequestCard({ request }: { request: RefundRequest }) {
     {request.reason && <Typography.Paragraph>{refundReason(request.reason)}</Typography.Paragraph>}
     {actions.owner && ['prepared', 'pending', 'review'].includes(request.state) && <div className="read-page">
       {request.state === 'review' && !request.gateway_ref && <><label htmlFor={`gateway-${request.public_id}`}>支付平台退款编号</label><Input id={`gateway-${request.public_id}`} aria-label={`支付平台退款编号：${request.public_id}`} value={gateway} maxLength={255} disabled={actions.busy} onChange={event => setGateway(event.target.value)} placeholder="从这笔退款的平台记录中复制" /></>}
-      <Button disabled={actions.busy} aria-label={`继续处理退款：${request.public_id}`} onClick={() => actions.refreshRefund(request, gateway.trim())}>继续处理 / 核对结果</Button>
+      <Button icon={<SyncOutlined aria-hidden />} disabled={actions.busy} aria-label={`继续处理退款：${request.public_id}`} onClick={() => actions.refreshRefund(request, gateway.trim())}>继续处理 / 核对结果</Button>
     </div>}
   </div>
 }

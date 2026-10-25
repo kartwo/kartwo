@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 10:23:15
 
+import { SaveOutlined, SendOutlined } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
 import { Alert, App, Button, Card, Form, Input, Select, Space, Tag, Typography } from 'antd'
 import { settingsAPI, type SmtpFields } from '../settings-api'
@@ -56,12 +57,12 @@ export default function SmtpSettings() {
         <Form.Item name="password" label="密码 / 授权码" extra="留空保留原密码，密码中的空格会原样保存。"><Input.Password autoComplete="new-password" placeholder={!writable ? '凭证不会回传到浏览器' : data.has_password ? '已保存，留空不改' : '邮箱 SMTP 授权码'} /></Form.Item>
         <Form.Item name="from_address" label="发件地址（From）" rules={[{ required: true, message: '请填写发件地址' }, { transform: (value: string) => value.trim(), type: 'email', message: '请输入合法邮箱' }]}><Input autoComplete="off" /></Form.Item>
         <Form.Item name="from_name" label="发件人名称（可选）"><Input autoComplete="off" /></Form.Item>
-        {writable && <Button type="primary" htmlType="submit" loading={task.busy && operation === 'save'}>保存 SMTP</Button>}
+        {writable && <Button icon={<SaveOutlined aria-hidden />} type="primary" htmlType="submit" loading={task.busy && operation === 'save'}>保存 SMTP</Button>}
       </Form>
       <div className="settings-test">
         <Form name="smtp-test" form={testForm} layout="vertical" disabled={!owner || !data.configured || data.source === 'demo' || task.busy} onFinish={sendTest}>
           <Form.Item name="to" label="发送测试邮件到" rules={[{ required: true, message: '请填写收件邮箱' }, { transform: (value: string) => value.trim(), type: 'email', message: '请输入合法邮箱' }]}><Input placeholder="test@example.com" autoComplete="off" /></Form.Item>
-          <Button htmlType="submit" loading={task.busy && operation === 'test'}>发送测试邮件</Button>
+          <Button icon={<SendOutlined aria-hidden />} htmlType="submit" loading={task.busy && operation === 'test'}>发送测试邮件</Button>
         </Form>
         <Typography.Paragraph type="secondary">使用已保存并已解锁的配置发送。请先保存修改，再发送测试邮件。</Typography.Paragraph>
       </div>

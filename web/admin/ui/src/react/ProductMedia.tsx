@@ -4,6 +4,8 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 12:22:28
 
+import { FilePicker } from './FilePicker'
+import { DeleteOutlined, SaveOutlined } from '@ant-design/icons'
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, App, Button, Card, Empty, Form, Input, Modal, Typography } from 'antd'
 import { productAPI, type Product, type ProductMedia as Asset } from './product-api'
@@ -20,7 +22,7 @@ function MediaCard({ asset, writable, busy, save, remove }: { asset: Asset; writ
   return <Card size="small"><img className="product-media-preview" src={thumbnail?.url ?? asset.original_url} alt={asset.alt_text || '商品图片预览'} />
     <Form form={form} layout="vertical" onFinish={values => { if (writable) save(values.alt_text) }} disabled={!writable || busy}>
       <Form.Item name="alt_text" label="图片 alt（英文）"><Input aria-label={`图片说明：${asset.public_id}`} maxLength={250} /></Form.Item>
-      {writable && <div className="product-media-actions"><Button htmlType="submit" disabled={busy}>保存 alt</Button><Button danger aria-label={`删除图片：${asset.public_id}`} disabled={busy} onClick={remove}>删除图片</Button></div>}
+      {writable && <div className="product-media-actions"><Button icon={<SaveOutlined aria-hidden />} htmlType="submit" disabled={busy}>保存 alt</Button><Button icon={<DeleteOutlined aria-hidden />} danger aria-label={`删除图片：${asset.public_id}`} disabled={busy} onClick={remove}>删除图片</Button></div>}
     </Form>
   </Card>
 }
@@ -51,7 +53,7 @@ export function ProductMedia({ product }: { product: Product }) {
     <Typography.Paragraph type="secondary">{rights.demo ? '演示商品最多 1 张图片，文件大小按当前会话额度限制。' : '支持 JPEG、PNG、WebP，单张最大 10MB。系统会压缩、生成多种尺寸并去除 EXIF。'}</Typography.Paragraph>
     {warning && <Alert type="warning" title={warning} />}
     <PageState {...resource} retry={resource.refresh}>{resource.data && <div className="read-page">
-      {rights.media && <input type="file" aria-label="上传商品图片" accept="image/jpeg,image/png,image/webp" disabled={task.busy || quotaFull || !maxBytes} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) upload(file) }} />}
+      {rights.media && <FilePicker label="上传商品图片" accept="image/jpeg,image/png,image/webp" disabled={task.busy || quotaFull || !maxBytes} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) upload(file) }} />}
       {quotaFull && <Typography.Paragraph type="secondary">演示图片额度已满；删除当前图片后可重新上传。</Typography.Paragraph>}
       {!resource.data.length && <Empty description="还没有图片，选择一张上传。" />}
       <div className="product-media-grid">{resource.data.map(asset => <MediaCard key={asset.public_id} asset={asset} writable={rights.media} busy={task.busy} save={text => saveAlt(asset, text)} remove={() => { task.clearError(); setDeleting(asset) }} />)}</div>

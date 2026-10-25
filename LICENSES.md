@@ -22,7 +22,7 @@
 | Lucide | Admin/Storefront 图标 | ISC | https://github.com/lucide-icons/lucide | 计划 |
 | Tabler Icons | 备选图标集 | MIT | https://github.com/tabler/tabler-icons | 备选 |
 | Heroicons | 备选图标集 | MIT | https://github.com/tailwindlabs/heroicons | 备选 |
-| Ant Design Icons | Ant Design 组件内置状态及控件图标 | MIT | https://github.com/ant-design/ant-design-icons | 已引入（正式 Admin） |
+| Ant Design Icons 6.3.4 | 正式 Admin 导航、概览、操作按钮、富文本工具栏及组件内置图标 | MIT | https://github.com/ant-design/ant-design-icons | 已显式引入并锁定版本 |
 
 ## 代码依赖（关键第三方库）
 

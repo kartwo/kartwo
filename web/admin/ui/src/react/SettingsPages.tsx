@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 10:24:05
 
+import { ReloadOutlined } from '@ant-design/icons'
 import { Component, lazy, Suspense, type ReactNode } from 'react'
 import { Button, Result, Spin } from 'antd'
 import type { WizardStep } from './contracts'
@@ -27,7 +28,7 @@ export class PageBoundary extends Component<{ children: ReactNode }, { failed: b
   state = { failed: false }
   static getDerivedStateFromError() { return { failed: true } }
   render() {
-    return this.state.failed ? <Result status="error" title="页面加载失败" subTitle="请刷新页面后重试。" extra={<Button onClick={() => window.location.reload()}>刷新页面</Button>} /> : this.props.children
+    return this.state.failed ? <Result status="error" title="页面加载失败" subTitle="请刷新页面后重试。" extra={<Button icon={<ReloadOutlined aria-hidden />} onClick={() => window.location.reload()}>刷新页面</Button>} /> : this.props.children
   }
 }
 export function PageLoading() {

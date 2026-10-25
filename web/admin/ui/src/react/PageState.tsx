@@ -4,12 +4,13 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 10:21:49
 
+import { ReloadOutlined } from '@ant-design/icons'
 import type { ReactNode } from 'react'
 import { Alert, Button, Spin } from 'antd'
 import type { Source } from './settings-api'
 export function PageState({ loading, error, retry, children }: { loading: boolean; error: string; retry: () => Promise<void>; children: ReactNode }) {
   if (loading) return <div className="page-loading" role="status"><Spin /><span>加载中…</span></div>
-  if (error) return <Alert type="error" showIcon title={error} action={<Button aria-label="重试" onClick={() => void retry()}>重试</Button>} />
+  if (error) return <Alert type="error" showIcon title={error} action={<Button icon={<ReloadOutlined aria-hidden />} aria-label="重试" onClick={() => void retry()}>重试</Button>} />
   return children
 }
 export function SourceNotice({ source, readonly, env }: { source: Source; readonly: boolean; env: string }) {

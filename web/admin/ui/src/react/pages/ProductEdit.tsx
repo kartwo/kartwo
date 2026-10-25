@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 12:22:28
 
+import { ArrowLeftOutlined } from '@ant-design/icons'
 import { useCallback, useState } from 'react'
 import { Alert, App, Button, Card } from 'antd'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -39,7 +40,7 @@ function Editor({ loaded }: { loaded: Loaded }) {
   const quotaFull = rights.demo && !loaded.product && (!Number.isSafeInteger(max) || max <= 0 || loaded.demoCount >= max)
   if (quotaFull) return <Alert type="info" title="本次演示的临时商品额度已满，请返回列表删除自己的临时商品后重试。" action={<Link to="/products">返回商品列表</Link>} />
   return <ProductOperations.Provider value={task}><div className="read-page">
-    <div><Button disabled={task.busy} onClick={() => void navigate('/products')}>返回商品列表</Button></div>
+    <div><Button icon={<ArrowLeftOutlined aria-hidden />} disabled={task.busy} onClick={() => void navigate('/products')}>返回商品列表</Button></div>
     {rights.protectedDemo ? <Alert type="info" title="这是受保护的示例商品。公开演示可以查看，不能修改或删除。" /> : rights.demo && <Alert type="info" title="临时商品只在本次会话中保留，始终为草稿，不会出现在顾客店面。" />}
     {task.error && <Alert type="error" showIcon title={task.error} />}
     {task.busy && <div role="status">正在保存、翻译或处理图片，请稍候…</div>}

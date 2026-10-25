@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 11:27:44
 
+import { DownloadOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Descriptions, Typography } from 'antd'
 import { useSession } from '../SessionProvider'
 export default function ExportData() {
@@ -14,6 +15,6 @@ export default function ExportData() {
     ]} />
     {!owner && <Alert type="info" title="当前账号只可查看导出说明，完整数据包仅店主可下载。" />}
     <Typography.Paragraph type="secondary">导出在新标签页发起，浏览器直接接收 ZIP。请在浏览器下载列表确认结果；如导出失败，新标签页会显示服务器提示。</Typography.Paragraph>
-    <Button type="primary" disabled={!owner} href={owner ? '/admin/api/export' : undefined} target={owner ? '_blank' : undefined} rel="noopener noreferrer">导出 ZIP</Button>
+    <Button icon={<DownloadOutlined aria-hidden />} type="primary" disabled={!owner} href={owner ? '/admin/api/export' : undefined} target={owner ? '_blank' : undefined} rel="noopener noreferrer">导出 ZIP</Button>
   </Card></div>
 }

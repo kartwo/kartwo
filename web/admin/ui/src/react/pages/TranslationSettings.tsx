@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 10:55:07
 
+import { SaveOutlined } from '@ant-design/icons'
 import { useEffect } from 'react'
 import { Alert, App, Button, Card, Form, Input, Select, Tag, Typography } from 'antd'
 import { securitySettingsAPI, type TranslationFields } from '../security-settings-api'
@@ -32,7 +33,7 @@ export default function TranslationSettings() {
         <Form.Item name="plan" label="套餐"><Select options={[{ value: 'developer', label: `Developer API：${data.developer_quota}` }, { value: 'growth', label: `Growth API：${data.growth_quota}` }]} /></Form.Item>
         <Typography.Paragraph type="secondary">{data.price_note}</Typography.Paragraph>
         <Form.Item name="api_key" label="DeepL API Key" extra="留空保留原密钥。"><Input.Password autoComplete="new-password" placeholder={data.has_api_key ? '已保存，留空不改' : '粘贴 DeepL API Key'} /></Form.Item>
-        {writable && <Button type="primary" htmlType="submit" loading={task.busy}>保存配置</Button>}
+        {writable && <Button icon={<SaveOutlined aria-hidden />} type="primary" htmlType="submit" loading={task.busy}>保存配置</Button>}
       </Form>
     </Card>}
   </PageState></div>

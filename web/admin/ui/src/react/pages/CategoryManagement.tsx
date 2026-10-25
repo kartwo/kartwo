@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 11:34:25
 
+import { DeleteOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { useEffect, useRef, useState } from 'react'
 import { Alert, App, Button, Card, Empty, Form, Input, InputNumber, Modal, Space, Tag, Typography } from 'antd'
 import { catalogAPI, categorySlug, writeAndReload, type Category, type CategoryFields } from '../catalog-api'
@@ -26,7 +27,7 @@ function CategoryForm({ category, writable, busy, save, remove }: { category?: C
         <Form.Item name="slug" label="链接 slug" rules={[{ required: true, message: '请输入链接 slug' }, { transform: (value: string) => value.trim(), pattern: /^[a-z0-9]+(?:-[a-z0-9]+)*$/, message: '仅支持小写英文、数字及单个连字符分隔' }]}><Input placeholder="running-tops" /></Form.Item>
         <Form.Item name="position" label="排序" rules={[{ required: true, type: 'integer', min: 0, max: Number.MAX_SAFE_INTEGER, message: '排序须为非负安全整数' }]}><InputNumber min={0} max={Number.MAX_SAFE_INTEGER} /></Form.Item>
       </div>
-      {writable && <Space wrap><Button type="primary" htmlType="submit" loading={busy}>{category ? '保存分类' : '创建分类'}</Button>{category && <Button danger disabled={busy || category.product_count > 0} onClick={remove}>删除分类</Button>}</Space>}
+      {writable && <Space wrap><Button icon={<SaveOutlined aria-hidden />} type="primary" htmlType="submit" loading={busy}>{category ? '保存分类' : '创建分类'}</Button>{category && <Button icon={<DeleteOutlined aria-hidden />} danger disabled={busy || category.product_count > 0} onClick={remove}>删除分类</Button>}</Space>}
       {!!category?.product_count && <Typography.Paragraph type="secondary">有关联商品，删除前须先将商品移到其他分类。</Typography.Paragraph>}
     </Form>
   </Card>
@@ -61,7 +62,7 @@ export default function CategoryManagement() {
       {!resource.data.length && <Empty description="尚无分类，请先新建一个" />}
       {resource.data.map(category => <CategoryForm key={category.public_id} category={category} writable={writable} busy={task.busy} save={(values, reset) => void save(values, category, reset)} remove={() => { task.clearError(); setDeleting(category) }} />)}
     </>}</PageState>
-    <div><Button disabled={resource.loading || task.busy} onClick={() => { if (!task.busy) { setWarning(''); void resource.refresh() } }}>刷新分类</Button></div>
+    <div><Button icon={<ReloadOutlined aria-hidden />} disabled={resource.loading || task.busy} onClick={() => { if (!task.busy) { setWarning(''); void resource.refresh() } }}>刷新分类</Button></div>
     <Modal open={!!deleting} title="删除分类" okText="删除" cancelText="取消" confirmLoading={task.busy} okButtonProps={{ danger: true }} onCancel={() => { if (!task.busy) setDeleting(null) }} onOk={() => void remove()}>
       {task.error && <Alert type="error" showIcon title={task.error} />}确定删除「{deleting?.name}」？有关联商品的分类仍由服务器保护，不能直接删除。
     </Modal>

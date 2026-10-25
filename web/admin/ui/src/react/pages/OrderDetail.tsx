@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 12:46:12
 
+import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useCallback, useRef, useState } from 'react'
 import { Alert, App, Button, Space } from 'antd'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -72,7 +73,7 @@ function Detail({ id }: { id: string }) {
     },
   }
   return <OrderOperations.Provider value={operations}><div className="read-page">
-    <Space wrap><Button disabled={busy} onClick={() => void navigate('/orders')}>返回订单列表</Button><Button disabled={busy} onClick={() => void refresh()}>刷新订单</Button></Space>
+    <Space wrap><Button icon={<ArrowLeftOutlined aria-hidden />} disabled={busy} onClick={() => void navigate('/orders')}>返回订单列表</Button><Button icon={<ReloadOutlined aria-hidden />} disabled={busy} onClick={() => void refresh()}>刷新订单</Button></Space>
     {task.busy && <div role="status">正在处理订单操作，请稍候…</div>}
     {task.error && <Alert type="error" showIcon title={task.error} />}
     {stale && <Alert type="warning" showIcon title="操作后的订单状态尚未重新确认，请刷新核对。暂停发起新退款和发货，原退款请求仍可继续核对。" />}

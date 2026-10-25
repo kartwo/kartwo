@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 10:55:07
 
+import { SaveOutlined } from '@ant-design/icons'
 import { useEffect } from 'react'
 import { Alert, App, Button, Card, Form, Input, Typography } from 'antd'
 import { securitySettingsAPI, type AccountFields } from '../security-settings-api'
@@ -39,7 +40,7 @@ export default function AccountSettings() {
           <Form.Item name="new_password" label={role === 'staff' ? '新密码' : '新密码（可选）'} extra={role === 'staff' ? '新密码至少 8 位。' : '留空表示只修改用户名；新密码至少 8 位。'} rules={[{ required: role === 'staff', message: '请输入新密码' }, { min: 8, message: '新密码至少 8 位' }]}><Input.Password autoComplete="new-password" /></Form.Item>
           <Form.Item name="confirm_password" label="确认新密码" dependencies={['new_password']} rules={[({ getFieldValue }) => ({ validator: (_, value: string) => (value ?? '') === (getFieldValue('new_password') ?? '') ? Promise.resolve() : Promise.reject(new Error('两次输入的新密码不一致')) })]}><Input.Password autoComplete="new-password" /></Form.Item>
           {role === 'owner' && <Alert type="warning" showIcon title="请妥善保存新密码。" description="它同时保护后台登录和收款、邮件等加密配置；遗忘后无法恢复这些加密凭据。" />}
-          <Button type="primary" htmlType="submit" loading={task.busy}>保存并退出该账号所有会话</Button>
+          <Button icon={<SaveOutlined aria-hidden />} type="primary" htmlType="submit" loading={task.busy}>保存并退出该账号所有会话</Button>
         </>}
       </Form>
     </Card>}

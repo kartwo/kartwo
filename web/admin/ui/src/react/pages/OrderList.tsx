@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 12:46:12
 
+import { ClearOutlined, DownloadOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { useCallback, useState } from 'react'
 import { Alert, Button, Card, Form, Input, Select, Space, Table, Tag, Typography } from 'antd'
 import { Link } from 'react-router-dom'
@@ -37,7 +38,7 @@ export default function OrderList() {
           <Form.Item label="开始日期（UTC）" htmlFor="order-search-from"><Input id="order-search-from" aria-label="订单开始日期" type="date" value={draft.from} onChange={event => setDraft(current => ({ ...current, from: event.target.value }))} /></Form.Item>
           <Form.Item label="结束日期（含当天）" htmlFor="order-search-to"><Input id="order-search-to" aria-label="订单结束日期" type="date" value={draft.to} onChange={event => setDraft(current => ({ ...current, to: event.target.value }))} /></Form.Item>
         </div>
-        <Space wrap><Button type="primary" htmlType="submit">查询订单</Button><Button onClick={() => { setDraft(emptyOrderFilters()); setQuery(initialOrderSearch()); setFilterError('') }}>清空筛选</Button><Button disabled={loading} onClick={() => void resource.refresh()}>刷新订单列表</Button></Space>
+        <Space wrap><Button icon={<SearchOutlined aria-hidden />} type="primary" htmlType="submit">查询订单</Button><Button icon={<ClearOutlined aria-hidden />} onClick={() => { setDraft(emptyOrderFilters()); setQuery(initialOrderSearch()); setFilterError('') }}>清空筛选</Button><Button icon={<ReloadOutlined aria-hidden />} disabled={loading} onClick={() => void resource.refresh()}>刷新订单列表</Button></Space>
       </Form>
       {filterError && <Alert type="error" showIcon title={filterError} />}
       {modified && <Typography.Paragraph type="secondary">筛选条件已修改，点击“查询订单”后应用；下方当前仍是上次查询结果。</Typography.Paragraph>}
@@ -64,7 +65,7 @@ function OrderExport() {
   return <Card title="导出订单 CSV（独立条件）"><div className="order-export-controls"><label htmlFor="order-export-status">导出订单状态</label><Select id="order-export-status" aria-label="导出订单状态" value={filter.status} onChange={status => setFilter(current => ({ ...current, status }))} options={[{ value: '', label: '全部状态' }, ...Object.entries(orderStatuses).map(([value, label]) => ({ value, label }))]} />
       <label htmlFor="order-export-from">从</label><Input id="order-export-from" aria-label="导出开始日期" type="date" value={filter.from} onChange={event => setFilter(current => ({ ...current, from: event.target.value }))} />
       <label htmlFor="order-export-to">至</label><Input id="order-export-to" aria-label="导出结束日期" type="date" value={filter.to} onChange={event => setFilter(current => ({ ...current, to: event.target.value }))} />
-      <Button type="primary" disabled={!!error} href={href || undefined} target={href ? '_blank' : undefined} rel="noopener noreferrer">导出订单 CSV</Button></div>
+      <Button icon={<DownloadOutlined aria-hidden />} type="primary" disabled={!!error} href={href || undefined} target={href ? '_blank' : undefined} rel="noopener noreferrer">导出订单 CSV</Button></div>
       {error && <Alert type="error" title={error} />}<Typography.Paragraph type="secondary">仅使用这里的订单状态及 UTC 起止日期，包含结束当天；上方工作台搜索与待处理视图不会改变导出范围。CSV 在新标签页下载，包含客户履约资料；请在浏览器下载列表确认结果，失败时新标签页会显示服务器提示。</Typography.Paragraph>
     </Card>
 }

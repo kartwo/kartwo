@@ -4,6 +4,8 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 11:56:32
 
+import { FilePicker } from '../FilePicker'
+import { ArrowLeftOutlined, FormOutlined, SaveOutlined } from '@ant-design/icons'
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { Alert, App, Button, Card, Form, Input, Select, Space, Typography } from 'antd'
 import { useLocation, useNavigate } from 'react-router-dom'
@@ -49,13 +51,13 @@ function Editor({ loaded }: { loaded: Loaded }) {
     <Form form={form} name="blog-post" layout="vertical" initialValues={loaded.post ?? emptyBlog} disabled={!writable || task.busy} onFinish={values => void save(values)}>
       <Form.Item label="标题" name="title" rules={[{ required: true, whitespace: true, message: '请输入文章标题' }]}><Input maxLength={160} onChange={event => suggest(event.target.value)} /></Form.Item>
       <Form.Item label="文章链接" required extra={loaded.post ? '保存后的链接固定。' : title && !slug ? '标题没有可用于链接的英文或数字，请手动填写英文链接。' : '按标题自动生成，保存前可修改；保存后固定，避免已有分享链接失效。'}>
-        <div className="blog-slug-controls"><Form.Item name="slug" noStyle rules={[{ required: true, message: '请输入文章链接' }, { pattern: /^[a-z0-9]+(?:-[a-z0-9]+)*$/, message: '只能使用小写英文、数字和连字符' }]}><Input aria-label="文章链接" maxLength={100} disabled={!!loaded.post || !writable || task.busy} onChange={() => { customized.current = true }} /></Form.Item>{!loaded.post && writable && <Button onClick={() => { customized.current = false; suggest(form.getFieldValue('title') ?? '') }}>按标题生成</Button>}</div>
+        <div className="blog-slug-controls"><Form.Item name="slug" noStyle rules={[{ required: true, message: '请输入文章链接' }, { pattern: /^[a-z0-9]+(?:-[a-z0-9]+)*$/, message: '只能使用小写英文、数字和连字符' }]}><Input aria-label="文章链接" maxLength={100} disabled={!!loaded.post || !writable || task.busy} onChange={() => { customized.current = true }} /></Form.Item>{!loaded.post && writable && <Button icon={<FormOutlined aria-hidden />} onClick={() => { customized.current = false; suggest(form.getFieldValue('title') ?? '') }}>按标题生成</Button>}</div>
       </Form.Item>
       <Form.Item label="摘要" name="excerpt"><Input.TextArea maxLength={300} rows={3} /></Form.Item>
       <Form.Item label="SEO 描述" name="seo_description"><Input.TextArea maxLength={300} rows={2} /></Form.Item>
       <Form.Item label="封面图" name="cover_path" hidden><Input /></Form.Item>
       <Form.Item label="封面图片">
-        {writable && <input type="file" aria-label="上传封面图片" accept="image/jpeg,image/png,image/webp" disabled={task.busy} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void upload(file, true) }} />}
+        {writable && <FilePicker label="上传封面图片" accept="image/jpeg,image/png,image/webp" disabled={task.busy} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void upload(file, true) }} />}
         {cover ? <img className="blog-cover-preview" src={`/media/${cover}`} alt="封面预览" /> : <Typography.Text type="secondary">尚未设置封面，店面列表将使用正文第一张本地图片。</Typography.Text>}
       </Form.Item>
       <Form.Item label="正文" extra="选中文字后使用工具栏排版。粘贴仅保留文字；图片需上传，视频支持 YouTube 和 Vimeo 链接。">
@@ -63,7 +65,7 @@ function Editor({ loaded }: { loaded: Loaded }) {
       </Form.Item>
       {task.busy && <Typography.Paragraph role="status">正在保存或处理图片，请稍候…</Typography.Paragraph>}
       <Form.Item label="状态" name="status"><Select options={[{ value: 'draft', label: '草稿' }, { value: 'active', label: '发布' }]} /></Form.Item>
-      <Space wrap><Button disabled={task.busy} onClick={() => void navigate('/blog')}>返回文章列表</Button>{writable && <Button type="primary" htmlType="submit" loading={task.busy}>保存文章</Button>}</Space>
+      <Space wrap><Button icon={<ArrowLeftOutlined aria-hidden />} disabled={task.busy} onClick={() => void navigate('/blog')}>返回文章列表</Button>{writable && <Button icon={<SaveOutlined aria-hidden />} type="primary" htmlType="submit" loading={task.busy}>保存文章</Button>}</Space>
     </Form>
   </Card>
 }

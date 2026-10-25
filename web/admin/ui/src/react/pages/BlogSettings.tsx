@@ -4,6 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 10:34:00
 
+import { SaveOutlined } from '@ant-design/icons'
 import { useEffect } from 'react'
 import { Alert, App, Button, Card, Form, Switch, Typography } from 'antd'
 import { storeSettingsAPI, type BlogSettings as Fields } from '../store-settings-api'
@@ -30,7 +31,7 @@ export default function BlogSettings() {
       <Form name="blog-settings" form={form} layout="vertical" disabled={!writable || task.busy} onFinish={save}>
         <Form.Item name="enabled" label="开启店面博客" valuePropName="checked"><Switch /></Form.Item>
         <Typography.Paragraph type="secondary">默认开启。关闭后顾客无法访问博客，导航和站点地图不再显示；文章与草稿都会保留。</Typography.Paragraph>
-        {writable && <Button type="primary" htmlType="submit" loading={task.busy}>保存设置</Button>}
+        {writable && <Button icon={<SaveOutlined aria-hidden />} type="primary" htmlType="submit" loading={task.busy}>保存设置</Button>}
       </Form>
     </Card>}
   </PageState></div>
