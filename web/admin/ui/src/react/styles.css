@@ -36,3 +36,11 @@
 .brand-logo-preview img { display: block; max-width: min(320px, 100%); max-height: 80px; object-fit: contain; }
 .brand-logo-actions { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
 .brand-logo-actions input { max-width: 100%; }
+.shipping-settings { display: grid; gap: var(--sp-4); max-width: 1080px; }
+.shipping-actions { margin-bottom: var(--sp-4); }
+.shipping-continent { padding: var(--sp-4); border: 1px solid var(--border); border-radius: var(--radius-md); margin-bottom: var(--sp-3); }
+.shipping-country-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap: var(--sp-3); margin-top: var(--sp-3); }
+.shipping-rule-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-3); padding-block: var(--sp-4); border-bottom: 1px solid var(--border); margin-bottom: var(--sp-4); }
+.policy-estimate { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--sp-3); margin-bottom: var(--sp-3); }
+.policy-estimate > strong { grid-column: 1 / -1; }
+@media(max-width:520px) { .policy-estimate { grid-template-columns: 1fr; } .shipping-country-grid { grid-template-columns: 1fr; } }

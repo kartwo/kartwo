@@ -6,7 +6,7 @@
 
 最终仅保留 React + TypeScript + Vite + Ant Design 后台，删除 Vue 运行时、旧页面及迁移专用构建配置。保留现有 `/admin/#/...` 地址、Go API 和单二进制 embed 托管。菜单权限仅优化界面体验，服务端鉴权仍是授权依据。
 
-当前处于分批迁移：`src/react` 已实现请求传输、会话/登录/初始化/邀请、向导流程、导航外壳和路由访问控制；收款、域名和 SMTP 三个实际配置页已接入向导；店铺品牌、博客开关及客服留存设置也已迁移，账号安全、翻译和备份设置也已迁移，九个设置页均按需加载。`index.html` 仍连接现有后台，**未切换正式入口、未发布 React 后台**。新组件由 `build:react` 独立编译验证到忽略目录 `.react-build`，不进入 Go embed；这项临时验证在正式入口切换时移除。
+当前处于分批迁移：`src/react` 已实现请求传输、会话/登录/初始化/邀请、向导流程、导航外壳和路由访问控制；收款、域名和 SMTP 三个实际配置页已接入向导；店铺品牌、博客开关及客服留存设置也已迁移，账号安全、翻译和备份设置也已迁移，配送和店铺政策设置也已迁移，十一个设置页均按需加载。`index.html` 仍连接现有后台，**未切换正式入口、未发布 React 后台**。新组件由 `build:react` 独立编译验证到忽略目录 `.react-build`，不进入 Go embed；这项临时验证在正式入口切换时移除。
 
 ## 共用能力
 
@@ -51,10 +51,10 @@
 | OrderList | 未迁移 | `exportOrdersCSV`、`listOrders` |
 | PaymentSettings | React 已实现，待统一浏览器验收 | `getPayment`、`setPayment`、`testStripeConnection` |
 | PaymentWizard | React 已实现，待统一浏览器验收 | `wizardPaymentSkip` |
-| PolicySettings | 未迁移 | `generateFooterPages`、`getPolicyProfile`、`setPolicyProfile` |
+| PolicySettings | React 已实现，待统一浏览器验收 | `generateFooterPages`、`getPolicyProfile`、`setPolicyProfile` |
 | ProductEdit | 未迁移 | `createProduct`、`deleteMedia`、`getProduct`、`getTranslation`、`listCategories`、`listMedia`、`setInventory`、`setPrice`、`translateText`、`updateMediaAlt`、`updateProduct`、`uploadMedia` |
 | ProductList | 未迁移 | `deleteProduct`、`listProducts`、`setProductFeatured` |
-| ShippingSettings | 未迁移 | `createShippingZone`、`deleteShippingZone`、`listShippingCountries`、`listShippingZones`、`saveDefaultShippingZone`、`saveShippingCountries`、`updateShippingZone` |
+| ShippingSettings | React 已实现，待统一浏览器验收 | `createShippingZone`、`deleteShippingZone`、`listShippingCountries`、`listShippingZones`、`saveDefaultShippingZone`、`saveShippingCountries`、`updateShippingZone` |
 | ShopSettings | React 已实现，待统一浏览器验收 | `deleteShopLogo`、`getShop`、`setShop`、`uploadShopLogo` |
 | SmtpSettings | React 已实现，待统一浏览器验收 | `getSmtp`、`setSmtp`、`smtpTest` |
 | SmtpWizard | React 已实现，待统一浏览器验收 | `wizardSmtpSkip` |
@@ -69,7 +69,9 @@
 
 账号设置保留店主修改用户名/可选主密码及员工只改自身密码；确认成功后立即清空会话，错误密码保留当前会话。翻译密钥不回填、空值保留，页面加载和保存均不自动调用翻译。备份保留本地策略重启生效、WebDAV 保存后测试及冷启动所需环境配置提示；环境只读字段从写入中省略，密码空值省略且空白原样保留，配置保存失败不发起远端测试，测试失败仍清空已经保存的密码。全环境配置允许店主仅测试、无需提交只读值。
 
-九个页面已使用独立动态导入；其余页面及最终生产包体仍待迁移和审查。接口桩测试验证请求内容与界面结果，不代表已完成真实支付平台、SMTP 或浏览器布局验收。
+配送保留按洲分组、中文/英文/代码搜索、范围全选/清空、默认及特殊运费、规则新增/编辑/确认删除；金额使用十进制字符串和 BigInt 精确转分，拒绝舍入/指数/溢出。只读账号可搜索和查看规则，编辑动作依据 settings.shipping。特殊规则只能选已保存启用国家；删除正在编辑的规则后重置编辑器。政策资料保留七洲时效，最大天数须不小于最小天数；资料编辑依据 settings.policy，生成页面额外需要 content.manage。生成前保存当前资料，覆盖正文前确认；取消不写入，保存失败不生成，生成失败明确已保存资料。现有草稿/发布保留语义继续由后端生成器负责。
+
+十一个页面已使用独立动态导入；其余页面及最终生产包体仍待迁移和审查。接口桩测试验证请求内容与界面结果，不代表已完成真实支付平台、SMTP 或浏览器布局验收。
 
 ## 验证方式
 
