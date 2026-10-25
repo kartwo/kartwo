@@ -78,7 +78,13 @@ func EmptyProfile() Profile {
 }
 
 func (s *Service) Get(ctx context.Context) (Profile, bool, error) {
-	raw, err := s.settings.Get(ctx, profileKey)
+	return LoadProfile(ctx, s.settings)
+}
+
+// LoadProfile shares the existing policy profile with order services without
+// constructing a catalog/page generator. Unconfigured defaults are not policy.
+func LoadProfile(ctx context.Context, store *settings.Service) (Profile, bool, error) {
+	raw, err := store.Get(ctx, profileKey)
 	if errors.Is(err, settings.ErrNotFound) {
 		return EmptyProfile(), false, nil
 	}

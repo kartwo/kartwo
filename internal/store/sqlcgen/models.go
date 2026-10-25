@@ -42,6 +42,45 @@ type AdminUser struct {
 	LastLoginAt  sql.NullString `db:"last_login_at" json:"last_login_at"`
 }
 
+type AfterSale struct {
+	ID                   int64         `db:"id" json:"id"`
+	PublicID             string        `db:"public_id" json:"public_id"`
+	OrderID              int64         `db:"order_id" json:"order_id"`
+	ClientKey            string        `db:"client_key" json:"client_key"`
+	Kind                 string        `db:"kind" json:"kind"`
+	State                string        `db:"state" json:"state"`
+	Version              int64         `db:"version" json:"version"`
+	AmountCents          int64         `db:"amount_cents" json:"amount_cents"`
+	Currency             string        `db:"currency" json:"currency"`
+	Reason               string        `db:"reason" json:"reason"`
+	PolicyConfigured     int64         `db:"policy_configured" json:"policy_configured"`
+	ReturnWindowDays     int64         `db:"return_window_days" json:"return_window_days"`
+	ReturnShippingPayer  string        `db:"return_shipping_payer" json:"return_shipping_payer"`
+	SupportEmail         string        `db:"support_email" json:"support_email"`
+	MerchantMessage      string        `db:"merchant_message" json:"merchant_message"`
+	ReturnInstructions   string        `db:"return_instructions" json:"return_instructions"`
+	ReturnCarrier        string        `db:"return_carrier" json:"return_carrier"`
+	ReturnTrackingNumber string        `db:"return_tracking_number" json:"return_tracking_number"`
+	RefundRequestID      sql.NullInt64 `db:"refund_request_id" json:"refund_request_id"`
+	CreatedAt            string        `db:"created_at" json:"created_at"`
+	UpdatedAt            string        `db:"updated_at" json:"updated_at"`
+}
+
+type AfterSaleEvent struct {
+	ID             int64  `db:"id" json:"id"`
+	AfterSaleID    int64  `db:"after_sale_id" json:"after_sale_id"`
+	Version        int64  `db:"version" json:"version"`
+	ClientKey      string `db:"client_key" json:"client_key"`
+	RequestHash    string `db:"request_hash" json:"request_hash"`
+	Actor          string `db:"actor" json:"actor"`
+	Action         string `db:"action" json:"action"`
+	State          string `db:"state" json:"state"`
+	Message        string `db:"message" json:"message"`
+	Carrier        string `db:"carrier" json:"carrier"`
+	TrackingNumber string `db:"tracking_number" json:"tracking_number"`
+	CreatedAt      string `db:"created_at" json:"created_at"`
+}
+
 type AuditEvent struct {
 	ID                    int64  `db:"id" json:"id"`
 	PublicID              string `db:"public_id" json:"public_id"`

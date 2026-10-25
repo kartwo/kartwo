@@ -96,6 +96,7 @@ func (s *Service) Fulfill(ctx context.Context, publicID, carrier, number, link s
 		return err
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE "order" SET status='fulfilled',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND status='paid'
+	AND NOT EXISTS(SELECT 1 FROM after_sale WHERE order_id="order".id AND state IN ('requested','awaiting_return','returned','approved'))
 	AND NOT EXISTS(SELECT 1 FROM refund_request WHERE order_id=? AND state IN ('prepared','pending','review'))
 	AND NOT EXISTS(SELECT 1 FROM payment_receipt WHERE order_id=? AND review_reason<>'' AND refunded_cents<amount_cents)
 	AND NOT EXISTS(SELECT 1 FROM refund_reconciliation rc JOIN payment_receipt p ON p.id=rc.receipt_id WHERE p.order_id=? AND rc.state='open')

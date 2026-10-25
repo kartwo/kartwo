@@ -9,6 +9,7 @@ WITH scoped AS (
   o.currency,o.total_cents,o.payment_provider,o.created_at,
   CAST(EXISTS(SELECT 1 FROM shipment s WHERE s.order_id=o.id) AS INTEGER) AS shipped,
   CAST(EXISTS(SELECT 1 FROM refund_request rr WHERE rr.order_id=o.id AND rr.state IN ('prepared','pending','review'))
+   OR EXISTS(SELECT 1 FROM after_sale a WHERE a.order_id=o.id AND a.state IN ('requested','awaiting_return','returned','approved'))
    OR EXISTS(SELECT 1 FROM refund_reconciliation rc JOIN payment_receipt p ON p.id=rc.receipt_id WHERE p.order_id=o.id AND rc.state='open') AS INTEGER) AS refund_pending,
   CAST(o.status='payment_review' OR EXISTS(
    SELECT 1 FROM payment_receipt p WHERE p.order_id=o.id AND (
@@ -41,6 +42,7 @@ WITH scoped AS (
   o.currency,o.total_cents,o.payment_provider,o.created_at,
   CAST(EXISTS(SELECT 1 FROM shipment s WHERE s.order_id=o.id) AS INTEGER) AS shipped,
   CAST(EXISTS(SELECT 1 FROM refund_request rr WHERE rr.order_id=o.id AND rr.state IN ('prepared','pending','review'))
+   OR EXISTS(SELECT 1 FROM after_sale a WHERE a.order_id=o.id AND a.state IN ('requested','awaiting_return','returned','approved'))
    OR EXISTS(SELECT 1 FROM refund_reconciliation rc JOIN payment_receipt p ON p.id=rc.receipt_id WHERE p.order_id=o.id AND rc.state='open') AS INTEGER) AS refund_pending,
   CAST(o.status='payment_review' OR EXISTS(
    SELECT 1 FROM payment_receipt p WHERE p.order_id=o.id AND (
