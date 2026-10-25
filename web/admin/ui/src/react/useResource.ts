@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { APIError, errorMessage } from './transport'
 import { useSession } from './SessionProvider'
 
-export function useResource<T>(load: (signal: AbortSignal) => Promise<T>) {
+export function useResource<T>(load: (signal: AbortSignal) => Promise<T>, retainDuringRefresh = false) {
   const { controller } = useSession()
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
@@ -19,16 +19,16 @@ export function useResource<T>(load: (signal: AbortSignal) => Promise<T>) {
     const current = new AbortController()
     pending.current = current
     const identity = controller.getSnapshot().session
-    setLoading(true); setError(''); setData(null)
+    setLoading(true); setError(''); if (!retainDuringRefresh) setData(null)
     try {
       const next = await load(current.signal)
       if (!current.signal.aborted && identity === controller.getSnapshot().session) setData(next)
     } catch (failure) {
       if (current.signal.aborted || identity !== controller.getSnapshot().session) return
       if (failure instanceof APIError && failure.status === 401) controller.unauthorized()
-      else setError(errorMessage(failure))
+      else { setData(null); setError(errorMessage(failure)) }
     } finally { if (!current.signal.aborted) setLoading(false) }
-  }, [load, controller])
+  }, [load, controller, retainDuringRefresh])
   useEffect(() => { void refresh(); return () => pending.current?.abort() }, [refresh])
   return { data, setData, loading, error, refresh }
 }

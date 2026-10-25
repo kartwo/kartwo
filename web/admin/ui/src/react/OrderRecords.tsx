@@ -5,11 +5,12 @@
 // 时间：2026-10-25 12:46:12
 
 import { RollbackOutlined } from '@ant-design/icons'
+import type { ReactNode } from 'react'
 import { Alert, Button, Card, Descriptions, Empty, Table, Typography } from 'antd'
 import { orderStatuses, refundStates, type Order } from './order-api'
 import { money, reviewText, paymentTexts } from './order-model'
 import { useOrderOperations } from './OrderOperations'
-export function OrderRecords({ order }: { order: Order }) {
+export function OrderRecords({ order, shipment }: { order: Order; shipment?: ReactNode }) {
   const actions = useOrderOperations()
   return <>
     <Card title={`订单 ${order.public_id}`}><Descriptions bordered size="small" column={1} items={[
@@ -25,6 +26,7 @@ export function OrderRecords({ order }: { order: Order }) {
       { key: 'carrier', label: '承运商', children: order.tracking_carrier || '无记录' }, { key: 'number', label: '运单号', children: order.tracking_number || '无记录' },
       { key: 'link', label: '追踪链接', children: order.tracking_url ? <a href={order.tracking_url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">查看物流追踪</a> : '无有效 HTTPS 追踪链接' },
     ]} /></Card>}
+    {shipment}
     <Card title="收款与退款"><Typography.Paragraph>累计收款 {money(order.paid_cents, order.currency)} · 已退 {money(order.refunded_cents, order.currency)}</Typography.Paragraph>
       {!order.receipts.length && <Empty description="尚无收款账本记录，不能仅凭订单状态发起退款。" />}
       {order.receipts.map((receipt, index) => <div className="order-record" key={index}><strong>{receipt.provider} · {money(receipt.amount_cents, receipt.currency)} · 已退 {money(receipt.refunded_cents, receipt.currency)}</strong>

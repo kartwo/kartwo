@@ -71,7 +71,7 @@ export function parseRefundResult(value: unknown): RefundResult {
 function accepted(value: unknown) { if (!bool(record(value), 'ok')) throw new Error('服务器未确认操作成功，请核对订单') }
 export function shipmentPayload(input: ShipmentInput) {
   const carrier = input.carrier.trim(), tracking_number = input.tracking_number.trim(), tracking_url = input.tracking_url.trim()
-  if (!carrier || !tracking_number || new TextEncoder().encode(tracking_number).length > 128 || !safeTrackingURL(tracking_url)) throw new Error('请填写承运商和有效运单号，追踪链接须为 HTTPS 地址')
+  if (!carrier || !tracking_number || [carrier, tracking_number].some(value => new TextEncoder().encode(value).length > 128) || new TextEncoder().encode(tracking_url).length > 2048 || [input.carrier, input.tracking_number, input.tracking_url].some(value => /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(value)) || !safeTrackingURL(tracking_url)) throw new Error('请填写承运商和有效运单号，追踪链接须为 HTTPS 地址')
   return { carrier, tracking_number, tracking_url }
 }
 function refundPayload(input: RefundInput) {

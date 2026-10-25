@@ -21,12 +21,14 @@ import { orderA, orderB, refundRequest, refundResult, orderSummary } from './ord
 import type { Order } from './order-api'
 import type { Session } from './contracts'
 import { workbenchFixture } from './order-workbench-fixtures'
+import { legacyShipmentFixture } from './shipment-fixtures'
 function response(value: unknown, status = 200) { return new Response(JSON.stringify(value), { status }) }
 function fixtureFetch(handle?: (url: string, options: RequestInit) => Response | undefined | Promise<Response | undefined>) {
   const fetch = vi.fn(async (url: string, options: RequestInit) => {
     const handled = await handle?.(url, options); if (handled) return handled
     if (url.endsWith('/orders/search') && options.method === 'POST') return response(workbenchFixture())
     if (options.method === 'GET') {
+      if (url.endsWith('/shipment')) return response(legacyShipmentFixture(url.includes('order-fixture-b') ? orderB.public_id : orderA.public_id))
       if (url.endsWith('/orders')) return response({ orders: [orderSummary(orderA)] })
       if (url.endsWith('/order-fixture-a')) return response(orderA)
       if (url.endsWith('/order-fixture-b')) return response(orderB)

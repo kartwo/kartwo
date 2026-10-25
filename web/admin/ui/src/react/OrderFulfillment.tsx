@@ -6,13 +6,14 @@
 
 import { CarOutlined, LockOutlined } from '@ant-design/icons'
 import { useState } from 'react'
-import { Alert, Button, Card, Form, Input, Modal } from 'antd'
+import { Alert, Button, Card, Form, Input, Modal, Typography } from 'antd'
 import { useOrderOperations } from './OrderOperations'
 import type { ShipmentInput } from './order-api'
 export function OrderFulfillment() {
   const actions = useOrderOperations(), [revoking, setRevoking] = useState(false)
   return <>
     {actions.fulfillAllowed && <Card title="发货与追踪"><Form<ShipmentInput> name="shipment" layout="vertical" disabled={actions.busy || actions.stale || !!actions.intent} initialValues={{ carrier: '', tracking_number: '', tracking_url: '' }} onFinish={values => { if (!actions.busy && !actions.stale && !actions.intent) actions.fulfill(values) }}>
+      <Typography.Paragraph type="secondary">确认发货会生成顾客通知。未配置邮件服务时仍会保存发货，请随后检查通知状态。</Typography.Paragraph>
       <Form.Item name="carrier" label="承运商" rules={[{ required: true, whitespace: true, message: '请填写承运商' }]}><Input placeholder="例如 DHL" /></Form.Item>
       <Form.Item name="tracking_number" label="运单号" rules={[{ required: true, whitespace: true, message: '请填写运单号' }]}><Input maxLength={128} /></Form.Item>
       <Form.Item name="tracking_url" label="追踪链接（可选）"><Input placeholder="https://" /></Form.Item>
