@@ -1,5 +1,5 @@
 // 邮件发送 worker / Email Outbox Worker
-// 功能：ticker 轮询 outbox（D8 20s）→ 认领 pending → 脱离 DB 做 SMTP 发送 → 回写 sent/failed/skipped；重试指数退避(D6)
+// 功能：轮询 outbox、事务外发送、明确失败退避；未知或中断投递保留待核对，日志和错误不含客户/凭证
 // 作者：仗键天涯(daxing)
 // 邮箱：3442535897@qq.com
 // 时间：2026-07-28 13:27:02
@@ -46,10 +46,10 @@ func NewWorker(db *sql.DB, cache *Cache, logger *slog.Logger, interval time.Dura
 	return &Worker{db: db, q: sqlcgen.New(db), cache: cache, logger: logger, interval: interval, send: Send}
 }
 
-// Run 阻塞运行 worker 直至 ctx 取消（接 main 优雅关停）。启动先恢复陈留 sending。
+// Run 阻塞运行 worker 直至 ctx 取消。启动将陈留 sending 保留为未知结果，不自动重发。
 func (w *Worker) Run(ctx context.Context) {
-	if err := w.q.ResetStaleSending(ctx); err != nil {
-		w.logger.Warn("邮件 worker 启动恢复 sending 失败", "err", err)
+	if err := w.q.HoldInterruptedEmails(ctx); err != nil {
+		w.logger.Warn("邮件 worker 启动核对 sending 失败")
 	}
 	w.logger.Info("邮件发送 worker 启动", "interval", w.interval.String())
 	t := time.NewTicker(w.interval)
@@ -122,23 +122,33 @@ func (w *Worker) tick(ctx context.Context) {
 			if guest {
 				w.clearGuestMail(ctx, m.ID)
 			}
-			w.logger.Info("确认信已发送", "outbox_id", m.ID, "order_id", m.OrderID) // 不记收件人/凭证
+			w.logger.Info("邮件已获 SMTP 接收确认", "outbox_id", m.ID, "order_id", m.OrderID) // 不代表已进收件箱；不记收件人/凭证
 			continue
 		}
-		if guest {
-			sendErr = errors.New("verification email delivery failed")
-		}
 		attempts := m.Attempts + 1
+		unknown := errors.Is(sendErr, ErrDeliveryUnknown)
+		safeError := "email delivery failed"
+		if unknown {
+			safeError = "email delivery result unknown"
+		}
+		if guest {
+			safeError = "verification " + safeError
+		}
+		if unknown {
+			_ = w.q.MarkEmailUncertain(ctx, sqlcgen.MarkEmailUncertainParams{Attempts: attempts, LastError: safeError, ID: m.ID})
+			w.logger.Warn("邮件投递结果待核对，暂停自动重发", "outbox_id", m.ID)
+			continue
+		}
 		if attempts >= maxAttempts {
-			_ = w.q.MarkEmailFailed(ctx, sqlcgen.MarkEmailFailedParams{Attempts: attempts, LastError: sendErr.Error(), ID: m.ID})
+			_ = w.q.MarkEmailFailed(ctx, sqlcgen.MarkEmailFailedParams{Attempts: attempts, LastError: safeError, ID: m.ID})
 			if guest {
 				w.clearGuestMail(ctx, m.ID)
 			}
-			w.logger.Error("确认信发送最终失败（死信）", "outbox_id", m.ID, "order_id", m.OrderID, "attempts", attempts, "err", sendErr)
+			w.logger.Error("邮件发送最终失败（死信）", "outbox_id", m.ID, "order_id", m.OrderID, "attempts", attempts)
 			continue
 		}
 		next := time.Now().Add(backoff[attempts-1]).UTC().Format(tsLayout)
-		_ = w.q.MarkEmailRetry(ctx, sqlcgen.MarkEmailRetryParams{Attempts: attempts, NextAttemptAt: next, LastError: sendErr.Error(), ID: m.ID})
-		w.logger.Warn("确认信发送失败，将重试", "outbox_id", m.ID, "attempts", attempts, "next_at", next, "err", sendErr)
+		_ = w.q.MarkEmailRetry(ctx, sqlcgen.MarkEmailRetryParams{Attempts: attempts, NextAttemptAt: next, LastError: safeError, ID: m.ID})
+		w.logger.Warn("邮件发送失败，将重试", "outbox_id", m.ID, "attempts", attempts, "next_at", next)
 	}
 }

@@ -74,7 +74,7 @@ type EnqueueEmailParams struct {
 }
 
 // Email Outbox Queries
-// Purpose: enqueue (idempotent), claim due, mark sending/sent/failed/skipped, boot recovery
+// Purpose: idempotent enqueue, bounded retry and hold uncertain/interrupted deliveries
 // Author: daxing  Email: 3442535897@qq.com  Time: 2026-07-28 13:27:02
 // NOTE: ASCII-only comments here (sqlc v1.30 multibyte-span bug; see DECISIONS.md).
 // Idempotent: UNIQUE(order_id,kind) makes a duplicate enqueue a no-op (PayPal sync capture + webhook backup).
@@ -90,6 +90,16 @@ func (q *Queries) EnqueueEmail(ctx context.Context, arg EnqueueEmailParams) (int
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const holdInterruptedEmails = `-- name: HoldInterruptedEmails :exec
+UPDATE email_outbox SET status = 'delivery_unknown', attempts = attempts + 1, last_error = 'delivery interrupted' WHERE status = 'sending'
+`
+
+// A crash cannot prove that SMTP rejected DATA. Do not blindly resend.
+func (q *Queries) HoldInterruptedEmails(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, holdInterruptedEmails)
+	return err
 }
 
 const markEmailFailed = `-- name: MarkEmailFailed :exec
@@ -167,12 +177,17 @@ func (q *Queries) MarkEmailSkipped(ctx context.Context, arg MarkEmailSkippedPara
 	return err
 }
 
-const resetStaleSending = `-- name: ResetStaleSending :exec
-UPDATE email_outbox SET status = 'pending' WHERE status = 'sending'
+const markEmailUncertain = `-- name: MarkEmailUncertain :exec
+UPDATE email_outbox SET status = 'delivery_unknown', attempts = ?, last_error = ? WHERE id = ? AND status = 'sending'
 `
 
-// Boot recovery: any row stuck in 'sending' (crash mid-send) back to pending for re-attempt.
-func (q *Queries) ResetStaleSending(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, resetStaleSending)
+type MarkEmailUncertainParams struct {
+	Attempts  int64  `db:"attempts" json:"attempts"`
+	LastError string `db:"last_error" json:"last_error"`
+	ID        int64  `db:"id" json:"id"`
+}
+
+func (q *Queries) MarkEmailUncertain(ctx context.Context, arg MarkEmailUncertainParams) error {
+	_, err := q.db.ExecContext(ctx, markEmailUncertain, arg.Attempts, arg.LastError, arg.ID)
 	return err
 }

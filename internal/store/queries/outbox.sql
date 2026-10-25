@@ -1,5 +1,5 @@
 -- Email Outbox Queries
--- Purpose: enqueue (idempotent), claim due, mark sending/sent/failed/skipped, boot recovery
+-- Purpose: idempotent enqueue, bounded retry and hold uncertain/interrupted deliveries
 -- Author: daxing  Email: 3442535897@qq.com  Time: 2026-07-28 13:27:02
 -- NOTE: ASCII-only comments here (sqlc v1.30 multibyte-span bug; see DECISIONS.md).
 
@@ -30,6 +30,9 @@ UPDATE email_outbox SET status = 'failed', attempts = ?, last_error = ? WHERE id
 -- SMTP not configured: skip (no retry, no backfill on later config).
 UPDATE email_outbox SET status = 'skipped', last_error = ? WHERE id = ?;
 
--- name: ResetStaleSending :exec
--- Boot recovery: any row stuck in 'sending' (crash mid-send) back to pending for re-attempt.
-UPDATE email_outbox SET status = 'pending' WHERE status = 'sending';
+-- name: MarkEmailUncertain :exec
+UPDATE email_outbox SET status = 'delivery_unknown', attempts = ?, last_error = ? WHERE id = ? AND status = 'sending';
+
+-- name: HoldInterruptedEmails :exec
+-- A crash cannot prove that SMTP rejected DATA. Do not blindly resend.
+UPDATE email_outbox SET status = 'delivery_unknown', attempts = attempts + 1, last_error = 'delivery interrupted' WHERE status = 'sending';

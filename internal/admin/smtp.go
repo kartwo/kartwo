@@ -6,6 +6,7 @@
 package admin
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -129,11 +130,22 @@ func (h *HTTP) smtpTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := mail.Send(cfg, to, "Kartwo SMTP 测试邮件", "这是一封来自 Kartwo 的测试邮件。收到即说明 SMTP 配置可用。\n\nThis is a test email from Kartwo. If you received it, your SMTP settings work."); err != nil {
-		// 不回传底层错误细节里可能含的主机信息足够诊断，但不含密码；直接回 err.Error()（不含凭证）。
-		writeErr(w, http.StatusBadGateway, "发送失败："+err.Error())
+		writeSMTPTestError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func writeSMTPTestError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, mail.ErrDeliveryUnknown):
+		writeErr(w, http.StatusBadGateway, "测试邮件投递结果未知，可能已发送。请先检查收件箱和垃圾邮件，再决定是否重试。")
+	case errors.Is(err, mail.ErrInvalidMessage):
+		writeErr(w, http.StatusBadRequest, "收件邮箱、发件邮箱或显示名称无效，请检查地址格式和换行符。")
+	default:
+		// SMTP replies may echo credentials, recipient addresses or message contents.
+		writeErr(w, http.StatusBadGateway, "SMTP 测试未成功，请核对服务器、端口、加密方式、登录信息及收件地址。")
+	}
 }
 
 // wizardSMTPStatus 报告开店向导是否仍需展示「配置邮件」步骤。needed=未配置且未跳过。
