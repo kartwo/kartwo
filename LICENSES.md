@@ -64,6 +64,7 @@
 | `assets/branding/kartwo-logo.png` | Kartwo 横版品牌 Logo（抽象 K + 双跑道 + kartwo 字标） | AI 原创，项目自有使用权；未引入或嵌入商业字体文件 | Kartwo 项目内由 OpenAI Image Generation 于 2026-09-12 生成 | 已引入 |
 | `assets/blog-generated/everyday-running-*.webp`（3 张） | 《A Simple Running Kit for Everyday Miles》封面及正文跑步场景示意；不作为具体商品实拍图 | AI 原创，项目自有使用权；不含第三方商标或素材 | Kartwo 项目内由 OpenAI Image Generation 于 2026-10-14 生成，WebP 版本存仓库 | 已引入 |
 | IANA tz database `iso3166.tab` 国家/地区名称 | 后台配送国家多选与结账下拉目录 | Public Domain | IANA tz database（2025-07-01 版本；名称仅作通用英文展示） | 已引入 |
+| Google libaddressinput 国家级地址元数据（249 个既有目录国家/地区及默认规则） | 离线字段要求/标签/邮编语法；不上传地址，不开启新配送范围，不保证实际投递 | 数据 CC-BY-4.0（代码 Apache-2.0 与数据许可分别说明）；Google 及贡献者归属、许可链接与精简修改说明保留在 `internal/address/NOTICE.md`、快照元数据及后台“关于” | https://github.com/google/libaddressinput；2026-10-25 从官方数据服务生成快照，每份响应记录 SHA256；KP/MY/SY 未发布独立数据，采用官方库自带字段格式且不编造缺失邮编语法 | 已引入（开发分支） |
 
 ---
 

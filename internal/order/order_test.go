@@ -39,6 +39,9 @@ func setup(t *testing.T) (*sql.DB, *Service, *cart.Service, *catalog.Service) {
 	if _, err := db.Exec(`INSERT INTO shipping_zone(public_id,name,countries,rate_cents,free_over_cents) VALUES('test-global','Global','',500,20000)`); err != nil {
 		t.Fatal(err)
 	}
+	if err := settings.New(db).SetPlain(context.Background(), ShippingCountriesSetting, "CN"); err != nil {
+		t.Fatal(err)
+	}
 	return db, New(db, settings.New(db)), cart.New(db), catalog.New(db)
 }
 
@@ -226,6 +229,9 @@ func TestReservationExpiresOnceAndReleasesStock(t *testing.T) {
 func TestShippingCountriesOnlyReturnsExplicitSelections(t *testing.T) {
 	db, ord, _, _ := setup(t)
 	ctx := context.Background()
+	if _, err := db.Exec("DELETE FROM setting WHERE key=?", ShippingCountriesSetting); err != nil {
+		t.Fatal(err)
+	}
 	countries, err := ord.ShippingCountries(ctx)
 	if err != nil {
 		t.Fatal(err)

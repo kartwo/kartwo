@@ -259,6 +259,13 @@ type Order struct {
 	ShippingCents        int64  `db:"shipping_cents" json:"shipping_cents"`
 	ShippingRuleName     string `db:"shipping_rule_name" json:"shipping_rule_name"`
 	ReservationExpiresAt string `db:"reservation_expires_at" json:"reservation_expires_at"`
+	ShipAddressVersion   int64  `db:"ship_address_version" json:"ship_address_version"`
+	ShipAddressLine1     string `db:"ship_address_line1" json:"ship_address_line1"`
+	ShipAddressLine2     string `db:"ship_address_line2" json:"ship_address_line2"`
+	ShipCity             string `db:"ship_city" json:"ship_city"`
+	ShipDistrict         string `db:"ship_district" json:"ship_district"`
+	ShipRegion           string `db:"ship_region" json:"ship_region"`
+	ShipPostalCode       string `db:"ship_postal_code" json:"ship_postal_code"`
 }
 
 type OrderGuestAccess struct {

@@ -179,10 +179,12 @@ func (h *HTTP) getOrder(w http.ResponseWriter, r *http.Request) {
 	email, shipName, shipPhone, shipAddress := o.Email, o.ShipName, o.ShipPhone, o.ShipAddress
 	trackingNumber, trackingURL := o.TrackingNumber, o.TrackingURL
 	shipCountry := o.ShipCountry
+	shipDetails := o.ShipAddressDetails
 	if orderCustomerDataHidden(r) {
 		email, shipName, shipPhone, shipAddress = "已隐藏", "已隐藏", "已隐藏", "已隐藏"
 		trackingNumber, trackingURL = "已隐藏", ""
 		shipCountry = "已隐藏"
+		shipDetails = nil
 	}
 	if !orderCustomerDataHidden(r) {
 		h.recordAudit(r, authFrom(r.Context()).AdminID, "order.customer_data_viewed", "order", o.PublicID)
@@ -190,7 +192,8 @@ func (h *HTTP) getOrder(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"public_id": o.PublicID, "status": o.Status, "email": email,
 		"ship_name": shipName, "ship_phone": shipPhone, "ship_address": shipAddress, "ship_country": shipCountry,
-		"currency": o.Currency, "subtotal_cents": o.SubtotalCents, "total_cents": o.TotalCents,
+		"ship_address_details": shipDetails,
+		"currency":             o.Currency, "subtotal_cents": o.SubtotalCents, "total_cents": o.TotalCents,
 		"shipping_cents": o.ShippingCents, "shipping_rule_name": o.ShippingRuleName, "tracking_carrier": o.TrackingCarrier, "tracking_number": trackingNumber, "tracking_url": trackingURL,
 		"payment_provider": o.PaymentProvider, "created_at": o.CreatedAt,
 		"lines": lines, "refunds": refunds, "receipts": receipts, "refund_requests": requests,

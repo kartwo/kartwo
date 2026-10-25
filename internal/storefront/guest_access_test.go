@@ -154,7 +154,7 @@ func TestGuestOrderRecoveryAndObjectIsolation(t *testing.T) {
 func TestGuestCheckoutSetsScopedGrantBeforeGatewayRedirect(t *testing.T) {
 	h, _ := newHTTP(t)
 	h.pay = fakeGateway{methods: []string{"stripe"}, url: "https://gateway.example/checkout"}
-	if _, err := h.svc.db.Exec(`INSERT INTO shipping_zone(public_id,name,countries,rate_cents,free_over_cents) VALUES('guest-zone','Guest zone','',0,0)`); err != nil {
+	if _, err := h.svc.db.Exec(`INSERT INTO shipping_zone(public_id,name,countries,rate_cents,free_over_cents) VALUES('guest-zone','Guest zone','US',0,0)`); err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()

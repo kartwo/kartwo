@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/kartwo/kartwo/internal/address"
 	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/internal/store/sqlcgen"
 )
@@ -45,11 +46,13 @@ func New(db *sql.DB, settingsSvc *settings.Service) *Service {
 
 // CheckoutInfo 为访客结算填写的信息。
 type CheckoutInfo struct {
-	Email   string
-	Name    string
-	Phone   string
-	Address string
-	Country string
+	Email          string
+	Name           string
+	Phone          string
+	Address        string
+	Country        string
+	AddressDetails *address.Details
+	ExpectedQuote  string
 }
 
 // OrderLine 订单行视图。
@@ -72,6 +75,7 @@ type Order struct {
 	ShipPhone                        string
 	ShipAddress                      string
 	ShipCountry                      string
+	ShipAddressDetails               *address.Details
 	Currency                         string
 	SubtotalCents                    int64
 	TotalCents                       int64
@@ -142,22 +146,6 @@ func validOrderEmail(email string) bool {
 	return err == nil && parsed.Name == "" && parsed.Address == value
 }
 
-func (in CheckoutInfo) validate() error {
-	if !validOrderEmail(in.Email) {
-		return fmt.Errorf("%w: 邮箱非法", ErrInvalidInfo)
-	}
-	if strings.TrimSpace(in.Name) == "" {
-		return fmt.Errorf("%w: 收货人不能为空", ErrInvalidInfo)
-	}
-	if strings.TrimSpace(in.Address) == "" {
-		return fmt.Errorf("%w: 收货地址不能为空", ErrInvalidInfo)
-	}
-	if strings.TrimSpace(in.Country) == "" {
-		return fmt.Errorf("%w: 国家不能为空", ErrInvalidInfo)
-	}
-	return nil
-}
-
 // Checkout 由购物车结算生成订单。事务内：认领购物车 → 原子预留库存 → 建客户/订单/订单行。
 // 任一变体库存不足则整单回滚（释放本次已预留）。
 func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo) (string, error) {
@@ -165,29 +153,10 @@ func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo)
 }
 
 func (s *Service) checkout(ctx context.Context, cartID int64, info CheckoutInfo, guestHash string) (string, error) {
-	info.Email = strings.TrimSpace(info.Email)
-	if err := info.validate(); err != nil {
-		return "", err
-	}
-	items, err := s.q.ListCartItems(ctx, cartID)
-	if err != nil {
-		return "", fmt.Errorf("order: 读购物车失败: %w", err)
-	}
-	if len(items) == 0 {
-		return "", ErrEmptyCart
-	}
-
-	// 货币与配送规则在开事务前解析（事务持有唯一连接时再查会死锁）。
-	currency := s.settings.Currency(ctx)
-	var subtotal int64
-	for _, item := range items {
-		subtotal += item.PriceCents * item.Quantity
-	}
-	shipping, rule, err := s.shippingFor(ctx, info.Country, subtotal)
+	info, err := info.normalized()
 	if err != nil {
 		return "", err
 	}
-
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", fmt.Errorf("order: 开启事务失败: %w", err)
@@ -202,8 +171,24 @@ func (s *Service) checkout(ctx context.Context, cartID int64, info CheckoutInfo,
 		return "", fmt.Errorf("order: 认领购物车失败: %w", err)
 	}
 	if claimed == 0 {
+		var state string
+		if err := tx.QueryRowContext(ctx, "SELECT status FROM cart WHERE id=?", cartID).Scan(&state); errors.Is(err, sql.ErrNoRows) {
+			return "", ErrEmptyCart
+		} else if err != nil {
+			return "", err
+		}
 		return "", ErrCartConverted
 	}
+	// Claim first to acquire SQLite's writer before reading prices/settings.
+	// The reviewed amount and final stock/order snapshot share this transaction.
+	quote, items, err := quoteSnapshot(ctx, tx, cartID, info.Country)
+	if err != nil {
+		return "", err
+	}
+	if info.ExpectedQuote != "" && info.ExpectedQuote != quote.Fingerprint {
+		return "", ErrQuoteChanged
+	}
+	currency, subtotal, shipping, rule := quote.Currency, quote.SubtotalCents, quote.ShippingCents, quote.ShippingRuleName
 
 	// 1) 原子预留库存（防超卖）。任一不足即整单失败、回滚释放。
 	for _, it := range items {
@@ -245,6 +230,11 @@ func (s *Service) checkout(ctx context.Context, cartID int64, info CheckoutInfo,
 	if _, err := tx.ExecContext(ctx, "UPDATE \"order\" SET shipping_cents=?, shipping_rule_name=? WHERE id=?", shipping, rule, orderID); err != nil {
 		return "", fmt.Errorf("order: 写配送快照: %w", err)
 	}
+	if details := info.AddressDetails; details != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE \"order\" SET ship_address_version=1,ship_address_line1=?,ship_address_line2=?,ship_city=?,ship_district=?,ship_region=?,ship_postal_code=? WHERE id=?", details.Line1, details.Line2, details.City, details.District, details.Region, details.PostalCode, orderID); err != nil {
+			return "", fmt.Errorf("order: 保存结构化地址失败: %w", err)
+		}
+	}
 
 	if guestHash != "" {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO order_guest_access(token_hash,order_id,expires_at) VALUES(?,?,?)`, guestHash, orderID, time.Now().Add(GuestAccessTTL).Unix()); err != nil {
@@ -253,19 +243,12 @@ func (s *Service) checkout(ctx context.Context, cartID int64, info CheckoutInfo,
 	}
 
 	// 4) 订单行（快照：标题/规格/单价）。
-	for _, it := range items {
-		label, err := s.variantLabel(ctx, q, it.VariantID)
-		if err != nil {
-			return "", err
-		}
-		sku := ""
-		if it.Sku.Valid {
-			sku = it.Sku.String
-		}
+	for index, it := range items {
+		line := quote.Lines[index]
 		if err := q.CreateOrderItem(ctx, sqlcgen.CreateOrderItemParams{
 			OrderID: orderID, VariantID: it.VariantID, ProductTitle: it.ProductTitle,
-			VariantLabel: label, Sku: sku, UnitCents: it.PriceCents, Quantity: it.Quantity,
-			LineCents: it.PriceCents * it.Quantity,
+			VariantLabel: line.Spec, Sku: line.SKU, UnitCents: line.UnitCents, Quantity: line.Quantity,
+			LineCents: line.LineCents,
 		}); err != nil {
 			return "", fmt.Errorf("order: 建订单行失败: %w", err)
 		}
@@ -289,6 +272,9 @@ func (s *Service) Get(ctx context.Context, publicID string) (*Order, error) {
 		PublicID: o.PublicID, Status: o.Status, Email: o.Email, ShipName: o.ShipName, ShipPhone: o.ShipPhone,
 		ShipAddress: o.ShipAddress, ShipCountry: o.ShipCountry, Currency: o.Currency,
 		SubtotalCents: o.SubtotalCents, TotalCents: o.TotalCents, PaymentProvider: o.PaymentProvider, CreatedAt: o.CreatedAt,
+	}
+	if o.ShipAddressVersion == 1 {
+		out.ShipAddressDetails = &address.Details{Line1: o.ShipAddressLine1, Line2: o.ShipAddressLine2, City: o.ShipCity, District: o.ShipDistrict, Region: o.ShipRegion, PostalCode: o.ShipPostalCode}
 	}
 	its, err := s.q.ListOrderItems(ctx, o.ID)
 	if err != nil {
@@ -431,7 +417,7 @@ func (s *Service) DashboardStats(ctx context.Context) (DashboardStats, error) {
 }
 
 // variantLabel 把变体选项拼为快照文字（如 尺码:S · 颜色:黑）。
-func (s *Service) variantLabel(ctx context.Context, q *sqlcgen.Queries, variantID int64) (string, error) {
+func variantLabel(ctx context.Context, q *sqlcgen.Queries, variantID int64) (string, error) {
 	opts, err := q.ListOptionsForVariant(ctx, variantID)
 	if err != nil {
 		return "", fmt.Errorf("order: 取变体选项失败: %w", err)

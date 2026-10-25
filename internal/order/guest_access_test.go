@@ -315,7 +315,7 @@ func TestGuestRecoveryRejectsMalformedLegacyEmail(t *testing.T) {
 	for _, email := range []string{"Buyer <buyer@example.com>", "buyer@example.com\r\nBcc: stranger@example.com", "buyer@example.com,other@example.com", "broken@"} {
 		in := info()
 		in.Email = email
-		if !errors.Is(in.validate(), ErrInvalidInfo) {
+		if _, err := in.normalized(); !errors.Is(err, ErrInvalidInfo) {
 			t.Fatalf("checkout accepted malformed address %q", email)
 		}
 		if _, err := db.Exec(`UPDATE "order" SET email=? WHERE public_id='guest-order'`, email); err != nil {

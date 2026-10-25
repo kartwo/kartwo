@@ -387,8 +387,13 @@ func TestShipmentMigrationPreservesLegacyWithoutSending(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	pending := 0
 	for _, file := range files {
-		if file.IsDir() || file.Name() >= "0036" {
+		if file.IsDir() {
+			continue
+		}
+		if file.Name() >= "0036" {
+			pending++
 			continue
 		}
 		body, err := fs.ReadFile(migrations.FS, file.Name())
@@ -409,7 +414,7 @@ func TestShipmentMigrationPreservesLegacyWithoutSending(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if n, err := migrate.Run(ctx, db, migrations.FS); err != nil || n != 1 {
+	if n, err := migrate.Run(ctx, db, migrations.FS); err != nil || n != pending {
 		t.Fatalf("upgrade=%d err=%v", n, err)
 	}
 	s := New(db, nil)
