@@ -18,4 +18,7 @@ export const businessPages = {
   '/blog': lazy(() => import('./pages/BlogPosts')),
   '/blog/new': lazy(() => import('./pages/BlogPostEdit')),
   '/blog/:id': lazy(() => import('./pages/BlogPostEdit')),
+  '/products': lazy(() => import('./pages/ProductList')),
+  '/products/new': lazy(() => import('./pages/ProductEdit')),
+  '/products/:id': lazy(() => import('./pages/ProductEdit')),
 }

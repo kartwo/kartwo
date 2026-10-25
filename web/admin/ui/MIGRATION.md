@@ -6,7 +6,7 @@
 
 最终仅保留 React + TypeScript + Vite + Ant Design 后台，删除 Vue 运行时、旧页面及迁移专用构建配置。保留现有 `/admin/#/...` 地址、Go API 和单二进制 embed 托管。菜单权限仅优化界面体验，服务端鉴权仍是授权依据。
 
-当前处于分批迁移：`src/react` 已实现请求传输、会话/登录/初始化/邀请、向导流程、导航外壳和路由访问控制；收款、域名和 SMTP 三个实际配置页已接入向导；店铺品牌、博客开关及客服留存设置也已迁移，账号安全、翻译和备份设置也已迁移，配送和店铺政策设置也已迁移，用户与角色管理也已迁移，十二个设置页均按需加载；客服收件箱、日志、诊断、概览、关于、导入、导出、分类、固定内容管理及博客列表/编辑十一个业务/系统页也已迁移。`index.html` 仍连接现有后台，**未切换正式入口、未发布 React 后台**。新组件由 `build:react` 独立编译验证到忽略目录 `.react-build`，不进入 Go embed；这项临时验证在正式入口切换时移除。
+当前处于分批迁移：`src/react` 已实现请求传输、会话/登录/初始化/邀请、向导流程、导航外壳和路由访问控制；收款、域名和 SMTP 三个实际配置页已接入向导；店铺品牌、博客开关及客服留存设置也已迁移，账号安全、翻译和备份设置也已迁移，配送和店铺政策设置也已迁移，用户与角色管理也已迁移，十二个设置页均按需加载；客服收件箱、日志、诊断、概览、关于、导入、导出、分类、固定内容管理、博客列表/编辑及商品列表/编辑十三个业务/系统页也已迁移。`index.html` 仍连接现有后台，**未切换正式入口、未发布 React 后台**。新组件由 `build:react` 独立编译验证到忽略目录 `.react-build`，不进入 Go embed；这项临时验证在正式入口切换时移除。
 
 ## 共用能力
 
@@ -52,8 +52,8 @@
 | PaymentSettings | React 已实现，待统一浏览器验收 | `getPayment`、`setPayment`、`testStripeConnection` |
 | PaymentWizard | React 已实现，待统一浏览器验收 | `wizardPaymentSkip` |
 | PolicySettings | React 已实现，待统一浏览器验收 | `generateFooterPages`、`getPolicyProfile`、`setPolicyProfile` |
-| ProductEdit | 未迁移 | `createProduct`、`deleteMedia`、`getProduct`、`getTranslation`、`listCategories`、`listMedia`、`setInventory`、`setPrice`、`translateText`、`updateMediaAlt`、`updateProduct`、`uploadMedia` |
-| ProductList | 未迁移 | `deleteProduct`、`listProducts`、`setProductFeatured` |
+| ProductEdit | React 已实现，待正式入口统一验收 | `createProduct`、`deleteMedia`、`getProduct`、`getTranslation`、`listCategories`、`listMedia`、`setInventory`、`setPrice`、`translateText`、`updateMediaAlt`、`updateProduct`、`uploadMedia` |
+| ProductList | React 已实现，待正式入口统一验收 | `deleteProduct`、`listProducts`、`setProductFeatured` |
 | ShippingSettings | React 已实现，待统一浏览器验收 | `createShippingZone`、`deleteShippingZone`、`listShippingCountries`、`listShippingZones`、`saveDefaultShippingZone`、`saveShippingCountries`、`updateShippingZone` |
 | ShopSettings | React 已实现，待统一浏览器验收 | `deleteShopLogo`、`getShop`、`setShop`、`uploadShopLogo` |
 | SmtpSettings | React 已实现，待统一浏览器验收 | `getSmtp`、`setSmtp`、`smtpTest` |
@@ -83,7 +83,11 @@
 
 富文本不引入新依赖，保留原生工具栏命令、选区、标题/引用/列表/字体/颜色/字号/行高/对齐/缩进/表情/表格/链接/图片/视频和撤销重做。所有加载与保存内容经浏览器白名单过滤；仅本地博客 WebP 图片、HTTPS/站内链接和规范 YouTube/Vimeo 播放器，粘贴/拖入仅文字；Go 服务端仍作最终过滤。排版下拉操作后清空，允许对不同选区重复应用同一个选项。隔离 IAB 预览已检查加粗、标题、站内链接、撤销/重做、颜色、表格和行高，控制台无错误；未连接真实数据，不能替代正式路由的图片上传、视频加载、旧文章迁移和多身份验收。
 
-当前 26/30 个原视图已实现，十二个设置页及十一个业务/系统页使用独立动态导入。剩余商品/订单列表和详情四视图、最终生产包体与唯一入口仍待迁移和审查。接口桩测试不代表真实支付平台或 SMTP 验收。
+商品保留独立列表/新建/编辑、精选与删除、中文辅助字段和手动 DeepL 翻译、英文链接、分类、草稿/上架/归档、轴和组合、逐行价格库存、图片与 alt。分类目录读取失败不显示可保存的空分类，媒体读取失败不当空图集；详情切换取消旧读取并校验对象。新建后进入已确认公开 ID 的编辑地址，后续读取失败可重试，不重复 POST。矩阵改轴后必须重新生成，取消重建保留原价格；价格空白拒绝而显式 0 可用，十进制精确转整数分，库存拒绝空白/负数/小数/溢出。巨大组合以既有后端 1MB 请求上限的字节下界提前拒绝，不新增业务配额。
+
+商品基本编辑、上架、价格、库存、媒体分别按服务端已有权限；仅改价或仅库存的员工可独立保存对应字段，不要求同时持有两项权限。只提交有变化的字段，改价格不回写未改的旧库存。两个端点不承诺原子提交：价格成功后库存未确认时保留价格基线和输入，明确提示核对，下一次不重复价格请求；401 仍清除整个会话。字段/翻译/变体/媒体共用写锁。图片白名单只接收本地内容哈希路径，上传成功后读列表失败仍保留返回的资产，图片更新不覆盖未保存的基本信息或其他图片 alt。演示的示例商品只读，自有临时商品可维护，状态固定草稿、创建额度沿用会话值、最多一张图片且限会话大小；只有店主可手动触发翻译，不自动请求 DeepL。
+
+当前 28/30 个原视图已实现，十二个设置页及十三个业务/系统页使用独立动态导入。剩余订单列表和详情两视图、最终生产包体与唯一入口仍待迁移和审查。接口桩测试不代表真实支付平台或 SMTP 验收。
 
 ## 验证方式
 
@@ -103,3 +107,12 @@ React DOM 测试使用隔离 API 桩，不修改验收数据，也不等于真�
 3. 保存后从列表重新打开，确认图文、封面、链接和草稿状态保留；发布后打开店面文章核对图片和排版。保存后的链接应固定。
 4. 打开一篇旧 Markdown 文章，检查转换提示和原图文；保存后重新打开确认内容。视频使用 YouTube/Vimeo 链接，错误链接应提示且不插入。
 5. 用只有 blog.view 的员工查看，确认可以阅读、不能上传保存删除；公开演示不显示真实草稿。完整权限回归在统一切换时执行。
+
+## 商品正式入口切换后的人工验收
+
+1. 复用常驻验收库进入“商品”，无需清空已有商品和图片。当前正式入口仍是原后台，完整迁移后再切换验收。
+2. 新建草稿，填写英文标题，确认自动生成链接；设置一个轴和几个取值，生成组合。价格留空应阻止保存，填 0 或两位小数可保存，库存须为整数。
+3. 填好价格后更改轴，确认提示重新生成；取消重新生成时原输入应保留。保存后进入编辑页，链接固定，上传图片并填写英文 alt。
+4. 修改当前行价格与库存并保存，重新打开核对；只改价格时，不应重设其他库存。用只有改价或库存权限的测试员工，确认只能维护对应字段，不能因此编辑基本信息或上传图片。
+5. 草稿改为上架并保存，回店面核对；精选只对上架商品开放。删除商品和图片前均应确认，取消不删除。
+6. 演示中已有示例商品只读，自有商品只能是草稿，达到临时商品/图片额度后禁用继续创建或上传。翻译由店主手动点击；未配置服务只提示，不自动发送文字。
