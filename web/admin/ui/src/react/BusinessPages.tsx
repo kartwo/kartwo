@@ -13,4 +13,6 @@ export const businessPages = {
   '/about': lazy(() => import('./pages/About')),
   '/export': lazy(() => import('./pages/ExportData')),
   '/imports/csv': lazy(() => import('./pages/ImportCSV')),
+  '/categories': lazy(() => import('./pages/CategoryManagement')),
+  '/merchandising': lazy(() => import('./pages/Merchandising')),
 }

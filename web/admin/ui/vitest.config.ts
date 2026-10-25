@@ -11,5 +11,7 @@ export default defineConfig({
   test: {
     include: ['src/react/**/*.test.{ts,tsx}'], environment: 'jsdom',
     setupFiles: ['src/react/test-setup.ts'], restoreMocks: true,
+    // Each jsdom worker loads Ant Design; serialize files to avoid local/CI resource contention.
+    maxWorkers: 1,
   },
 })
