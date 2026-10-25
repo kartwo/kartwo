@@ -174,7 +174,7 @@ func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
 		"Order":        o,
 		"PaymentError": paymentErrorMessage(r.URL.Query().Get("payment_error")),
 		"Methods":      payMethods,
-		"Money":        h.money(r.Context()),
+		"Money":        moneyFunc(o.Currency),
 		"SEO": seo{
 			Title: "Order — " + h.shopName(r.Context()), Description: "Order confirmation", NoIndex: true, Canonical: h.base(r) + "/order/" + o.PublicID, OGType: "website",
 		},

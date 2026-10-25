@@ -47,8 +47,9 @@ it('用户角色边界拒绝重复 ID、未知状态、非数组及不可分配�
   expect(() => parseRoles([{ ...viewer, user_count: 1.5 }])).toThrow()
 })
 it('角色依赖按实际服务端规则校验，绝不自动添加店主权限', () => {
-  for (const value of [[], ['products.edit'], ['categories.manage'], ['orders.customer_data'], ['orders.view', 'orders.fulfill'], ['contact.manage'], ['blog.manage'], ['users.manage']]) expect(permissionError(value)).not.toBe('')
-  expect(permissionError(['products.view', 'products.inventory', 'orders.view', 'orders.customer_data', 'orders.fulfill', 'blog.view', 'blog.manage'])).toBe('')
+  for (const value of [[], ['products.edit'], ['categories.manage'], ['orders.customer_data'], ['orders.view', 'orders.fulfill'], ['orders.aftersales'], ['orders.view', 'orders.aftersales'], ['orders.customer_data', 'orders.aftersales'], ['contact.manage'], ['blog.manage'], ['users.manage']]) expect(permissionError(value)).not.toBe('')
+  expect(permissionError(['products.view', 'products.inventory', 'orders.view', 'orders.customer_data', 'orders.fulfill', 'orders.aftersales', 'blog.view', 'blog.manage'])).toBe('')
+  expect(parseRoles([{ ...viewer, permissions: ['orders.view', 'orders.customer_data', 'orders.aftersales'] }])[0]?.permissions).toEqual(['orders.view', 'orders.customer_data', 'orders.aftersales'])
 })
 it('邀请地址只允许本站固定入口及合法令牌，不接受外站和额外参数', () => {
   expect(inviteURL({ invite_path: invitePath })).toBe(location.origin + invitePath)

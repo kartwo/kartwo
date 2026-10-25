@@ -44,6 +44,8 @@ type AfterSaleTerms struct {
 }
 
 type AfterSaleCase struct {
+	// Mutation-result metadata only; reads/replays do not report another action.
+	OperationApplied     bool             `json:"-"`
 	PublicID             string           `json:"public_id"`
 	Kind                 string           `json:"kind"`
 	State                string           `json:"state"`
@@ -249,6 +251,7 @@ func (s *Service) CreateAfterSale(ctx context.Context, orderPublicID, token stri
 	if err != nil {
 		return empty, err
 	}
+	record.OperationApplied = true
 	return record.AfterSaleCase, tx.Commit()
 }
 

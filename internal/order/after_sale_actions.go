@@ -188,5 +188,6 @@ AND NOT EXISTS(SELECT 1 FROM after_sale a WHERE a.refund_request_id=r.id)`, inpu
 	if actor == "customer" {
 		c.RefundRequestID = ""
 	}
+	c.OperationApplied = true
 	return c.AfterSaleCase, tx.Commit()
 }

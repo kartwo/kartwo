@@ -239,6 +239,8 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.Handle("POST /admin/api/orders/{id}/refund-check", owner(h.reconcileRefunds))
 	mux.Handle("POST /admin/api/orders/{id}/refunds/{refund}/refresh", owner(h.retryRefundRequest))
 	mux.Handle("POST /admin/api/orders/{id}/fulfill", owner(h.fulfillOrder))
+	mux.Handle("GET /admin/api/orders/{id}/after-sales", owner(h.getAfterSales))
+	mux.Handle("POST /admin/api/orders/{id}/after-sales/{case}/actions", owner(h.reviewAfterSale))
 	mux.Handle("GET /admin/api/orders/{id}/shipment", owner(h.getShipment))
 	mux.Handle("PATCH /admin/api/orders/{id}/shipment", owner(h.updateShipment))
 	mux.Handle("POST /admin/api/orders/{id}/shipment-notices/{notice}/actions", owner(h.manageShipmentNotice))

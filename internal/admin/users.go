@@ -122,6 +122,9 @@ func cleanRoleInput(name string, permissions []string) (string, string, error) {
 	if set["orders.fulfill"] && (!set["orders.view"] || !set["orders.customer_data"]) {
 		return "", "", errors.New("发货权限需要同时勾选「查看订单」和「查看客户信息」")
 	}
+	if set["orders.aftersales"] && (!set["orders.view"] || !set["orders.customer_data"]) {
+		return "", "", errors.New("处理售后权限需要同时勾选「查看订单」和「查看客户信息」")
+	}
 	if set["contact.manage"] && !set["contact.view"] {
 		return "", "", errors.New("处理客服留言需要同时勾选「查看客服留言」")
 	}

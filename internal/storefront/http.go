@@ -53,6 +53,8 @@ type HTTP struct {
 	cartTmpl         *template.Template
 	ckoutTmpl        *template.Template
 	orderTmpl        *template.Template
+	afterSaleTmpl    *template.Template
+	afterSaleLimit   *commerceLimiter
 	orderAccessTmpl  *template.Template
 	guestMailReady   func() bool
 	accessLimit      *commerceLimiter
@@ -94,6 +96,8 @@ func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, setti
 		cartTmpl:        parse("templates/cart.html"),
 		ckoutTmpl:       parse("templates/checkout.html"),
 		orderTmpl:       parse("templates/order.html"),
+		afterSaleTmpl:   parse("templates/after_sale.html"),
+		afterSaleLimit:  newCommerceLimiter(12),
 		orderAccessTmpl: parse("templates/order_access.html"),
 		accessLimit:     newCommerceLimiter(6),
 		pageTmpl:        parse("templates/content_page.html"),
@@ -156,6 +160,9 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /checkout", httpx.PrivateHandler(h.checkoutPage))
 	mux.HandleFunc("POST /checkout", h.protectCommerce(h.checkoutLimit, h.checkoutSubmit))
 	mux.HandleFunc("GET /order/{id}", httpx.PrivateHandler(h.orderPage))
+	mux.HandleFunc("GET /order/{id}/after-sales", httpx.PrivateHandler(h.afterSalePage))
+	mux.HandleFunc("POST /order/{id}/after-sales", h.protectCommerce(h.afterSaleLimit, h.createAfterSale))
+	mux.HandleFunc("POST /order/{id}/after-sales/{case}/actions", h.protectCommerce(h.afterSaleLimit, h.updateAfterSale))
 	mux.HandleFunc("POST /order/{id}/access/request", h.protectCommerce(h.accessLimit, h.requestGuestAccess))
 	mux.HandleFunc("POST /order/{id}/access/verify", h.protectCommerce(h.accessLimit, h.verifyGuestAccess))
 	mux.HandleFunc("POST /order/{id}/access/logout", h.protectCommerce(h.accessLimit, h.logoutGuestAccess))
@@ -468,15 +475,23 @@ func (h *HTTP) runningTeeHero(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *HTTP) render(w http.ResponseWriter, r *http.Request, t *template.Template, data map[string]any) {
-	categories, err := h.svc.ListCategories(r.Context())
-	if err != nil {
+	if err := h.preparePage(r.Context(), data); err != nil {
 		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
-	pages, err := h.svc.ListContentPages(r.Context())
+	writePage(w, t, data)
+}
+
+// Prepare public navigation before writing headers. Private forms can preserve
+// their original POST in a minimal recovery document if these reads fail.
+func (h *HTTP) preparePage(ctx context.Context, data map[string]any) error {
+	categories, err := h.svc.ListCategories(ctx)
 	if err != nil {
-		http.Error(w, "Something went wrong", http.StatusInternalServerError)
-		return
+		return err
+	}
+	pages, err := h.svc.ListContentPages(ctx)
+	if err != nil {
+		return err
 	}
 	data["NavigationCategories"] = categories
 	data["FooterPages"] = pages
@@ -486,20 +501,22 @@ func (h *HTTP) render(w http.ResponseWriter, r *http.Request, t *template.Templa
 			break
 		}
 	}
-	data["ShopLogoURL"] = h.settings.ShopLogoURL(r.Context())
-	blogEnabled, err := h.blog.Enabled(r.Context())
+	data["ShopLogoURL"] = h.settings.ShopLogoURL(ctx)
+	blogEnabled, err := h.blog.Enabled(ctx)
 	if err != nil {
-		http.Error(w, "Something went wrong", 500)
-		return
+		return err
 	}
 	if blogEnabled {
-		visible, err := h.blog.HasPublished(r.Context())
+		visible, err := h.blog.HasPublished(ctx)
 		if err != nil {
-			http.Error(w, "Something went wrong", 500)
-			return
+			return err
 		}
 		data["BlogVisible"] = visible
 	}
+	return nil
+}
+
+func writePage(w http.ResponseWriter, t *template.Template, data map[string]any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if status, ok := data["HTTPStatus"].(int); ok {
 		w.WriteHeader(status)

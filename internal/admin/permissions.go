@@ -13,6 +13,8 @@ import (
 
 // staffRoutes 是唯一的员工接口授权表。未列出的后台接口默认拒绝员工访问。
 var staffRoutes = map[string]string{
+	"GET /admin/api/orders/{id}/after-sales":                        "orders.view",
+	"POST /admin/api/orders/{id}/after-sales/{case}/actions":        "orders.aftersales",
 	"GET /admin/api/dashboard":                                      "dashboard.view",
 	"GET /admin/api/diagnostics":                                    "diagnostics.view",
 	"GET /admin/api/audit-events":                                   "audit.view",
@@ -155,6 +157,10 @@ func (h *HTTP) allowStaff(w http.ResponseWriter, r *http.Request, ac *AuthContex
 	}
 	if permission == "" || !ac.Permissions[permission] || ownerOnlyPermissions[permission] {
 		writeErr(w, http.StatusForbidden, "当前账号没有此操作权限")
+		return false
+	}
+	if permission == "orders.aftersales" && (!ac.Permissions["orders.view"] || !ac.Permissions["orders.customer_data"]) {
+		writeErr(w, http.StatusForbidden, "处理售后需要订单和客户信息权限")
 		return false
 	}
 	if permission == "orders.fulfill" && !ac.Permissions["orders.customer_data"] {
