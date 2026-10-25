@@ -21,4 +21,6 @@ export const businessPages = {
   '/products': lazy(() => import('./pages/ProductList')),
   '/products/new': lazy(() => import('./pages/ProductEdit')),
   '/products/:id': lazy(() => import('./pages/ProductEdit')),
+  '/orders': lazy(() => import('./pages/OrderList')),
+  '/orders/:id': lazy(() => import('./pages/OrderDetail')),
 }
