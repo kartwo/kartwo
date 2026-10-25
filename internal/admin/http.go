@@ -230,6 +230,7 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 
 	// 订单 + 退款（M3.3a）。
 	mux.Handle("GET /admin/api/orders", protect(h.listOrders))
+	mux.Handle("POST /admin/api/orders/search", protect(h.searchOrders))
 	mux.Handle("GET /admin/api/orders/export", owner(h.exportOrdersCSV))
 	mux.Handle("GET /admin/api/orders/{id}", protect(h.getOrder))
 	mux.Handle("POST /admin/api/orders/{id}/revoke-access", owner(h.revokeOrderAccess))

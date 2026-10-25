@@ -54,6 +54,7 @@ var staffRoutes = map[string]string{
 	"POST /admin/api/imports/{id}/execute":          "imports.manage",
 	"GET /admin/api/imports/{id}":                   "imports.manage",
 	"GET /admin/api/orders":                         "orders.view",
+	"POST /admin/api/orders/search":                 "orders.view",
 	"GET /admin/api/orders/{id}":                    "orders.view",
 	"GET /admin/api/orders/export":                  "orders.export",
 	"POST /admin/api/orders/{id}/fulfill":           "orders.fulfill",

@@ -46,7 +46,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   }
   const sidebar = <>
     <div className="sidebar-brand"><span className="brand-mark" aria-hidden="true">K</span><div><strong>Kartwo</strong><small>店铺运营后台</small></div></div>
-    <nav aria-label="后台导航"><Menu mode="inline" theme="dark" items={menuItems} selectedKeys={[selectedPath(pathname)]} openKeys={expanded} onOpenChange={setExpanded} /></nav>
+    <nav aria-label="后台导航"><Menu mode="inline" theme="dark" items={menuItems} selectedKeys={[selectedPath(pathname)]} openKeys={expanded} onOpenChange={setExpanded} onClick={() => setMobileOpen(false)} /></nav>
   </>
   const remaining = Math.max(0, Math.ceil((Date.parse(session.expires_at) - now) / 1000))
   const remainingText = `${Math.floor(remaining / 60).toString().padStart(2, '0')}:${(remaining % 60).toString().padStart(2, '0')}`

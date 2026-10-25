@@ -4,7 +4,8 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 10:14:20
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { ConfigProvider } from 'antd'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { expect, it, vi } from 'vitest'
@@ -88,4 +89,18 @@ it('缺少邀请令牌不能提交口令', async () => {
   expect(await screen.findByText('邀请链接不完整，请联系店主重新发送。')).toBeTruthy()
   expect(screen.queryByLabelText('新密码')).toBeNull()
   expect(api.acceptInvite).not.toHaveBeenCalled()
+})
+
+it('手机菜单选择当前页面也收起抽屉，不依赖地址变化', async () => {
+  const controller = new SessionController(fakeAPI())
+  render(<MemoryRouter initialEntries={['/orders']}><AdminTheme><ConfigProvider theme={{ token: { motion: false } }}><SessionProvider controller={controller}>
+    <AdminRoot renderPage={() => <div>当前订单页</div>} />
+  </SessionProvider></ConfigProvider></AdminTheme></MemoryRouter>)
+  await screen.findByText('当前订单页')
+  await userEvent.click(screen.getByRole('button', { name: '打开菜单' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Kartwo 菜单' })
+  await userEvent.click(within(dialog).getByRole('link', { name: '订单' }))
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Kartwo 菜单' })).toBeNull())
+  expect(screen.getByText('当前订单页')).toBeTruthy()
+  expect(screen.getByRole('button', { name: '打开菜单' }).getAttribute('aria-expanded')).toBe('false')
 })
