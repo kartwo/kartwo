@@ -243,7 +243,7 @@ func (h *HTTP) fulfillOrder(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeErr(w, 409, "订单当前不可发货：需已付款且没有待处理退款")
 		} else {
-			writeErr(w, 400, "发货信息无效")
+			shipmentError(w, err)
 		}
 		return
 	}

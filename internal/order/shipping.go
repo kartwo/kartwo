@@ -7,10 +7,8 @@ package order
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/kartwo/kartwo/internal/settings"
@@ -116,33 +114,4 @@ func (s *Service) shippingFor(ctx context.Context, country string, subtotal int6
 		}
 	}
 	return 0, "", ErrNoShippingRule
-}
-func (s *Service) Fulfill(ctx context.Context, id, carrier, number, link string) error {
-	if strings.TrimSpace(carrier) == "" || strings.TrimSpace(number) == "" || len(number) > 128 {
-		return ErrInvalidInfo
-	}
-	if link != "" {
-		u, e := url.Parse(link)
-		if e != nil || u.Scheme != "https" || u.Host == "" {
-			return ErrInvalidInfo
-		}
-	}
-	tx, e := s.db.BeginTx(ctx, nil)
-	if e != nil {
-		return e
-	}
-	defer func() { _ = tx.Rollback() }()
-	r, e := tx.ExecContext(ctx, "UPDATE \"order\" SET status='fulfilled',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE public_id=? AND status='paid' AND NOT EXISTS(SELECT 1 FROM refund_request rr WHERE rr.order_id=\"order\".id AND rr.state IN ('prepared','pending','review'))", id)
-	if e != nil {
-		return e
-	}
-	n, _ := r.RowsAffected()
-	if n == 0 {
-		return sql.ErrNoRows
-	}
-	_, e = tx.ExecContext(ctx, "INSERT INTO shipment(order_id,carrier,tracking_number,tracking_url) SELECT id,?,?,? FROM \"order\" WHERE public_id=?", carrier, number, link, id)
-	if e != nil {
-		return e
-	}
-	return tx.Commit()
 }

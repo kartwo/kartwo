@@ -92,6 +92,33 @@ func (q *Queries) EnqueueEmail(ctx context.Context, arg EnqueueEmailParams) (int
 	return result.RowsAffected()
 }
 
+const enqueueShipmentEmail = `-- name: EnqueueShipmentEmail :execlastid
+INSERT INTO email_outbox (order_id,kind,to_addr,subject,body) VALUES (?,?,?,?,?)
+`
+
+type EnqueueShipmentEmailParams struct {
+	OrderID int64  `db:"order_id" json:"order_id"`
+	Kind    string `db:"kind" json:"kind"`
+	ToAddr  string `db:"to_addr" json:"to_addr"`
+	Subject string `db:"subject" json:"subject"`
+	Body    string `db:"body" json:"body"`
+}
+
+// Each immutable notice has its own kind; duplicate intent is handled before insertion.
+func (q *Queries) EnqueueShipmentEmail(ctx context.Context, arg EnqueueShipmentEmailParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, enqueueShipmentEmail,
+		arg.OrderID,
+		arg.Kind,
+		arg.ToAddr,
+		arg.Subject,
+		arg.Body,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+
 const holdInterruptedEmails = `-- name: HoldInterruptedEmails :exec
 UPDATE email_outbox SET status = 'delivery_unknown', attempts = attempts + 1, last_error = 'delivery interrupted' WHERE status = 'sending'
 `
@@ -99,6 +126,17 @@ UPDATE email_outbox SET status = 'delivery_unknown', attempts = attempts + 1, la
 // A crash cannot prove that SMTP rejected DATA. Do not blindly resend.
 func (q *Queries) HoldInterruptedEmails(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, holdInterruptedEmails)
+	return err
+}
+
+const holdStaleShipmentEmails = `-- name: HoldStaleShipmentEmails :exec
+UPDATE email_outbox SET status='delivery_unknown',attempts=attempts+1,last_error='delivery interrupted'
+WHERE status='sending' AND id IN(SELECT outbox_id FROM shipment_notice WHERE sending_at<=?)
+`
+
+// SMTP dial+protocol is bounded by 40s; a 2m claim cannot be presumed undelivered.
+func (q *Queries) HoldStaleShipmentEmails(ctx context.Context, sendingAt int64) error {
+	_, err := q.db.ExecContext(ctx, holdStaleShipmentEmails, sendingAt)
 	return err
 }
 
@@ -177,6 +215,15 @@ func (q *Queries) MarkEmailSkipped(ctx context.Context, arg MarkEmailSkippedPara
 	return err
 }
 
+const markEmailSuperseded = `-- name: MarkEmailSuperseded :exec
+UPDATE email_outbox SET status='superseded',last_error='shipment superseded' WHERE id=? AND status='sending'
+`
+
+func (q *Queries) MarkEmailSuperseded(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, markEmailSuperseded, id)
+	return err
+}
+
 const markEmailUncertain = `-- name: MarkEmailUncertain :exec
 UPDATE email_outbox SET status = 'delivery_unknown', attempts = ?, last_error = ? WHERE id = ? AND status = 'sending'
 `
@@ -190,4 +237,37 @@ type MarkEmailUncertainParams struct {
 func (q *Queries) MarkEmailUncertain(ctx context.Context, arg MarkEmailUncertainParams) error {
 	_, err := q.db.ExecContext(ctx, markEmailUncertain, arg.Attempts, arg.LastError, arg.ID)
 	return err
+}
+
+const markShipmentClaimTime = `-- name: MarkShipmentClaimTime :exec
+UPDATE shipment_notice SET sending_at=? WHERE outbox_id=?
+`
+
+type MarkShipmentClaimTimeParams struct {
+	SendingAt int64 `db:"sending_at" json:"sending_at"`
+	OutboxID  int64 `db:"outbox_id" json:"outbox_id"`
+}
+
+func (q *Queries) MarkShipmentClaimTime(ctx context.Context, arg MarkShipmentClaimTimeParams) error {
+	_, err := q.db.ExecContext(ctx, markShipmentClaimTime, arg.SendingAt, arg.OutboxID)
+	return err
+}
+
+const shipmentEmailCurrent = `-- name: ShipmentEmailCurrent :one
+SELECT CAST(EXISTS(
+ SELECT 1 FROM shipment_notice n JOIN shipment_revision r ON r.id=n.revision_id
+ JOIN shipment s ON s.id=r.shipment_id JOIN email_outbox e ON e.id=n.outbox_id
+ WHERE e.id=? AND e.order_id=s.order_id AND e.kind='shipment:'||n.public_id AND n.resolution=''
+ AND s.carrier=r.carrier AND s.tracking_number=r.tracking_number AND s.tracking_url=r.tracking_url
+ AND NOT EXISTS(SELECT 1 FROM shipment_revision newer WHERE newer.shipment_id=r.shipment_id AND newer.version>r.version)
+ AND NOT EXISTS(SELECT 1 FROM shipment_notice newer WHERE newer.revision_id=r.id AND newer.sequence>n.sequence)
+) AS INTEGER)
+`
+
+// Snapshot may have become stale between listing and claiming. Never send an obsolete revision/copy.
+func (q *Queries) ShipmentEmailCurrent(ctx context.Context, id int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, shipmentEmailCurrent, id)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }

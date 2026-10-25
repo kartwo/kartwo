@@ -454,6 +454,34 @@ type Shipment struct {
 	ShippedAt      string `db:"shipped_at" json:"shipped_at"`
 }
 
+type ShipmentNotice struct {
+	ID            int64         `db:"id" json:"id"`
+	PublicID      string        `db:"public_id" json:"public_id"`
+	RevisionID    int64         `db:"revision_id" json:"revision_id"`
+	Sequence      int64         `db:"sequence" json:"sequence"`
+	RequestKey    string        `db:"request_key" json:"request_key"`
+	Origin        string        `db:"origin" json:"origin"`
+	OutboxID      int64         `db:"outbox_id" json:"outbox_id"`
+	PreviousID    sql.NullInt64 `db:"previous_id" json:"previous_id"`
+	Resolution    string        `db:"resolution" json:"resolution"`
+	ResolutionKey string        `db:"resolution_key" json:"resolution_key"`
+	SendingAt     int64         `db:"sending_at" json:"sending_at"`
+	ResolvedAt    string        `db:"resolved_at" json:"resolved_at"`
+	CreatedAt     string        `db:"created_at" json:"created_at"`
+}
+
+type ShipmentRevision struct {
+	ID             int64  `db:"id" json:"id"`
+	PublicID       string `db:"public_id" json:"public_id"`
+	ShipmentID     int64  `db:"shipment_id" json:"shipment_id"`
+	Version        int64  `db:"version" json:"version"`
+	Carrier        string `db:"carrier" json:"carrier"`
+	TrackingNumber string `db:"tracking_number" json:"tracking_number"`
+	TrackingUrl    string `db:"tracking_url" json:"tracking_url"`
+	Legacy         int64  `db:"legacy" json:"legacy"`
+	CreatedAt      string `db:"created_at" json:"created_at"`
+}
+
 type ShippingZone struct {
 	ID            int64          `db:"id" json:"id"`
 	PublicID      string         `db:"public_id" json:"public_id"`

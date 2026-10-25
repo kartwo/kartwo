@@ -68,6 +68,10 @@ func (w *Worker) Run(ctx context.Context) {
 
 // tick 处理一批到期邮件。发送在事务/连接之外进行。
 func (w *Worker) tick(ctx context.Context) {
+	if err := w.q.HoldStaleShipmentEmails(ctx, time.Now().Add(-2*time.Minute).Unix()); err != nil {
+		w.logger.Warn("发货通知投递恢复检查失败")
+		return
+	}
 	if err := w.cleanGuestMail(ctx); err != nil {
 		w.logger.Warn("验证码邮件清理失败")
 		return
@@ -85,9 +89,21 @@ func (w *Worker) tick(ctx context.Context) {
 	}
 	for _, m := range claimed {
 		// 快速事务：pending->sending 认领（rows=1 确认）。
-		rows, err := w.q.MarkEmailSending(ctx, m.ID)
+		rows, err := w.claimEmail(ctx, m.ID, strings.HasPrefix(m.Kind, ShipmentKindPrefix))
 		if err != nil || rows == 0 {
 			continue
+		}
+		if strings.HasPrefix(m.Kind, ShipmentKindPrefix) {
+			current, err := w.q.ShipmentEmailCurrent(ctx, m.ID)
+			if err != nil {
+				w.logger.Warn("发货通知版本暂不可确认", "outbox_id", m.ID)
+				_ = w.q.MarkEmailRetry(ctx, sqlcgen.MarkEmailRetryParams{Attempts: m.Attempts, NextAttemptAt: time.Now().Add(time.Minute).UTC().Format(tsLayout), LastError: "shipment status unavailable", ID: m.ID})
+				continue
+			}
+			if current == 0 {
+				_ = w.q.MarkEmailSuperseded(ctx, m.ID)
+				continue
+			}
 		}
 		guest := strings.HasPrefix(m.Kind, guestMailPrefix)
 		if guest {
@@ -151,4 +167,27 @@ func (w *Worker) tick(ctx context.Context) {
 		_ = w.q.MarkEmailRetry(ctx, sqlcgen.MarkEmailRetryParams{Attempts: attempts, NextAttemptAt: next, LastError: safeError, ID: m.ID})
 		w.logger.Warn("邮件发送失败，将重试", "outbox_id", m.ID, "attempts", attempts, "next_at", next)
 	}
+}
+
+// Persist the claim clock in the same transaction as pending -> sending. This
+// lets a later tick hold a lost result-write as unknown instead of blocking all
+// tracking edits forever. The SMTP operation still runs after releasing the DB.
+func (w *Worker) claimEmail(ctx context.Context, id int64, shipment bool) (int64, error) {
+	if !shipment {
+		return w.q.MarkEmailSending(ctx, id)
+	}
+	tx, err := w.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := w.q.WithTx(tx)
+	rows, err := q.MarkEmailSending(ctx, id)
+	if err != nil || rows == 0 {
+		return rows, err
+	}
+	if err = q.MarkShipmentClaimTime(ctx, sqlcgen.MarkShipmentClaimTimeParams{SendingAt: time.Now().Unix(), OutboxID: id}); err != nil {
+		return 0, err
+	}
+	return rows, tx.Commit()
 }
