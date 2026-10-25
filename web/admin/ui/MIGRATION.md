@@ -6,7 +6,7 @@
 
 最终仅保留 React + TypeScript + Vite + Ant Design 后台，删除 Vue 运行时、旧页面及迁移专用构建配置。保留现有 `/admin/#/...` 地址、Go API 和单二进制 embed 托管。菜单权限仅优化界面体验，服务端鉴权仍是授权依据。
 
-当前处于分批迁移：`src/react` 已实现请求传输、会话/登录/初始化/邀请、向导流程、导航外壳和路由访问控制；收款、域名和 SMTP 三个实际配置页已接入向导；店铺品牌、博客开关及客服留存设置也已迁移，六个设置页均按需加载。`index.html` 仍连接现有后台，**未切换正式入口、未发布 React 后台**。新组件由 `build:react` 独立编译验证到忽略目录 `.react-build`，不进入 Go embed；这项临时验证在正式入口切换时移除。
+当前处于分批迁移：`src/react` 已实现请求传输、会话/登录/初始化/邀请、向导流程、导航外壳和路由访问控制；收款、域名和 SMTP 三个实际配置页已接入向导；店铺品牌、博客开关及客服留存设置也已迁移，账号安全、翻译和备份设置也已迁移，九个设置页均按需加载。`index.html` 仍连接现有后台，**未切换正式入口、未发布 React 后台**。新组件由 `build:react` 独立编译验证到忽略目录 `.react-build`，不进入 Go embed；这项临时验证在正式入口切换时移除。
 
 ## 共用能力
 
@@ -31,9 +31,9 @@
 | 原页面 | React 状态 | 原页面使用的 API |
 |---|---|---|
 | About | 未迁移 | 组合页面/静态内容，核对其子组件 |
-| AccountSettings | 未迁移 | `getAccount`、`updateAccount`、`updateStaffPassword` |
+| AccountSettings | React 已实现，待统一浏览器验收 | `getAccount`、`updateAccount`、`updateStaffPassword` |
 | AuditEvents | 未迁移 | `auditEvents` |
-| BackupSettings | 未迁移 | `getBackupSettings`、`setBackupSettings`、`testBackup` |
+| BackupSettings | React 已实现，待统一浏览器验收 | `getBackupSettings`、`setBackupSettings`、`testBackup` |
 | BlogPostEdit | 未迁移 | `createBlogPost`、`getBlogPost`、`listBlogPosts`、`previewBlog`、`updateBlogPost`、`uploadBlogImage` |
 | BlogPosts | 未迁移 | `deleteBlogPost`、`listBlogPosts` |
 | BlogSettings | React 已实现，待统一浏览器验收 | `getBlogSettings`、`setBlogSettings` |
@@ -58,7 +58,7 @@
 | ShopSettings | React 已实现，待统一浏览器验收 | `deleteShopLogo`、`getShop`、`setShop`、`uploadShopLogo` |
 | SmtpSettings | React 已实现，待统一浏览器验收 | `getSmtp`、`setSmtp`、`smtpTest` |
 | SmtpWizard | React 已实现，待统一浏览器验收 | `wizardSmtpSkip` |
-| TranslationSettings | 未迁移 | `getTranslation`、`setTranslation` |
+| TranslationSettings | React 已实现，待统一浏览器验收 | `getTranslation`、`setTranslation` |
 | UsersRoles | 未迁移 | `createRole`、`createUser`、`deleteRole`、`listRoles`、`listUsers`、`resetUserPassword`、`revokeUserSessions`、`updateRole`、`updateUser` |
 
 ## 已迁移配置页的验收边界
@@ -67,7 +67,9 @@
 
 店铺品牌保留授权员工可编辑和演示只读，名称与 Logo 共用操作锁，上传失败保留旧图，上传或删除 Logo 不覆盖未保存的名称。博客及客服设置店主可写、员工只读；开关与留存数值严格解析，读取失败不展示默认可保存表单，保存失败保留输入供重试。完整留言留存 1–24 个月、IP 留存 7–90 天保持原有规则。
 
-六个页面已使用独立动态导入；其余页面及最终生产包体仍待迁移和审查。接口桩测试验证请求内容与界面结果，不代表已完成真实支付平台、SMTP 或浏览器布局验收。
+账号设置保留店主修改用户名/可选主密码及员工只改自身密码；确认成功后立即清空会话，错误密码保留当前会话。翻译密钥不回填、空值保留，页面加载和保存均不自动调用翻译。备份保留本地策略重启生效、WebDAV 保存后测试及冷启动所需环境配置提示；环境只读字段从写入中省略，密码空值省略且空白原样保留，配置保存失败不发起远端测试，测试失败仍清空已经保存的密码。全环境配置允许店主仅测试、无需提交只读值。
+
+九个页面已使用独立动态导入；其余页面及最终生产包体仍待迁移和审查。接口桩测试验证请求内容与界面结果，不代表已完成真实支付平台、SMTP 或浏览器布局验收。
 
 ## 验证方式
 

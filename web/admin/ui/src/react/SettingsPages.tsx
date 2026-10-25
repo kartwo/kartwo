@@ -16,6 +16,9 @@ export const settingsPages = {
   '/shop': lazy(() => import('./pages/ShopSettings')),
   '/blog-settings': lazy(() => import('./pages/BlogSettings')),
   '/contact-settings': lazy(() => import('./pages/ContactSettings')),
+  '/account': lazy(() => import('./pages/AccountSettings')),
+  '/translation': lazy(() => import('./pages/TranslationSettings')),
+  '/backup': lazy(() => import('./pages/BackupSettings')),
 }
 export class PageBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
