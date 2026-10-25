@@ -21,6 +21,7 @@ export const settingsPages = {
   '/backup': lazy(() => import('./pages/BackupSettings')),
   '/shipping': lazy(() => import('./pages/ShippingSettings')),
   '/policies': lazy(() => import('./pages/PolicySettings')),
+  '/users': lazy(() => import('./pages/UsersRoles')),
 }
 export class PageBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }

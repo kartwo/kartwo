@@ -43,4 +43,8 @@
 .shipping-rule-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-3); padding-block: var(--sp-4); border-bottom: 1px solid var(--border); margin-bottom: var(--sp-4); }
 .policy-estimate { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--sp-3); margin-bottom: var(--sp-3); }
 .policy-estimate > strong { grid-column: 1 / -1; }
+.users-roles-page,.users-roles-stack { display: grid; gap: var(--sp-4); }
+.role-permissions fieldset { border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--sp-3); margin-bottom: var(--sp-3); }
+.role-permissions legend { font-weight: 700; }
+.role-permissions .ant-checkbox-group { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: var(--sp-3); width: 100%; }
 @media(max-width:520px) { .policy-estimate { grid-template-columns: 1fr; } .shipping-country-grid { grid-template-columns: 1fr; } }
