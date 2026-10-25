@@ -56,6 +56,7 @@ it('媒体 API 仅接收支持的非空图片，拒绝外部 URL、伪造路径�
 it('博客只读员工看列表和正文，没有新建删除保存或上传权限', async () => {
   const fetch = vi.fn(async (url: string) => response(url.endsWith('/article-fixture-a') ? postA : { posts: [postA] })); vi.stubGlobal('fetch', fetch)
   mount('/blog', account('staff', ['blog.view']))
+  await screen.findByRole('heading', { name: '博客文章', level: 2 })
   await userEvent.click(await screen.findByRole('link', { name: postA.title }))
   expect((await screen.findByRole('textbox', { name: '标题' }) as HTMLInputElement).disabled).toBe(true)
   expect(screen.getByRole('textbox', { name: '文章正文' }).textContent).toBe('Body A')

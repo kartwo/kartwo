@@ -57,6 +57,7 @@ function settledOrder(state: 'pending' | 'succeeded' = 'pending'): Order {
 }
 it('订单列表隐藏未授权邮箱，即使接口误返回明文；员工不获得 CSV 链接', async () => {
   fixtureFetch(); mount('/orders', account('staff', ['orders.view']))
+  await screen.findByRole('heading', { name: '订单', level: 2 })
   await screen.findByRole('link', { name: orderA.public_id }); expect(document.body.textContent).not.toContain(orderA.email); expect(screen.getByText('已隐藏')).toBeTruthy()
   expect(screen.queryByRole('link', { name: '导出订单 CSV' })).toBeNull()
   await userEvent.click(screen.getByRole('link', { name: orderA.public_id })); await screen.findByText('客户资料和支付参考号已隐藏。')

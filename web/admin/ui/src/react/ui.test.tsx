@@ -18,9 +18,9 @@ import { account, fakeAPI } from './test-fixtures'
 
 function mount(controller: SessionController, path = '/dashboard') {
   const page = vi.fn(route => <div>已加载：{route.title}</div>)
-  render(<MemoryRouter initialEntries={[path]}><AdminTheme><SessionProvider controller={controller}>
+  render(<MemoryRouter initialEntries={[path]}><AdminTheme><ConfigProvider theme={{ token: { motion: false } }}><SessionProvider controller={controller}>
     <AdminRoot renderPage={page} renderWizard={step => <div>设置页：{step}</div>} />
-  </SessionProvider></AdminTheme></MemoryRouter>)
+  </SessionProvider></ConfigProvider></AdminTheme></MemoryRouter>)
   return page
 }
 it('输入用户名与密码可登录，429 提示可见且不创建会话', async () => {
