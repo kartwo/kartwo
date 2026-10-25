@@ -172,7 +172,8 @@ func TestGuestCheckoutSetsScopedGrantBeforeGatewayRedirect(t *testing.T) {
 		t.Fatalf("add %d %s", add.Code, add.Body.String())
 	}
 	cart := responseCookie(t, add, cartCookie)
-	form := url.Values{"email": {"checkout@example.com"}, "name": {"New customer"}, "address": {"Checkout address"}, "country": {"US"}}
+	form := url.Values{"email": {"checkout@example.com"}, "name": {"New customer"}, "line1": {"Checkout address"}, "city": {"Boston"}, "region": {"MA"}, "postal_code": {"02108"}, "country": {"US"}, "checkout_action": {"place"}}
+	form.Set("quote", reviewedQuote(t, guestRequest(t, mux, "GET", "https://shop.example/checkout", "", cart)))
 	checkout := guestRequest(t, mux, "POST", "https://shop.example/checkout", form.Encode(), cart)
 	if checkout.Code != 303 || checkout.Header().Get("Location") != "https://gateway.example/checkout" {
 		t.Fatalf("checkout=%d %s", checkout.Code, checkout.Body.String())

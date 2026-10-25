@@ -6,7 +6,7 @@
 
 import type { Order, OrderSummary, RefundRequest, RefundResult } from './order-api'
 export const orderA: Order = { public_id: 'order-fixture-a', status: 'paid', email: 'fixture@example.invalid', currency: 'USD', subtotal_cents: 1000, shipping_cents: 200, total_cents: 1200, shipping_rule_name: 'Fixture Shipping',
-  payment_provider: 'stripe', created_at: '2026-10-25T00:00:00Z', ship_name: 'Fixture Customer', ship_phone: 'TEST-PHONE', ship_address: 'Fixture Address', ship_country: 'US', tracking_carrier: '', tracking_number: '', tracking_url: '',
+  ship_address_details: null, payment_provider: 'stripe', created_at: '2026-10-25T00:00:00Z', ship_name: 'Fixture Customer', ship_phone: 'TEST-PHONE', ship_address: 'Fixture Address', ship_country: 'US', tracking_carrier: '', tracking_number: '', tracking_url: '',
   payment_status: 'paid', fulfillment_status: 'unfulfilled', paid_cents: 1200, refunded_cents: 0, payment_review: false,
   receipts: [{ provider: 'stripe', reference: 'fixture-payment-a', currency: 'USD', amount_cents: 1200, refunded_cents: 0, review_reason: '', source: 'verified', created_at: '2026-10-25', refund_reconciliation_required: false, refund_checked_at: '' }],
   refund_requests: [], refunds: [], lines: [{ title: 'Fixture Shirt', spec: 'Size S', sku: 'FIXTURE-S', unit_cents: 1000, quantity: 1, line_cents: 1000 }] }

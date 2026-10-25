@@ -122,3 +122,5 @@ a:hover { text-decoration: underline; }
 @media(max-width:760px) { .category-fields,.content-columns { grid-template-columns: 1fr; } }
 @media(max-width:760px) { .inbox-columns { grid-template-columns: 1fr; } }
 @media(max-width:520px) { .policy-estimate { grid-template-columns: 1fr; } .shipping-country-grid { grid-template-columns: 1fr; } }
+
+.order-address-text { white-space: pre-wrap; overflow-wrap: anywhere; }

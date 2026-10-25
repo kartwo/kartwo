@@ -11,47 +11,13 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/kartwo/kartwo/internal/address"
 	"github.com/kartwo/kartwo/internal/order"
 	"github.com/kartwo/kartwo/internal/payment"
 )
 
 func (h *HTTP) checkoutPage(w http.ResponseWriter, r *http.Request) {
 	h.renderCheckout(w, r, "")
-}
-
-// renderCheckout 渲染结算页（errMsg 非空时显示错误，保留购物车）。
-func (h *HTTP) renderCheckout(w http.ResponseWriter, r *http.Request, errMsg string) {
-	id, err := h.existingCartID(r)
-	if err != nil {
-		http.Error(w, "Something went wrong", http.StatusInternalServerError)
-		return
-	}
-	view, err := h.cart.View(r.Context(), id)
-	if err != nil {
-		http.Error(w, "Something went wrong", http.StatusInternalServerError)
-		return
-	}
-	var methods []string
-	if h.pay != nil {
-		methods = h.pay.AvailableMethods(r.Context())
-	}
-	countries, err := h.order.ShippingCountries(r.Context())
-	if err != nil {
-		http.Error(w, "Something went wrong", http.StatusInternalServerError)
-		return
-	}
-	data := map[string]any{
-		"ShopName":  h.shopName(r.Context()),
-		"Cart":      view,
-		"Error":     errMsg,
-		"Money":     h.money(r.Context()),
-		"Methods":   methods, // 可用支付方式（stripe/paypal）；>1 时结算页显示选择
-		"Countries": countries,
-		"SEO": seo{
-			Title: "Checkout — " + h.shopName(r.Context()), Description: "Checkout", NoIndex: true, Canonical: h.base(r) + "/checkout", OGType: "website",
-		},
-	}
-	h.render(w, r, h.ckoutTmpl, data)
 }
 
 func (h *HTTP) checkoutSubmit(w http.ResponseWriter, r *http.Request) {
@@ -63,27 +29,26 @@ func (h *HTTP) checkoutSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
+	values := checkoutValues(r)
+	switch r.PostFormValue("checkout_action") {
+	case "", "review":
+		// Reviewing delivery is read-only, even when an old form omits the action.
+		h.renderCheckout(w, r, "")
+		return
+	case "place":
+	default:
+		h.renderCheckoutStatus(w, r, "Please review delivery before placing your order.", "", http.StatusBadRequest)
+		return
+	}
 	info := order.CheckoutInfo{
-		Email:   r.PostFormValue("email"),
-		Name:    r.PostFormValue("name"),
-		Phone:   r.PostFormValue("phone"),
-		Address: r.PostFormValue("address"),
-		Country: r.PostFormValue("country"),
+		Email: values["email"], Name: values["name"], Phone: values["phone"], Country: values["country"],
+		AddressDetails: &address.Details{Line1: values["line1"], Line2: values["line2"], City: values["city"], District: values["district"], Region: values["region"], PostalCode: values["postal_code"]},
+		ExpectedQuote:  r.PostFormValue("quote"),
 	}
 	publicID, guestToken, err := h.order.CheckoutForGuest(r.Context(), id, info)
 	if err != nil {
-		switch {
-		case errors.Is(err, order.ErrCartConverted):
-			h.renderCheckout(w, r, "This cart has already been checked out. Please check your existing order before placing another.")
-		case errors.Is(err, order.ErrEmptyCart):
-			h.renderCheckout(w, r, "Your cart is empty.")
-		case errors.Is(err, order.ErrOutOfStock):
-			h.renderCheckout(w, r, "Sorry, some items are no longer in stock. Please adjust your cart.")
-		case errors.Is(err, order.ErrInvalidInfo):
-			h.renderCheckout(w, r, "Please enter a valid email, full name and shipping address.")
-		default:
-			http.Error(w, "Something went wrong", http.StatusInternalServerError)
-		}
+		msg, field, status := checkoutError(err)
+		h.renderCheckoutStatus(w, r, msg, field, status)
 		return
 	}
 	// The grant is already committed atomically with this order. Use its scoped

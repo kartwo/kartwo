@@ -19,7 +19,7 @@ it('订单和退款请求默认拒绝重复标识、未知状态、不安全金�
   expect(() => parseOrder({ ...orderA, receipts: [{ ...orderA.receipts[0], review_reason: 'unknown' }] }, true)).toThrow()
 })
 it('无客户资料权限先丢弃全部私密字段，即使格式异常也不保留或解析其内容', () => {
-  const raw = { ...orderA, email: { secret: 'PrivateEmail' }, ship_name: { secret: 'PrivateName' }, ship_phone: 'PrivatePhone', ship_address: 'PrivateAddress', ship_country: 'PrivateCountry', tracking_number: 'PrivateTracking', tracking_url: 'https://private.invalid',
+  const raw = { ...orderA, email: { secret: 'PrivateEmail' }, ship_name: { secret: 'PrivateName' }, ship_phone: 'PrivatePhone', ship_address: 'PrivateAddress', ship_country: 'PrivateCountry', ship_address_details: { secret: 'PrivateNestedAddress' }, tracking_number: 'PrivateTracking', tracking_url: 'https://private.invalid',
     receipts: [{ ...orderA.receipts[0], reference: { secret: 'PrivatePayment' } }], refunds: [{ provider: 'stripe', provider_refund_id: 'PrivateRefund', amount_cents: 1, created_at: '2026-10-25', observed_state: '' }], refund_requests: [{ ...refundRequest, payment_ref: 'PrivatePayment', gateway_ref: 'PrivateGateway' }] }
   const parsed = parseOrder(raw, false)
   expect(JSON.stringify(parsed)).not.toMatch(/Private|private\.invalid/); expect(parsed.email).toBe('已隐藏'); expect(parsed.tracking_url).toBe(''); expect(parsed.receipts[0]?.reference).toBe('已隐藏')
@@ -79,4 +79,15 @@ it('发货/撤销只写指定对象白名单，发货非法内容在发送前拒
   expect(JSON.parse(fetch.mock.calls[0]![1].body as string)).toEqual({ carrier: 'Fixture', tracking_number: '123', tracking_url: '' })
   await expect(orderAPI.fulfill(orderA.public_id, { carrier: '', tracking_number: '123', tracking_url: '' })).rejects.toThrow()
   await orderAPI.revoke(orderA.public_id); expect(JSON.parse(fetch.mock.calls[1]![1].body as string)).toEqual({}); expect(fetch).toHaveBeenCalledTimes(2)
+})
+
+it('结构化地址只解析六项字符串，保留邮编前导零和旧原文；无权限先丢弃整个对象', () => {
+  const details = { line1: '12 Sample Street', line2: '', district: '', city: 'Boston', region: 'MA', postal_code: '02108' }
+  expect(parseOrder({ ...orderA, ship_address_details: { ...details, ignored: 'PrivateExtra' } }, true).ship_address_details).toEqual(details)
+  expect(parseOrder({ ...orderA, ship_address_details: undefined }, true).ship_address_details).toBeNull()
+  expect(parseOrder({ ...orderA, ship_address_details: null }, true).ship_address).toBe(orderA.ship_address)
+  for (const malformed of [[], 'PrivateAddress', { ...details, postal_code: 2108 }, { ...details, city: 'A\nB' }, { ...details, line1: '地'.repeat(86) }]) {
+    expect(() => parseOrder({ ...orderA, ship_address_details: malformed }, true)).toThrow()
+    expect(parseOrder({ ...orderA, ship_address_details: malformed }, false).ship_address_details).toBeNull()
+  }
 })

@@ -14,7 +14,9 @@ export type Provider = 'stripe' | 'paypal'
 export interface OrderSummary { public_id: string; status: OrderStatus; email: string; currency: string; total_cents: number; payment_provider: string; created_at: string }
 export interface Receipt { provider: Provider; reference: string; currency: string; amount_cents: number; refunded_cents: number; review_reason: '' | 'late_payment' | 'duplicate_payment' | 'legacy_refund'; source: 'verified' | 'legacy'; created_at: string; refund_reconciliation_required: boolean; refund_checked_at: string }
 export interface RefundRequest { public_id: string; provider: Provider; payment_ref: string; gateway_ref: string; currency: string; amount_cents: number; state: RefundState; reason: string; created_at: string }
+export interface AddressDetails { line1: string; line2: string; city: string; district: string; region: string; postal_code: string }
 export interface Order extends OrderSummary {
+  ship_address_details: AddressDetails | null
   ship_name: string; ship_phone: string; ship_address: string; ship_country: string; subtotal_cents: number; shipping_cents: number; shipping_rule_name: string
   tracking_carrier: string; tracking_number: string; tracking_url: string; payment_status: 'unrecorded' | 'unpaid' | 'paid' | 'partially_refunded' | 'refunded' | 'review'; fulfillment_status: 'unfulfilled' | 'fulfilled'
   paid_cents: number; refunded_cents: number; payment_review: boolean; receipts: Receipt[]; refund_requests: RefundRequest[]
@@ -42,6 +44,16 @@ export function safeTrackingURL(value: string): boolean {
   if (/[\s<>"'\\]/.test(value)) return false
   try { const url = new URL(value); return url.protocol === 'https:' && !!url.hostname && !url.username && !url.password } catch { return false }
 }
+function addressDetails(value: unknown): AddressDetails | null {
+  if (value == null) return null // Legacy responses and old free-text snapshots stay intact.
+  const data = record(value)
+  function field(key: keyof AddressDetails, max: number) {
+    const value = string(data, key)
+    if (new TextEncoder().encode(value).length > max || /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(value)) throw new Error('收货地址字段格式不正确')
+    return value
+  }
+  return { line1: field('line1', 256), line2: field('line2', 256), city: field('city', 128), district: field('district', 128), region: field('region', 128), postal_code: field('postal_code', 32) }
+}
 export function parseOrder(value: unknown, customer: boolean): Order {
   const data = record(value), base = summary(data, customer)
   const receipts = rows(data.receipts).map(value => {
@@ -57,7 +69,7 @@ export function parseOrder(value: unknown, customer: boolean): Order {
   const paid = cents(data, 'paid_cents'), refunded = cents(data, 'refunded_cents')
   if (receipts.reduce((sum, row) => sum + BigInt(row.amount_cents), 0n) !== BigInt(paid) || receipts.reduce((sum, row) => sum + BigInt(row.refunded_cents), 0n) !== BigInt(refunded)) throw new Error('订单资金合计与收款记录不一致，请核对服务端记录')
   const tracking = customer ? string(data, 'tracking_url') : ''
-  return { ...base, ship_name: customer ? string(data, 'ship_name') : '已隐藏', ship_phone: customer ? string(data, 'ship_phone') : '已隐藏', ship_address: customer ? string(data, 'ship_address') : '已隐藏', ship_country: customer ? string(data, 'ship_country') : '已隐藏',
+  return { ...base, ship_address_details: customer ? addressDetails(data.ship_address_details) : null, ship_name: customer ? string(data, 'ship_name') : '已隐藏', ship_phone: customer ? string(data, 'ship_phone') : '已隐藏', ship_address: customer ? string(data, 'ship_address') : '已隐藏', ship_country: customer ? string(data, 'ship_country') : '已隐藏',
     subtotal_cents: cents(data, 'subtotal_cents'), shipping_cents: cents(data, 'shipping_cents'), shipping_rule_name: string(data, 'shipping_rule_name'), tracking_carrier: string(data, 'tracking_carrier'), tracking_number: customer ? string(data, 'tracking_number') : '已隐藏',
     tracking_url: safeTrackingURL(tracking) ? tracking : '', payment_status: choice(data, 'payment_status', ['unrecorded', 'unpaid', 'paid', 'partially_refunded', 'refunded', 'review']), fulfillment_status: choice(data, 'fulfillment_status', ['unfulfilled', 'fulfilled']), paid_cents: paid, refunded_cents: refunded, payment_review: bool(data, 'payment_review'), receipts, refund_requests: requests,
     lines: rows(data.lines).map(value => { const row = record(value); return { title: string(row, 'title'), spec: string(row, 'spec'), sku: string(row, 'sku'), unit_cents: cents(row, 'unit_cents'), quantity: integer(row, 'quantity', 1, Number.MAX_SAFE_INTEGER), line_cents: cents(row, 'line_cents') } }),

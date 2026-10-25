@@ -144,6 +144,7 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /sitemap.xml", h.sitemap)
 	mux.HandleFunc("GET /robots.txt", h.robots)
 	mux.HandleFunc("GET /static/cart.js", h.cartJS)
+	mux.HandleFunc("GET /static/checkout.js", h.checkoutJS)
 	mux.HandleFunc("GET /static/running-tee-hero.png", h.runningTeeHero)
 	// 购物车（匿名，cookie 标识；写入必须同源，SameSite=Lax 为额外保护）。
 	mux.HandleFunc("GET /cart", httpx.PrivateHandler(h.cartPage))
@@ -500,6 +501,9 @@ func (h *HTTP) render(w http.ResponseWriter, r *http.Request, t *template.Templa
 		data["BlogVisible"] = visible
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if status, ok := data["HTTPStatus"].(int); ok {
+		w.WriteHeader(status)
+	}
 	if err := t.ExecuteTemplate(w, "base", data); err != nil {
 		http.Error(w, "Render error", http.StatusInternalServerError)
 	}

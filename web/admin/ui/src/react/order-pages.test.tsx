@@ -172,3 +172,19 @@ it('退款 401 清除会话和冻结请求，不能继续显示原支付或地�
   await prepareRefund(); await confirmRefund(); await waitFor(() => expect(controller.getSnapshot().phase).toBe('login'))
   expect(document.body.textContent).not.toContain(orderA.email); expect(document.body.textContent).not.toContain(orderA.receipts[0]!.reference); expect(screen.queryByRole('button', { name: '继续原退款请求' })).toBeNull(); expect(writes(fetch)).toHaveLength(1)
 })
+
+it('订单显示结构化地址快照并保留前导零，历史地址继续原文展示', async () => {
+  const details = { line1: '12 Sample Street', line2: 'Unit 2', district: '', city: 'Boston', region: 'MA', postal_code: '02108' }
+  fixtureFetch(url => url.endsWith('/orders/order-fixture-a') ? response({ ...orderA, ship_address_details: details }) : undefined); mount()
+  await screen.findByRole('heading', { name: '订单详情', level: 2 }); await screen.findByText('02108')
+  expect(screen.getByText('12 Sample Street')).toBeTruthy(); expect(screen.getByText('Boston')).toBeTruthy(); expect(screen.getByText('州 / 省 / 地区')).toBeTruthy()
+  expect(document.body.textContent).not.toContain(orderA.ship_address)
+  await userEvent.click(screen.getByRole('button', { name: '测试切到订单 B' })); await screen.findByText(orderB.email)
+  expect(screen.getByText(orderB.ship_address)).toBeTruthy(); expect(document.body.textContent).toContain('历史地址按原文保留')
+})
+it('客户资料无权限时不渲染结构化地址，即使服务端误返回私密对象', async () => {
+  fixtureFetch(url => url.endsWith('/orders/order-fixture-a') ? response({ ...orderA, ship_address_details: { private: 'PrivateNestedStreet' } }) : undefined)
+  mount(`/orders/${orderA.public_id}`, account('staff', ['orders.view']))
+  await screen.findByRole('heading', { name: '订单详情', level: 2 }); await screen.findByText('客户资料和支付参考号已隐藏。')
+  expect(document.body.textContent).not.toContain('PrivateNestedStreet'); expect(screen.queryByText('原收货地址')).toBeNull(); expect(screen.queryByText('街道地址')).toBeNull()
+})
