@@ -53,5 +53,11 @@
 .inbox-message-button.ant-btn { height: auto; white-space: normal; text-align: start; align-items: stretch; display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-3); }
 .inbox-message-button > span { overflow-wrap: anywhere; }
 .inbox-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.dashboard-stats,.dashboard-guides { display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: var(--sp-4); }
+.dashboard-card-link { display: block; text-decoration: none; color: inherit; }
+.dashboard-card-link .ant-card { height: 100%; }
+.dashboard-card-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-md); }
+.import-fields { display: grid; gap: var(--sp-3); }
+.import-fields input { max-width: 100%; }
 @media(max-width:760px) { .inbox-columns { grid-template-columns: 1fr; } }
 @media(max-width:520px) { .policy-estimate { grid-template-columns: 1fr; } .shipping-country-grid { grid-template-columns: 1fr; } }

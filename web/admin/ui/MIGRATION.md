@@ -6,7 +6,7 @@
 
 最终仅保留 React + TypeScript + Vite + Ant Design 后台，删除 Vue 运行时、旧页面及迁移专用构建配置。保留现有 `/admin/#/...` 地址、Go API 和单二进制 embed 托管。菜单权限仅优化界面体验，服务端鉴权仍是授权依据。
 
-当前处于分批迁移：`src/react` 已实现请求传输、会话/登录/初始化/邀请、向导流程、导航外壳和路由访问控制；收款、域名和 SMTP 三个实际配置页已接入向导；店铺品牌、博客开关及客服留存设置也已迁移，账号安全、翻译和备份设置也已迁移，配送和店铺政策设置也已迁移，用户与角色管理也已迁移，十二个设置页均按需加载；客服收件箱、日志与诊断三个业务/系统页也已迁移。`index.html` 仍连接现有后台，**未切换正式入口、未发布 React 后台**。新组件由 `build:react` 独立编译验证到忽略目录 `.react-build`，不进入 Go embed；这项临时验证在正式入口切换时移除。
+当前处于分批迁移：`src/react` 已实现请求传输、会话/登录/初始化/邀请、向导流程、导航外壳和路由访问控制；收款、域名和 SMTP 三个实际配置页已接入向导；店铺品牌、博客开关及客服留存设置也已迁移，账号安全、翻译和备份设置也已迁移，配送和店铺政策设置也已迁移，用户与角色管理也已迁移，十二个设置页均按需加载；客服收件箱、日志、诊断、概览、关于、导入和导出七个业务/系统页也已迁移。`index.html` 仍连接现有后台，**未切换正式入口、未发布 React 后台**。新组件由 `build:react` 独立编译验证到忽略目录 `.react-build`，不进入 Go embed；这项临时验证在正式入口切换时移除。
 
 ## 共用能力
 
@@ -30,7 +30,7 @@
 
 | 原页面 | React 状态 | 原页面使用的 API |
 |---|---|---|
-| About | 未迁移 | 组合页面/静态内容，核对其子组件 |
+| About | React 已实现，待统一浏览器验收 | 组合页面/静态内容，核对其子组件 |
 | AccountSettings | React 已实现，待统一浏览器验收 | `getAccount`、`updateAccount`、`updateStaffPassword` |
 | AuditEvents | React 已实现，待统一浏览器验收 | `auditEvents` |
 | BackupSettings | React 已实现，待统一浏览器验收 | `getBackupSettings`、`setBackupSettings`、`testBackup` |
@@ -40,12 +40,12 @@
 | CategoryManagement | 未迁移 | `createCategory`、`deleteCategory`、`listCategories`、`updateCategory` |
 | ContactInbox | React 已实现，待统一浏览器验收 | `contactMessage`、`contactMessages`、`updateContactStatus` |
 | ContactSettings | React 已实现，待统一浏览器验收 | `contactSettings`、`saveContactSettings` |
-| Dashboard | 未迁移 | `dashboard` |
+| Dashboard | React 已实现，待统一浏览器验收 | `dashboard` |
 | Diagnostics | React 已实现，待统一浏览器验收 | `diagnostics` |
 | DomainSettings | React 已实现，待统一浏览器验收 | `getDomain`、`setDomain` |
 | DomainWizard | React 已实现，待统一浏览器验收 | `wizardDomainSkip` |
-| ExportData | 未迁移 | 组合页面/静态内容，核对其子组件 |
-| ImportCSV | 未迁移 | `executeImport`、`previewImportCSV` |
+| ExportData | React 已实现，待统一浏览器验收 | 组合页面/静态内容，核对其子组件 |
+| ImportCSV | React 已实现，待统一浏览器验收 | `executeImport`、`previewImportCSV` |
 | Merchandising | 未迁移 | `createContentPage`、`deleteContentPage`、`getContentPage`、`listContentPages`、`updateContentPage` |
 | OrderDetail | 未迁移 | `createRefund`、`fulfillOrder`、`getOrder`、`reconcileRefunds`、`refreshRefund`、`revokeOrderAccess` |
 | OrderList | 未迁移 | `exportOrdersCSV`、`listOrders` |
@@ -75,7 +75,9 @@
 
 客服收件箱保留状态筛选、私密详情、处理人/结案人快照、可信国家与 IP、匿名化和结案/重开。contact.view 只读、contact.manage 可处理；演示即使错误返回真实内容也不展示。选中变化取消旧读取并核对对象 ID，旧详情不能覆盖当前对象；状态写入期间锁定切换和重复提交，401 清除内容。审计保留最近 100 条、操作时用户名、未知动作文本回退和演示标识脱敏，读取失败显示重试。诊断保留数据库、媒体、磁盘和备份/升级快照；未知状态或错误不冒充正常，磁盘探测失败仍展示其他诊断。
 
-十二个设置页及三个业务/系统页已使用独立动态导入；其余页面及最终生产包体仍待迁移和审查。接口桩测试验证请求内容与界面结果，不代表已完成真实支付平台、SMTP 或浏览器布局验收。
+概览保留订单数量与已确认净销售额、待发货、未删除商品总数、可售库存告警和开店配置引导；正确说明商品计数含草稿，已配置不等于真实交易和 HTTPS 已验收，操作入口逐项按权限显示。关于页保留 MIT 提示。全量导出仅店主获得原生下载链接，新标签页由服务端流式提供 ZIP，前端不整包缓冲，演示无链接；下载及错误需实际浏览器确认。CSV 保留通用/Shopify 来源与预览/行错误/确认流程，5MB 上限；文件或来源变化清除旧预览和错误，忙碌期间锁定选择与重复确认，返回结果绑定来源和任务 ID。已成功任务不再提供确认，断线可通过原任务只读核对后再决定是否重试，不自动重建任务。
+
+十二个设置页及七个业务/系统页已使用独立动态导入；其余页面及最终生产包体仍待迁移和审查。接口桩测试验证请求内容与界面结果，不代表已完成真实支付平台、SMTP 或浏览器布局验收。
 
 ## 验证方式
 

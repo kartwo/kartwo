@@ -9,4 +9,8 @@ export const businessPages = {
   '/contact': lazy(() => import('./pages/ContactInbox')),
   '/audit': lazy(() => import('./pages/AuditEvents')),
   '/diagnostics': lazy(() => import('./pages/Diagnostics')),
+  '/dashboard': lazy(() => import('./pages/Dashboard')),
+  '/about': lazy(() => import('./pages/About')),
+  '/export': lazy(() => import('./pages/ExportData')),
+  '/imports/csv': lazy(() => import('./pages/ImportCSV')),
 }
