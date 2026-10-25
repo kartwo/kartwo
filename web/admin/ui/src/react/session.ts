@@ -114,6 +114,9 @@ export class SessionController {
       const revision = this.revision
       try {
         if (skip) await this.api.skipWizard(wizard)
+        else if (!(await this.api.wizard(wizard)).configured) {
+          throw new Error('请先保存当前配置，或选择“稍后再配”。')
+        }
         const next = await this.nextWizard(wizardSteps.indexOf(wizard) + 1)
         if (revision === this.revision) this.publish({ wizard: next })
       } catch (error) {

@@ -10,3 +10,5 @@ export { SessionProvider, useSession } from './SessionProvider'
 export { SessionController } from './session'
 export { request, APIError } from './transport'
 export { adminRoutes, can, canVisit } from './access'
+
+export { settingsPages, WizardSettings, PageBoundary, PageLoading } from './SettingsPages'

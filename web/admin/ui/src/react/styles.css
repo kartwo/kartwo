@@ -23,3 +23,12 @@
 .wizard-header { display:flex;justify-content:space-between;align-items:center;gap:var(--sp-3); }
 @media(max-width:960px) { .admin-sidebar { display:none; } .mobile-menu-button { display:inline-flex; } .admin-header,.admin-content { padding:var(--sp-4); } .account-name { display:none; } }
 @media(max-width:520px) { .admin-header .ant-avatar { display:none; } .admin-header h2.ant-typography { font-size:var(--fs-lg); } .auth-screen { padding:var(--sp-4); } }
+
+.settings-page { width:100%;max-width:860px;display:grid;gap:var(--sp-6); }
+.settings-page .ant-card .ant-alert { margin-bottom:var(--sp-4); }
+.settings-page .ant-form { margin-top:var(--sp-4); }
+.settings-test { margin-top:var(--sp-6);padding-top:var(--sp-4);border-top:1px solid var(--border); }
+.settings-test .ant-typography,.settings-result { margin-top:var(--sp-3); }
+.settings-columns { display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-4); }
+.page-loading { display:flex;align-items:center;justify-content:center;gap:var(--sp-4);min-height:160px; }
+@media(max-width:520px) { .settings-columns { grid-template-columns:1fr;gap:0; } }
