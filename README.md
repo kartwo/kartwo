@@ -129,6 +129,7 @@ Environment=KARTWO_DEMO_CLEANUP_INTERVAL=5m
 生产模式可直接监听 `:80` 和 `:443`，内嵌 Let's Encrypt 自动签发与续期证书，不强制依赖 Nginx 或 Certbot。完整步骤见[生产部署手册](docs/production-deployment.md)。
 
 - 使用持久目录，例如 `/data/kartwo`，并定期验证备份可恢复。
+- 使用 `kartwo restore` 恢复 ZIP 后，旧后台会话、员工邀请链接和顾客订单访问凭证失效。店主使用原账号密码重新登录；顾客重新验证订单邮箱，未使用的员工邀请需重新生成。账号、角色、加密收款/邮件配置及订单/售后历史保留，旧验证码邮件不会补发。此规则仅用于恢复新目录，普通重启和升级不受影响。
 - 放行 TCP 80/443；`KARTWO_DOMAIN` 只填域名，不含协议、路径或端口。
 - 建议交给 systemd 守护；升级前先停止服务并备份完整数据目录。
 - 收款先用 Stripe/PayPal 沙箱完成一笔付款与退款，再切正式密钥。

@@ -32,7 +32,7 @@ type RestoreResult struct {
 }
 
 // Restore 将 ZIP 恢复到不存在的 dataDir。它绝不覆盖既有目录，所有文件先解压到同盘临时目录，
-// 通过校验后才原子改名为目标目录。
+// 通过校验并失效备份中的临时访问凭证后才原子改名为目标目录。
 func Restore(zipPath, dataDir string) (RestoreResult, error) {
 	if err := ensureNewDataDir(dataDir); err != nil {
 		return RestoreResult{}, err
@@ -65,6 +65,9 @@ func Restore(zipPath, dataDir string) (RestoreResult, error) {
 		return RestoreResult{}, err
 	}
 	if err := verifyRestoredDatabase(filepath.Join(stage, "shop.db")); err != nil {
+		return RestoreResult{}, err
+	}
+	if err := invalidateRestoredAccess(filepath.Join(stage, "shop.db")); err != nil {
 		return RestoreResult{}, err
 	}
 	if err := os.Rename(stage, dataDir); err != nil {
