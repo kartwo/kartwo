@@ -22,11 +22,18 @@
 | Lucide | Admin/Storefront 图标 | ISC | https://github.com/lucide-icons/lucide | 计划 |
 | Tabler Icons | 备选图标集 | MIT | https://github.com/tabler/tabler-icons | 备选 |
 | Heroicons | 备选图标集 | MIT | https://github.com/tailwindlabs/heroicons | 备选 |
+| Ant Design Icons | Ant Design 组件内置状态及控件图标 | MIT | https://github.com/ant-design/ant-design-icons | 已引入（React 迁移） |
 
 ## 代码依赖（关键第三方库）
 
 | 名称 | 用途 | 许可证 | 状态 |
 |---|---|---|---|
+| React / React DOM 19.3.1 | 新后台组件与 DOM 渲染；https://github.com/facebook/react | MIT | 已引入（迁移中） |
+| Ant Design 6.6.7 | 新后台表单、菜单、抽屉、反馈和设计主题；https://github.com/ant-design/ant-design | MIT | 已引入（迁移中） |
+| React Router 7.18.4 | 保留 hash 路由；https://github.com/remix-run/react-router | MIT | 已引入（迁移中） |
+| TypeScript 7.0.2 | 构建期严格类型检查；https://github.com/microsoft/TypeScript | Apache-2.0 | 已引入 |
+| Vite / React 插件 | 前端构建期工具；https://github.com/vitejs/vite | MIT | 已引入 |
+| Vitest / Testing Library / jsdom | 构建期会话与 DOM 交互测试；https://github.com/vitest-dev/vitest · https://github.com/testing-library/react-testing-library · https://github.com/jsdom/jsdom | MIT | 已引入 |
 | modernc.org/sqlite | 纯 Go SQLite 驱动（默认数据库） | BSD-3-Clause | 已引入 |
 | github.com/google/uuid | 外部 ID（UUIDv7）生成 | BSD-3-Clause | 已引入 |
 | golang.org/x/crypto/argon2 | 主口令哈希与 KEK 派生（argon2id） | BSD-3-Clause | 已引入 |

@@ -26,6 +26,8 @@
 # 前端依赖（构建期，不进 git）；构建产物 web/admin/dist 进 git 供 go build embed
 /web/admin/ui/node_modules/
 /web/admin/ui/.vite/
+# React 迁移期间的编译验证产物，不作为第二套后台发布
+/web/admin/ui/.react-build/
 
 # 密钥与本地配置（绝不进 git）
 *.env

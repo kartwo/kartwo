@@ -3,58 +3,7 @@
  * 作者：仗键天涯(daxing)
  * 邮箱：3442535897@qq.com
  * 时间：2026-06-18 10:43:28 */
-/* 后台基调：深蓝导航 + 暖白工作区 + 柔和分层卡片。 */
-:root {
-  /* —— 色板 —— */
-  --bg: #f7f5f2;
-  --surface: #ffffff;      /* 卡片/面板 */
-  --surface-2: #faf8f5;
-  --border: #e9e2dc;
-  --border-strong: #cfc0b6;
-  --text: #302b29;
-  --text-muted: #695f5a;
-  --text-subtle: #958984;
-  --accent: #975448;
-  --accent-hover: #7f4138;
-  --on-accent: #ffffff;    /* 主色上文字 */
-  --focus-ring: rgba(151, 84, 72, .2);
-  --sidebar-bg: #102344;
-  --sidebar-hover: #1c355a;
-  --sidebar-active: #31517e;
-  --sidebar-text: #f1f5fb;
-  --sidebar-muted: #c6d3e7;
-  --sidebar-subtle: #98a9c6;
-  --sidebar-border: #324666;
-  --sidebar-focus: #b4cfff;
-  --intro-start: #ffffff;
-  --intro-end: #f8ede6;
-  --login-start: #f5e5df;
-  --login-middle: #faf7f3;
-  --login-end: #e6e6db;
-  --login-glow: #f3d6ca;
-  --success: #0e7c4a;      /* 成功文字 */
-  --success-bg: #e3f6ec;   /* 成功底 */
-  --danger: #df1b41;       /* 危险/错误文字 */
-  --danger-bg: #fce8ec;    /* 危险底 */
-  --warn: #a35b02;         /* 提醒文字（非错误，如草稿态） */
-  --warn-bg: #fdf3e3;      /* 提醒底 */
-  /* —— 间距（4px 基） —— */
-  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px;
-  /* —— 圆角 —— */
-  --radius-sm: 8px; --radius-md: 10px; --radius-lg: 18px; --radius-pill: 999px;
-  /* —— 阴影（弱分层） —— */
-  --shadow-sm: 0 4px 18px rgba(58, 39, 27, .045);
-  --shadow-md: 0 12px 36px rgba(58, 39, 27, .09);
-  --shadow-login: 0 28px 76px rgba(74, 51, 43, .16);
-  --nav-overlay: rgba(16, 24, 40, .35);
-  /* —— 字阶 —— */
-  --fs-xs: .75rem; --fs-sm: .8125rem; --fs-base: .875rem; --fs-md: 1rem; --fs-lg: 1.25rem; --fs-xl: 2rem;
-  /* —— 旧 token 名别名：使既有组件的 var(--panel/--line/--muted/--ok) 自动吃新浅色值，无需逐页改 —— */
-  --panel: var(--surface);
-  --line: var(--border);
-  --muted: var(--text-muted);
-  --ok: var(--success);
-}
+@import './tokens.css';
 
 * { box-sizing: border-box; }
 

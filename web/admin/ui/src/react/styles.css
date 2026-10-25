@@ -1,0 +1,25 @@
+/* React 后台布局 / React Admin Layout
+ * 功能：使用公共设计变量布局 Ant Design 组件，不影响旧后台
+ * 作者：仗键天涯(daxing)
+ * 邮箱：3442535897@qq.com
+ * 时间：2026-10-25 10:12:07 */
+.auth-screen { min-height:100vh;display:flex;align-items:center;justify-content:center;gap:var(--sp-4);padding:var(--sp-6);background:linear-gradient(135deg,var(--login-start),var(--login-middle),var(--login-end)); }
+.auth-card { width:min(460px,100%);box-shadow:var(--shadow-login); }
+.auth-card .ant-alert { margin-bottom:var(--sp-4); }
+.auth-brand,.sidebar-brand { display:flex;align-items:center;gap:var(--sp-3); }
+.brand-mark { display:grid;place-items:center;width:42px;height:42px;border-radius:var(--radius-lg);background:var(--accent);color:var(--on-accent);font-size:var(--fs-lg);font-weight:700;flex:none; }
+.full-width { width:100%; }
+.admin-layout { min-height:100vh; }
+.admin-sidebar { position:sticky !important;top:0;height:100vh;overflow:auto; }
+.sidebar-brand { padding:var(--sp-6);color:var(--sidebar-text); }
+.sidebar-brand small { display:block;color:var(--sidebar-subtle); }
+.admin-header { display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);height:auto;min-height:100px;line-height:1.5;padding:var(--sp-6) var(--sp-8); }
+.admin-header h2.ant-typography { margin:var(--sp-1) 0 0; }
+.admin-content { width:100%;max-width:1500px;min-width:0;margin:0 auto;padding:var(--sp-4) var(--sp-8) var(--sp-8); }
+.admin-content>.ant-alert { margin-bottom:var(--sp-4); }
+.mobile-menu-button { display:none; }
+.admin-drawer .ant-drawer-body { padding:0;background:var(--sidebar-bg); }
+.wizard-content { max-width:860px;margin:0 auto;padding:var(--sp-6);display:grid;gap:var(--sp-6); }
+.wizard-header { display:flex;justify-content:space-between;align-items:center;gap:var(--sp-3); }
+@media(max-width:960px) { .admin-sidebar { display:none; } .mobile-menu-button { display:inline-flex; } .admin-header,.admin-content { padding:var(--sp-4); } .account-name { display:none; } }
+@media(max-width:520px) { .admin-header .ant-avatar { display:none; } .admin-header h2.ant-typography { font-size:var(--fs-lg); } .auth-screen { padding:var(--sp-4); } }
