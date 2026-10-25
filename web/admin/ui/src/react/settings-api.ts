@@ -5,6 +5,7 @@
 // 时间：2026-10-25 10:21:49
 
 import { request } from './transport'
+import { record, string, bool, choice } from './api-values'
 export type Source = 'db' | 'env' | 'demo' | 'none'
 interface SettingsMeta { source: Source; readonly: boolean }
 export type StripeFields = { mode: 'test' | 'live'; publishable: string; secret: string; webhook_secret: string }
@@ -17,25 +18,6 @@ export type DomainStatus = SettingsMeta & { domain: string; https_capable: boole
 export type SmtpFields = { host: string; port: string; username: string; password: string; from_address: string; from_name: string; encryption: 'starttls' | 'tls' | 'none' }
 export type SmtpStatus = SettingsMeta & Omit<SmtpFields, 'password'> & { configured: boolean; has_password: boolean }
 
-function record(data: unknown): Record<string, unknown> {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('配置响应格式不正确，请重试。')
-  return data as Record<string, unknown>
-}
-function string(data: Record<string, unknown>, key: string): string {
-  const value = data[key]
-  if (typeof value !== 'string') throw new Error('配置响应缺少必要字段，请重试。')
-  return value
-}
-function bool(data: Record<string, unknown>, key: string): boolean {
-  const value = data[key]
-  if (typeof value !== 'boolean') throw new Error('配置响应缺少必要状态，请重试。')
-  return value
-}
-function choice<T extends string>(data: Record<string, unknown>, key: string, values: readonly T[]): T {
-  const value = string(data, key)
-  if (!values.includes(value as T)) throw new Error('配置状态无法识别，请重试。')
-  return value as T
-}
 function meta(data: Record<string, unknown>): SettingsMeta {
   const source = choice(data, 'source', ['db', 'env', 'demo', 'none'] as const)
   return { source, readonly: bool(data, 'readonly') || source === 'env' || source === 'demo' }
