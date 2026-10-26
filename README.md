@@ -6,7 +6,7 @@
 
 ## 当前版本
 
-当前正式版本：`v0.8.0`。
+当前正式版本：`v0.8.1`。React 后台及本轮经营功能仍在开发分支验收，尚未包含在这个已发布版本中。
 
 - Linux x86_64：发布流水线在干净数据目录实跑迁移、20 件演示商品、店面、后台与健康检查。
 - Linux ARM64、macOS Apple Silicon、Windows x86_64：编译产出，尚未逐平台人工实跑。
@@ -65,7 +65,7 @@
 
 ## 下载与快速体验
 
-从 [GitHub Releases](https://github.com/kartwo/kartwo/releases) 下载 `v0.8.0` 对应平台文件和 `SHA256SUMS.txt`。
+从 [GitHub Releases](https://github.com/kartwo/kartwo/releases) 下载 `v0.8.1` 对应平台文件和 `SHA256SUMS.txt`。
 
 | 平台 | 文件 | 状态 |
 |---|---|---|
