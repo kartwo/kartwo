@@ -49,6 +49,25 @@ it('视频链接只转换支持的 YouTube/Vimeo URL，HTML 嵌入只接受无�
   expect(sanitizeRichHTML(valid)).toContain('referrerpolicy="no-referrer"')
   expect(sanitizeRichHTML(valid.replace('/123', '/123?autoplay=1'))).toBe('')
 })
+it('YouTube 仅发送站点 origin，Vimeo 保留无来源，旧 HTML 或任意属性不能覆盖策略', () => {
+  for (const [src, policy] of [['https://www.youtube-nocookie.com/embed/M7lc1UVf-VE', 'strict-origin'], ['https://player.vimeo.com/video/12345', 'no-referrer']]) {
+    for (const supplied of ['', 'no-referrer', 'unsafe-url']) {
+      const html = sanitizeRichHTML(`<iframe src="${src}" referrerpolicy="${supplied}" onload="bad()"></iframe>`)
+      const template = document.createElement('template'); template.innerHTML = html
+      expect(template.content.querySelector('iframe')?.getAttribute('referrerpolicy')).toBe(policy)
+      expect(html).not.toContain('onload')
+    }
+  }
+})
+it('从视频弹窗插入 YouTube 后读取保存正文仍保持 origin 策略', async () => {
+  const { editor, ref } = mount('<p>Start</p>')
+  await userEvent.click(screen.getByRole('button', { name: '视频' }))
+  const dialog = screen.getByRole('dialog')
+  fireEvent.change(within(dialog).getByLabelText('视频地址'), { target: { value: 'https://youtu.be/M7lc1UVf-VE' } })
+  await userEvent.click(within(dialog).getByRole('button', { name: /插\s*入/ }))
+  expect(editor.querySelector('iframe')?.getAttribute('referrerpolicy')).toBe('strict-origin')
+  expect(ref.current?.getHTML()).toContain('referrerpolicy="strict-origin"')
+})
 it('正文初始安全挂载，排版按钮恢复编辑区选中范围再执行原生命令', async () => {
   const command = vi.fn(() => true); Object.defineProperty(document, 'execCommand', { configurable: true, value: command })
   const { editor, ref } = mount('<p onclick="bad()">Choose this text</p>')

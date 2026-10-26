@@ -99,7 +99,7 @@ export const RichTextEditor = forwardRef<RichTextHandle, Props>(function RichTex
     } else {
       const source = videoEmbedURL(url)
       if (!source) { setError('请使用有效的 YouTube 或 Vimeo HTTPS 视频链接'); return }
-      insert(`<iframe src="${source}" title="Video" loading="lazy" referrerpolicy="no-referrer" allowfullscreen></iframe><p><br></p>`)
+      insert(`<iframe src="${source}" title="Video" loading="lazy" allowfullscreen></iframe><p><br></p>`)
     }
     setDialog(null)
   }

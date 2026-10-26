@@ -71,7 +71,7 @@ export function sanitizeRichHTML(raw: string): string {
       const src = node.getAttribute('src') ?? ''
       // Embed nodes accept only canonical player URLs, without query, fragment or alternate host.
       if (!src || videoEmbedURL(src) !== src) return
-      clean = document.createElement('iframe'); clean.setAttribute('src', src); clean.setAttribute('title', 'Video'); clean.setAttribute('loading', 'lazy'); clean.setAttribute('referrerpolicy', 'no-referrer'); clean.setAttribute('allowfullscreen', '')
+      clean = document.createElement('iframe'); clean.setAttribute('src', src); clean.setAttribute('title', 'Video'); clean.setAttribute('loading', 'lazy'); clean.setAttribute('referrerpolicy', src.startsWith('https://www.youtube-nocookie.com/embed/') ? 'strict-origin' : 'no-referrer'); clean.setAttribute('allowfullscreen', '')
     } else if (tag === 'a' && safeRichLink(node.getAttribute('href') ?? '')) {
       clean = document.createElement('a'); clean.setAttribute('href', node.getAttribute('href')!); clean.setAttribute('rel', 'noopener noreferrer')
     } else if (Object.hasOwn(tags, tag)) {

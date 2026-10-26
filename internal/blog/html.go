@@ -167,7 +167,14 @@ func appendSafeHTML(out *strings.Builder, node *html.Node, visible *bool) {
 	case "iframe":
 		src := attr(node, "src")
 		if safeVideoEmbed(src) {
-			out.WriteString(`<iframe src="` + template.HTMLEscapeString(src) + `" title="Video" loading="lazy" referrerpolicy="no-referrer" allowfullscreen></iframe>`)
+			policy := "no-referrer"
+			// YouTube requires a Referer; strict-origin sends no page path or query.
+			// Keep the page-wide privacy policy and Vimeo behavior unchanged.
+			player, _ := url.Parse(src) // safeVideoEmbed already validated this URL.
+			if player.Hostname() == "www.youtube-nocookie.com" {
+				policy = "strict-origin"
+			}
+			out.WriteString(`<iframe src="` + template.HTMLEscapeString(src) + `" title="Video" loading="lazy" referrerpolicy="` + policy + `" allowfullscreen></iframe>`)
 			*visible = true
 		}
 		return

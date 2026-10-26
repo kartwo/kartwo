@@ -55,7 +55,7 @@ func TestBlogRoutesSwitchAndSitemap(t *testing.T) {
 	if code, body := get("/blog/published"); code != 200 || !strings.Contains(body, "Hello") {
 		t.Fatalf("详情不正确: %d %s", code, body)
 	}
-	if code, body := get("/blog/rich"); code != 200 || !strings.Contains(body, "<h2>Visual title</h2>") || !strings.Contains(body, "<strong>Formatted</strong>") || !strings.Contains(body, "youtube-nocookie.com/embed/M7lc1UVf-VE") {
+	if code, body := get("/blog/rich"); code != 200 || !strings.Contains(body, "<h2>Visual title</h2>") || !strings.Contains(body, "<strong>Formatted</strong>") || !strings.Contains(body, "youtube-nocookie.com/embed/M7lc1UVf-VE") || !strings.Contains(body, `referrerpolicy="strict-origin"`) {
 		t.Fatalf("富文本详情不正确: %d %s", code, body)
 	}
 	if _, body := get("/sitemap.xml"); !strings.Contains(body, "/blog/published") || strings.Contains(body, "/blog/draft") {

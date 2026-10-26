@@ -211,7 +211,7 @@ func TestBlogImagePublicationLegacyAndPermissionFlow(t *testing.T) {
 	path := "/admin/api/blog/posts/" + created.ID
 	var saved blog.Post
 	decode(jsonCall("GET", path, nil, owner, "", 200), &saved)
-	for _, fragment := range []string{"<h2>", "<strong>", "<table>", body.URL, `referrerpolicy="no-referrer"`, `https://www.youtube-nocookie.com/embed/KARTWO_TEST`} {
+	for _, fragment := range []string{"<h2>", "<strong>", "<table>", body.URL, `referrerpolicy="strict-origin"`, `https://www.youtube-nocookie.com/embed/KARTWO_TEST`} {
 		if !strings.Contains(saved.BodyHTML, fragment) {
 			t.Fatalf("safe rich content lost %s", fragment)
 		}
@@ -227,7 +227,7 @@ func TestBlogImagePublicationLegacyAndPermissionFlow(t *testing.T) {
 	jsonCall("PUT", path, post, owner, csrf, 200)
 	page := call("GET", "/blog/integrated-running-guide", nil, "", nil, "", 200)
 	list := call("GET", "/blog", nil, "", nil, "", 200)
-	for _, fragment := range []string{"Integrated Running Guide", body.URL, "<h2>", "<table>", `https://www.youtube-nocookie.com/embed/KARTWO_TEST`} {
+	for _, fragment := range []string{"Integrated Running Guide", body.URL, "<h2>", "<table>", `referrerpolicy="strict-origin"`, `https://www.youtube-nocookie.com/embed/KARTWO_TEST`} {
 		if !strings.Contains(page.Body.String(), fragment) {
 			t.Fatalf("published article missing %s", fragment)
 		}
