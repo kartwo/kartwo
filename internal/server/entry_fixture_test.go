@@ -53,7 +53,7 @@ func openAdminEntryFixture(t *testing.T, dir string) (http.Handler, *store.Store
 	md := media.New(st.DB, media.NewLocalBackend(root), media.NewDefaultPolicy(root, 10<<20, 0), 20)
 	cat := catalog.New(st.DB)
 	rd := redirect.New(st.DB)
-	h := admin.NewHTTP(svc, cat, importer.New(st.DB, cat, md, rd), md, set, order.New(st.DB, set), nil, cache, backup.New(st.DB, dir, "entry-flow-test"), admin.BackupConfig{}, "", false, nil)
+	h := admin.NewHTTP(svc, cat, importer.New(st.DB, cat, md, rd), md, set, order.New(st.DB, set), nil, cache, backup.New(st.DB, dir, "entry-flow-test"), admin.BackupConfig{Interval: 24 * time.Hour, Retention: 7}, "", false, nil)
 	h.ConfigureDemo(admin.DemoConfig{Enabled: true, SessionTTL: time.Hour, MaxProducts: 3})
 	customer := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), order.New(st.DB, set), set, nil, rd, "Entry fixture", "https://entry.example.invalid", nil)
 	handler := New(&config.Config{DataDir: dir}, st, "entry-flow-test", h, customer, payment.NewHTTP(payment.NewService(st.DB, set, keys)), false)

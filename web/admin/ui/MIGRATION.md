@@ -90,11 +90,13 @@ Chrome 在关闭文件权限后连接不可用，后续使用应用内浏览器�
 
 最终 CGO=0 二进制版本 `dev-blog-review-20261026`。常驻库先作 SQLite 在线快照和完整目录包，逐文件/归档 SHA256 校验后优雅换程序；49 张表记录全部一致，90 个嵌入资源字节/MIME 一致，新增迁移 0，匿名博客 API 与隐私头验证通过。原备份保留策略轮换一个旧自动包，新完整包包含它；无商家文章/订单/权限改写。最终 npm 官方审计 0 漏洞，govulncheck 可达代码与导入包 0 漏洞，既有 1 个未导入模块告警保留且无豁免。密钥扫描、适用人工及远端 CI 按交付门禁执行。
 
+2026-10-26 商家已在本机测试草稿核对封面和正文图片，明确确认“都正常保留”。图片保存并重开的人工待验收项已关闭；依据为商家实际操作，不将此前连接器长等改记为通过，不需重新开启扩展文件访问或再次上传证明。
+
 人工复测（约 5–10 分钟，继续使用常驻库）：
 
 1. 打开 `http://127.0.0.1:8189/admin/`，刷新后用原账号登录，不需重建库或重配收款；请勿发送口令。
 2. 进入“博客文章”，打开原文章，核对原文字/图片；工具栏下拉应紧凑排列，缩窄窗口时换行。没有原文章时新建测试草稿即可，不需新库。
-3. 用测试图片检查封面上传、再次选择同文件、正文图片插入；先保存草稿再重开确认。此步骤仍需要人工验收，连接器长等没有被记为通过；正常手动上传不需要开启扩展文件访问。
+3. 用测试图片检查封面上传、再次选择同文件、正文图片插入；先保存草稿再重开确认。封面与正文图片保存重开已由商家确认通过，无需重复；此前连接器长等保持原记录，正常手动上传不需要开启扩展文件访问。
 4. 插入允许嵌入的 YouTube 链接，确认播放器可以播放。只有准备展示的测试文章才选择发布，到店面 Blog 检查列表封面及详情图文；不必为验证修改已有正式文章。
 5. 有旧 Markdown 文章时，先核对转换内容再保存；没有旧文章时不需人工造旧数据，隔离回归已验证。现成员工可按原权限查看；不要为了验收临时扩大真实员工权限。
 
@@ -169,7 +171,27 @@ CGO=0 构建及实际版本 `dev-backup-capacity-20261026` 已核对。本机 31
 1. 刷新原后台并用原账号登录，查看原分类和商品，无需重建库或重配收款。
 2. 仅在测试草稿中检查标题/固定链接、价量保存与重开；分类关联存在时确认删除按钮保护。不要为验收改动正式售卖商品。
 3. 如有现成只读员工账号，核对商品只读及设置拒绝；无需临时新增员工或扩大权限。
-4. 缩窄窗口检查菜单和表单。博客封面/正文图片保存重开的人工结果仍单独确认，正常手动操作无需扩展文件访问权限；已通过的 ZIP 下载不用重复。
+4. 缩窄窗口检查菜单和表单。博客封面/正文图片保存重开已由商家确认正常；正常手动操作无需扩展文件访问权限，已通过的图片和 ZIP 下载不用重复。
+
+### 内容与设置的原生验收及原子保存（2026-10-26）
+
+独立随机 `.localhost`、真实 `server.New` 与正式嵌入 React 页面完成五页验收，使用正常店主、邀请接受的受限员工及公开演示；不复制常驻登录凭据、不改真实业务或配置，不启动发信、支付、远端备份或证书工作器。共用入口 fixture 的备份默认值校准为正式启动时的 24h/7 份，避免零值测试装配被误判为产品默认错误。
+
+原生内容页空标题/链接拒绝、新建草稿、改名并发布、列表刷新/重开及固定 slug 正常，删除确认只执行取消。授权 `content.manage` 员工能保存同一内容；员工博客/客服设置只读且没有保存入口，直接访问备份显示拒绝。博客先关闭并保存、刷新仍关闭，再明确开启；客服开启及 6 个月/14 天保存回显；域名拒绝协议/路径，合法虚构域名保存后显示本地不签证/生产重启提示。备份拒绝 30s 周期并保留表单输入，48h/5 份保存刷新后保留，密码输入仍空，WebDAV 保持关闭。演示内容和域名只读、备份地址/目录/账号隐藏且不能测试。
+
+390×844 下内容、客服与备份实际 `innerWidth=390`、文档可用/滚动宽均为 375，没有整页横溢；移动菜单跳转后关闭，完成后恢复默认视口。原生末尾 Go 核对内容标题/固定 slug/正文/发布、域名、留存及备份策略持久事实，商品/订单/邮件/退款均为零（689.43s）。临时入口/服务/私有凭据/完成标记及自建标签均已清理。浏览器记录四条 `Receiving end does not exist` 连接日志，来源尚未定位，不宣称控制台零错误。
+
+检查中实际复现备份设置部分写入：先有效周期、后无效份数时返回 400，周期却已更改。现全字段先校验及加密，再用同一 SQL 事务提交，数据库后段失败也回滚；仅提交成功记录成功审计。环境字段只读、空字段保留和密码空白原样加密语义保持，不引入迁移或依赖。新增三种混合无效请求及密码写入处数据库失败回归，逐项核对原七字段（含原密文）和成功审计不变，再验证合法更新与空密码保留；定向竞态三轮 27.432s 通过。另一永久真实入口回归核对内容公开状态/安全 Markdown、博客开关 200/404、细分员工/CSRF/演示拒绝及持久值（7.908s）。
+
+最终全仓 Go 竞态通过（admin 464.579s、server 65.364s、order 99.108s、payment 119.774s；部分未变包复用缓存），耗时不作为容量基准。vet/lint 为零问题；govulncheck 可达代码和导入包为 0 漏洞，既有一个未导入模块告警保留且无豁免。前端源码/依赖/嵌入资源未改，沿用上一批 294 React + 3 工具、严格 TS 与正式构建结果；本批不重做无关前端构建。远端 CI、真实外部通道和 1C1G 性能仍待。
+
+本机 `dev-settings-review-20261026` 已在完整在线快照/归档逐项校验后优雅换版：33 文件、49 表，归档 SHA256 `88fd05069b6c80be772b6c521fe59b523948d828b17f11d3caa4f950cb76f88c`。新增迁移 0，原 49 表、媒体/配置保持，90 个嵌入资源字节/MIME 一致；匿名内容/备份/导出均 401 且私密头完整。原 7 包策略新建自动包并轮换一个旧包，完整手工包仍含它；目录外解锁钥匙不动。没有更改常驻商家的文章、权限、客服留存或经营配置。
+
+人工复测复用常驻库，约 3–5 分钟：
+
+1. 刷新本机后台“商品与内容 → 内容”，核对原内容和固定链接；如需编辑只用测试草稿。删除弹窗检查后取消，无需删除原内容。
+2. 查看“设置 → 博客设置/客服留言设置/域名/备份”，核对原值及说明；不必更改经营开关、域名、留存或填写密码。缩窄窗口确认表单和菜单可用。
+3. 有现成员工时按原授权核对只读与拒绝，无需新增真实员工或改权。博客图片保存重开及 ZIP 下载商家均已确认通过，无需重复。真实 HTTPS、支付/SMTP/WebDAV 实连另按适用门禁验收。
 
 ## 共用能力
 
@@ -182,7 +204,7 @@ CGO=0 构建及实际版本 `dev-backup-capacity-20261026` 已核对。本机 31
 - [x] 三步向导编排及实际配置表单、返回/跳过/失败提示；加载和保存期间禁止提前切页，明确区分已配置与稍后再配。
 - [x] 全部旧业务路由清单和默认拒绝；博客独立一级菜单、移动端抽屉。
 - [x] 全部原业务页面的 React 实现、数据契约、细粒度操作权限与错误/加载/空态，已接入唯一入口。
-- [ ] 富文本编辑器、图片上传、视频与内容兼容的正式入口回归（React 实现、隔离 HTTP 媒体/权限及既有图文原生保存/发布/视频播放/旧文转换/员工演示已验证；完整原生文件选择与适用人工验收仍待）。
+- [x] 富文本、博客图文保存与内容兼容的正式入口回归（隔离 HTTP 媒体/权限、原生保存/发布/视频播放/旧文转换/员工演示已验证；商家确认本机封面与正文图片保存重开均正常。连接器文件选择长等不追认为通过）。
 - [x] 真实页面按路由惰性加载、懒加载失败恢复、生产包体审查。
 - [ ] 新入口浏览器验收（键盘、窄屏、登录、店主/员工/演示、完整业务）。
 - [x] 切换唯一入口、移除 Vue 依赖及临时迁移构建。
@@ -197,20 +219,20 @@ CGO=0 构建及实际版本 `dev-backup-capacity-20261026` 已核对。本机 31
 | About | React 已实现，待统一浏览器验收 | 组合页面/静态内容，核对其子组件 |
 | AccountSettings | React 已实现，待统一浏览器验收 | `getAccount`、`updateAccount`、`updateStaffPassword` |
 | AuditEvents | React 已实现，待统一浏览器验收 | `auditEvents` |
-| BackupSettings | React 已实现，待统一浏览器验收 | `getBackupSettings`、`setBackupSettings`、`testBackup` |
-| BlogPostEdit | React 已实现，待正式入口统一验收 | `createBlogPost`、`getBlogPost`、`listBlogPosts`、`previewBlog`、`updateBlogPost`、`uploadBlogImage` |
+| BackupSettings | 隔离原生策略保存/刷新、演示脱敏及390px已核对；原子失败回归通过，远端实连待 | `getBackupSettings`、`setBackupSettings`、`testBackup` |
+| BlogPostEdit | 商家确认封面/正文图片保存重开正常；隔离图文/视频及权限回归已过 | `createBlogPost`、`getBlogPost`、`listBlogPosts`、`previewBlog`、`updateBlogPost`、`uploadBlogImage` |
 | BlogPosts | React 已实现，待正式入口统一验收 | `deleteBlogPost`、`listBlogPosts` |
-| BlogSettings | React 已实现，待统一浏览器验收 | `getBlogSettings`、`setBlogSettings` |
+| BlogSettings | 隔离原生店主开关/刷新及员工只读已核对；商家适用人工待 | `getBlogSettings`、`setBlogSettings` |
 | CategoryManagement | 隔离原生店主/只读员工已核对，关联保护有 HTTP 回归；人工待 | `createCategory`、`deleteCategory`、`listCategories`、`updateCategory` |
 | ContactInbox | React 已实现，待统一浏览器验收 | `contactMessage`、`contactMessages`、`updateContactStatus` |
-| ContactSettings | React 已实现，待统一浏览器验收 | `contactSettings`、`saveContactSettings` |
+| ContactSettings | 隔离原生留存保存/员工只读及390px已核对；商家适用人工待 | `contactSettings`、`saveContactSettings` |
 | Dashboard | React 已实现，待统一浏览器验收 | `dashboard` |
 | Diagnostics | React 已实现，待统一浏览器验收 | `diagnostics` |
-| DomainSettings | React 已实现，待统一浏览器验收 | `getDomain`、`setDomain` |
+| DomainSettings | 隔离原生格式校验/保存、本地提示及演示只读已核对；真实TLS待 | `getDomain`、`setDomain` |
 | DomainWizard | React 已实现，待统一浏览器验收 | `wizardDomainSkip` |
 | ExportData | HTTP/整包恢复已验证，商家确认常驻浏览器下载成功 | 组合页面/静态内容，核对其子组件 |
 | ImportCSV | React 已实现，待统一浏览器验收 | `executeImport`、`previewImportCSV` |
-| Merchandising | React 已实现，待统一浏览器验收 | `createContentPage`、`deleteContentPage`、`getContentPage`、`listContentPages`、`updateContentPage` |
+| Merchandising | 隔离原生草稿→发布/重开/固定链接、员工授权/演示只读及390px已核对；删除仅取消 | `createContentPage`、`deleteContentPage`、`getContentPage`、`listContentPages`、`updateContentPage` |
 | OrderDetail | React 已实现，待正式入口统一验收 | `createRefund`、`fulfillOrder`、`getOrder`、`reconcileRefunds`、`refreshRefund`、`revokeOrderAccess` |
 | OrderList | React 已实现，待正式入口统一验收 | `exportOrdersCSV`、`listOrders` |
 | PaymentSettings | React 已实现，待统一浏览器验收 | `getPayment`、`setPayment`、`testStripeConnection` |
