@@ -89,13 +89,16 @@ func (h *HTTP) setSMTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	if !h.saveSetting(ctx, w, mail.KeySMTPHost, host, false, kek) ||
-		!h.saveSetting(ctx, w, mail.KeySMTPPort, strings.TrimSpace(req.Port), false, kek) ||
-		!h.saveSetting(ctx, w, mail.KeySMTPUsername, strings.TrimSpace(req.Username), false, kek) ||
-		!h.saveSetting(ctx, w, mail.KeySMTPFromAddress, from, false, kek) ||
-		!h.saveSetting(ctx, w, mail.KeySMTPFromName, strings.TrimSpace(req.FromName), false, kek) ||
-		!h.saveSetting(ctx, w, mail.KeySMTPEncryption, enc, false, kek) ||
-		!h.saveSetting(ctx, w, mail.KeySMTPPassword, req.Password, true, kek) { // 空则保持原值
+	if err := h.saveSettings(ctx, []settingChange{
+		{mail.KeySMTPHost, host, false},
+		{mail.KeySMTPPort, strings.TrimSpace(req.Port), false},
+		{mail.KeySMTPUsername, strings.TrimSpace(req.Username), false},
+		{mail.KeySMTPFromAddress, from, false},
+		{mail.KeySMTPFromName, strings.TrimSpace(req.FromName), false},
+		{mail.KeySMTPEncryption, enc, false},
+		{mail.KeySMTPPassword, req.Password, true}, // 密码中的空白原样保留。
+	}, kek); err != nil {
+		writeErr(w, http.StatusInternalServerError, "保存失败")
 		return
 	}
 	// 立即重载缓存，使 worker/测试发信即时生效。

@@ -87,6 +87,7 @@ func (h *HTTP) setPayment(w http.ResponseWriter, r *http.Request) {
 	}
 	st, _ := h.svc.PaymentStatus()
 	ctx := r.Context()
+	var changes []settingChange
 
 	if req.Stripe != nil {
 		if st.StripeSource == "env" {
@@ -98,12 +99,12 @@ func (h *HTTP) setPayment(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "Stripe mode 只能是 test 或 live")
 			return
 		}
-		if !h.saveSetting(ctx, w, payment.KeyStripeMode, mode, false, kek) ||
-			!h.saveSetting(ctx, w, payment.KeyStripePublishable, strings.TrimSpace(req.Stripe.Publishable), false, kek) ||
-			!h.saveSetting(ctx, w, payment.KeyStripeSecret, strings.TrimSpace(req.Stripe.Secret), true, kek) ||
-			!h.saveSetting(ctx, w, payment.KeyStripeWebhookSecret, strings.TrimSpace(req.Stripe.WebhookSecret), true, kek) {
-			return
-		}
+		changes = append(changes,
+			settingChange{payment.KeyStripeMode, mode, false},
+			settingChange{payment.KeyStripePublishable, strings.TrimSpace(req.Stripe.Publishable), false},
+			settingChange{payment.KeyStripeSecret, strings.TrimSpace(req.Stripe.Secret), true},
+			settingChange{payment.KeyStripeWebhookSecret, strings.TrimSpace(req.Stripe.WebhookSecret), true},
+		)
 	}
 
 	if req.PayPal != nil {
@@ -116,12 +117,17 @@ func (h *HTTP) setPayment(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "PayPal mode 只能是 sandbox 或 live")
 			return
 		}
-		if !h.saveSetting(ctx, w, payment.KeyPayPalMode, mode, false, kek) ||
-			!h.saveSetting(ctx, w, payment.KeyPayPalClientID, strings.TrimSpace(req.PayPal.ClientID), false, kek) ||
-			!h.saveSetting(ctx, w, payment.KeyPayPalWebhookID, strings.TrimSpace(req.PayPal.WebhookID), false, kek) ||
-			!h.saveSetting(ctx, w, payment.KeyPayPalSecret, strings.TrimSpace(req.PayPal.Secret), true, kek) {
-			return
-		}
+		changes = append(changes,
+			settingChange{payment.KeyPayPalMode, mode, false},
+			settingChange{payment.KeyPayPalClientID, strings.TrimSpace(req.PayPal.ClientID), false},
+			settingChange{payment.KeyPayPalWebhookID, strings.TrimSpace(req.PayPal.WebhookID), false},
+			settingChange{payment.KeyPayPalSecret, strings.TrimSpace(req.PayPal.Secret), true},
+		)
+	}
+
+	if err := h.saveSettings(ctx, changes, kek); err != nil {
+		writeErr(w, http.StatusInternalServerError, "保存失败")
+		return
 	}
 
 	// 立即重载内存缓存，使改动即时生效。
@@ -149,25 +155,6 @@ func (h *HTTP) testStripeConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recordAudit(r, authFrom(r.Context()).AdminID, "payment.stripe_connection_test", "settings", "payment")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-}
-
-// saveSetting 写一个设置项；encrypted=true 且 value 空则跳过（保持原值）。失败已写响应、返回 false。
-func (h *HTTP) saveSetting(ctx context.Context, w http.ResponseWriter, key, value string, encrypted bool, kek []byte) bool {
-	if encrypted {
-		if value == "" {
-			return true // 留空=保持原值
-		}
-		if err := h.settings.SetEncrypted(ctx, key, []byte(value), kek); err != nil {
-			writeErr(w, http.StatusInternalServerError, "保存失败")
-			return false
-		}
-		return true
-	}
-	if err := h.settings.SetPlain(ctx, key, value); err != nil {
-		writeErr(w, http.StatusInternalServerError, "保存失败")
-		return false
-	}
-	return true
 }
 
 // settingExists 报告某设置项是否已存在（不解密、不暴露值）。
