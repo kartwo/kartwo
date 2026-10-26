@@ -430,3 +430,51 @@ func TestDataExportInvalidMediaRootIsPrivateAndRecoverable(t *testing.T) {
 	}
 	dataEntryCounts(t, st, 0, 0, 0)
 }
+
+func TestDataExportInvalidMediaNameIsPrivateAndRecoverable(t *testing.T) {
+	if filepath.Separator == '\\' {
+		t.Skip("backslash is a path separator on this host")
+	}
+	handler, st, root := newAdminEntryFixture(t)
+	owner, _ := dataEntryOwner(t, handler)
+	name := `private\source.webp`
+	source := filepath.Join(root, name)
+	marker := "VIRTUAL-UNSUPPORTED-MEDIA-NAME"
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte(marker), 0600); err != nil {
+		t.Fatal(err)
+	}
+	failed := owner.json("GET", "/admin/api/export", nil, 500)
+	if failed.Header().Get("Content-Disposition") != "" || !strings.Contains(failed.Header().Get("Content-Type"), "application/json") {
+		t.Fatal("failed export looked like a download")
+	}
+	for _, unsafe := range []string{marker, name, "private", root, filepath.Dir(root)} {
+		if strings.Contains(failed.Body.String(), unsafe) {
+			t.Fatal("export failure exposed private media details")
+		}
+	}
+	var audit int
+	if err := st.DB.QueryRow(`SELECT count(*) FROM audit_event WHERE action='export.create'`).Scan(&audit); err != nil || audit != 0 {
+		t.Fatal("failed export recorded success", err)
+	}
+	if entries, err := os.ReadDir(filepath.Join(filepath.Dir(root), "backups")); err != nil || len(entries) != 0 {
+		t.Fatal("failed export leaked files", err)
+	}
+	if got, err := os.ReadFile(source); err != nil || string(got) != marker {
+		t.Fatal("failed export changed source media", err)
+	}
+	if err := os.Rename(source, filepath.Join(root, "repaired.webp")); err != nil {
+		t.Fatal(err)
+	}
+	response := owner.json("GET", "/admin/api/export", nil, 200)
+	archive, err := zip.NewReader(bytes.NewReader(response.Body.Bytes()), int64(response.Body.Len()))
+	if err != nil || len(archive.File) != 3 {
+		t.Fatal("media name repair did not recover export", err)
+	}
+	if err := st.DB.QueryRow(`SELECT count(*) FROM audit_event WHERE action='export.create'`).Scan(&audit); err != nil || audit != 1 {
+		t.Fatal("repaired export did not record exactly one success", err)
+	}
+	dataEntryCounts(t, st, 0, 0, 0)
+}

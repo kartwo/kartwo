@@ -199,6 +199,9 @@ func writeJSON(zw *zip.Writer, name string, value any) error {
 }
 
 func writeFile(zw *zip.Writer, name, source string) error {
+	if !validArchivePath(name) {
+		return fmt.Errorf("backup: 文件路径不受备份格式支持")
+	}
 	in, err := os.Open(source) //nolint:gosec // source 仅来自受控数据目录或导出快照。
 	if err != nil {
 		return fmt.Errorf("backup: 打开 %s 失败: %w", name, err)

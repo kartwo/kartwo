@@ -147,10 +147,15 @@ func restoreEntryName(file *zip.File) (string, error) {
 		return "", fmt.Errorf("backup: 导出包包含非普通文件: %s", file.Name)
 	}
 	name := file.Name
-	if name == "" || strings.HasPrefix(name, "/") || path.Clean(name) != name || strings.Contains(name, "\\") {
+	if !validArchivePath(name) {
 		return "", fmt.Errorf("backup: 导出包路径不安全: %s", file.Name)
 	}
 	return name, nil
+}
+
+// validArchivePath is shared with export so generated file names obey the restore format.
+func validArchivePath(name string) bool {
+	return name != "" && !strings.HasPrefix(name, "/") && path.Clean(name) == name && !strings.Contains(name, "\\")
 }
 
 func extractRestoreArchive(files []*zip.File, stage string) (int, error) {

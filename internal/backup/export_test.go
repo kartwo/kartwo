@@ -302,3 +302,93 @@ func TestCreateRejectsDanglingMediaRoot(t *testing.T) {
 		t.Fatal("failed export left temporary files", err)
 	}
 }
+
+func TestCreateRejectsUnrestorableMediaNames(t *testing.T) {
+	if filepath.Separator == '\\' {
+		t.Skip("backslash is a path separator on this host")
+	}
+	for _, tc := range []struct {
+		name, relative, repaired string
+	}{
+		{"file-name", `originals/cover\draft.webp`, "originals/cover-draft.webp"},
+		{"directory-name", `originals\draft/cover.webp`, "originals-draft/cover.webp"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "shop.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = db.Close() }()
+			if _, err = db.Exec(`CREATE TABLE fixture (value TEXT); INSERT INTO fixture VALUES ('source-preserved')`); err != nil {
+				t.Fatal(err)
+			}
+			root := filepath.Join(dir, "media")
+			source := filepath.Join(root, filepath.FromSlash(tc.relative))
+			marker := []byte("virtual-media-name-fixture")
+			if err = os.MkdirAll(filepath.Dir(source), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err = os.WriteFile(source, marker, 0600); err != nil {
+				t.Fatal(err)
+			}
+			exporter := New(db, dir, "media-name-test")
+			for _, create := range []struct {
+				name string
+				run  func(context.Context) (string, Manifest, error)
+			}{
+				{"download", exporter.Create}, {"automatic", exporter.CreatePersistent}, {"upgrade", exporter.CreateUpgradeSnapshot},
+			} {
+				t.Run(create.name, func(t *testing.T) {
+					archive, _, e := create.run(context.Background())
+					if e == nil {
+						defer func() { _ = os.Remove(archive) }()
+						_, restoreErr := Restore(archive, filepath.Join(t.TempDir(), "restored"))
+						t.Errorf("unrestorable media name reported success: restore_error=%v", restoreErr)
+					} else if archive != "" {
+						t.Fatal("failed export returned an archive path")
+					}
+				})
+			}
+			if entries, err := os.ReadDir(filepath.Join(dir, "backups")); err != nil || len(entries) != 0 {
+				t.Fatal("failed export left backup artifacts", err)
+			}
+			if got, err := os.ReadFile(source); err != nil || string(got) != string(marker) {
+				t.Fatal("failure changed source media", err)
+			}
+			var value string
+			if err = db.QueryRow(`SELECT value FROM fixture`).Scan(&value); err != nil || value != "source-preserved" {
+				t.Fatal("failure changed source database", err)
+			}
+			repaired := filepath.Join(root, filepath.FromSlash(tc.repaired))
+			if err = os.MkdirAll(filepath.Dir(repaired), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err = os.Rename(source, repaired); err != nil {
+				t.Fatal(err)
+			}
+			international := filepath.Join(root, "originals", "春季 跑步.webp")
+			if err = os.MkdirAll(filepath.Dir(international), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err = os.WriteFile(international, []byte("international-media"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			archive, _, err := exporter.Create(context.Background())
+			if err != nil {
+				t.Fatal("repaired media name did not recover export", err)
+			}
+			defer func() { _ = os.Remove(archive) }()
+			target := filepath.Join(t.TempDir(), "restored-repaired")
+			result, err := Restore(archive, target)
+			if err != nil || result.MediaFiles != 2 {
+				t.Fatal("repaired/international media did not restore", result, err)
+			}
+			for relative, want := range map[string]string{tc.repaired: string(marker), "originals/春季 跑步.webp": "international-media"} {
+				if got, err := os.ReadFile(filepath.Join(target, "media", filepath.FromSlash(relative))); err != nil || string(got) != want {
+					t.Fatal("restored media differs from source", err)
+				}
+			}
+		})
+	}
+}
