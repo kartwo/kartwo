@@ -34,7 +34,7 @@ a:hover { text-decoration: underline; }
 @media(max-width:960px) { .admin-sidebar,.desktop-menu-button { display:none; } .mobile-menu-button { display:inline-flex; } .admin-header,.admin-content { padding:var(--sp-4); } .account-name { display:none; } }
 @media(max-width:520px) { .admin-header .ant-avatar,.account-role { display:none; } .admin-header h2.ant-typography { font-size:var(--fs-lg); } .auth-screen { padding:var(--sp-4); } }
 
-.settings-page { width:100%;max-width:860px;display:grid;gap:var(--sp-6); }
+.settings-page { width:100%;max-width:860px;display:grid;grid-template-columns:minmax(0,1fr);gap:var(--sp-6); }
 .settings-page .ant-card .ant-alert { margin-bottom:var(--sp-4); }
 .settings-page .ant-form { margin-top:var(--sp-4); }
 .settings-test { margin-top:var(--sp-6);padding-top:var(--sp-4);border-top:1px solid var(--border); }

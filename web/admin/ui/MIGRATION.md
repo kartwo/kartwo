@@ -193,6 +193,32 @@ CGO=0 构建及实际版本 `dev-backup-capacity-20261026` 已核对。本机 31
 2. 查看“设置 → 博客设置/客服留言设置/域名/备份”，核对原值及说明；不必更改经营开关、域名、留存或填写密码。缩窄窗口确认表单和菜单可用。
 3. 有现成员工时按原授权核对只读与拒绝，无需新增真实员工或改权。博客图片保存重开及 ZIP 下载商家均已确认通过，无需重复。真实 HTTPS、支付/SMTP/WebDAV 实连另按适用门禁验收。
 
+### 凭证配置事务与经营页面原生验收（2026-10-26）
+
+收款保存的实际红测证明：Stripe 块有效、PayPal 块无效时返回 400，Stripe 字段却已落库。现两个通道全部先校验来源/模式，收集后与 SMTP、翻译共同使用内部事务写入；非空凭证先加密，再一次提交。校验、环境只读拒绝或后段数据库故障不改旧字段/密文，不重载缓存、不记成功审计。成功后继续原缓存重载，不改变支付 API 版本、通道语义或 SMTP 密码空白规则，无迁移/依赖。
+
+永久回归以随机虚构凭证核对 17 个设置字段及加密标记：无效第二通道、密码写入处故障和只读第二通道拒绝均保持原存储；核对原缓存公开状态及 SMTP 完整配置、成功审计不变。正常空密钥保存保留原密文，SMTP 密码两侧空白解密后保持，响应不含密钥。相关竞态初轮 10.575s、最终增强环境覆盖后三轮 22.173s 通过；全仓竞态通过（admin 303.291s/server 37.678s，其余未变部分缓存）。
+
+原生使用随机独立 `.localhost` 和正式 `server.New`/CSP/embed，正常店主、邀请接受的客服只读员工及公开演示。API 仅预置虚构凭证和一条留言，无发信/支付工作器；外部连接测试、实发、翻译入口由临时装配阻止且计数，最终尝试次数为零，不能用此证明外部平台可用。
+
+浏览器依次留空保存 Stripe/PayPal；SMTP 70000 端口被拦截且名称保留，改回 587 后留空密码保存发件人名称；翻译留空密钥保存套餐标记。留言新建→处理中→结案、处理人/结案人回显，筛选新留言为空、已结案有原记录，脚本样文本按原文显示且没有脚本节点；员工详情没有处理按钮，三项凭证配置直接访问均拒绝。演示留言为空、配置全字段只读且无保存/测试入口，日志可见操作人泛化为“店主”、对象为“已隐藏”。首次按 AX 增量文本判断相同拒绝提示导致两项假阴性，随后用实际路由及完整可见 DOM 文本复核三项均拒绝；不是权限缺陷。
+
+诊断数据库/媒体/磁盘/空保护点及刷新、许可说明/数据归属、概览零订单及权限链接实际核对。390px 概览、留言、日志及演示收款/邮件文档可用/滚动宽均 375；日志仅表格内部 293→680 局部滚动。翻译 Growth 长选项原实测撑到 447，根因为设置页网格采用内容最小宽度；现明确单列 `minmax(0,1fr)`。最终店主和演示长选项、下拉展开均回到 375，卡片宽 343；最终收款/邮件可编辑页也为 375，密码全部空。
+
+第一轮 Go 末尾核对五项原密文未变、发件人/套餐/留言结案人及业务计数，实际 892.44s 通过，订单/邮件/退款均为零；临时服务实际退出，凭据/完成标记和自建标签关闭。浏览器保留一条 `Receiving end does not exist` 连接日志，来源未定位，不宣称控制台零错误。截图为虚构店铺，不是常驻商家配置或真实资金/邮件验收。
+
+最终正式构建通过 24 文件/294 React + 3 工具、严格 TS 与 Vite（222.12s/4.04s，最大块 449.56KB，无包体告警）；一行网格修复不新增镜像单测，以现有完整测试和真实 390px 复测验证。最终布局独立服务 151.57s 通过，使用预置配置，仅核对布局及原密文/数据未改，不把它追认为完整经营流程再跑。两次自建标签与服务、临时入口/凭据/标记均清理，视口恢复；最终另留一条同类连接日志，来源未定。
+
+后端事务修复已提交 `2e4df5a`；最终 vet/lint 为零问题，npm 官方审计为 0 漏洞；govulncheck 可达与导入包为 0 漏洞，既有一个未导入模块告警保留，无豁免。首次 lint 只指出临时探针中的 HTTP 状态数值常量，修正并移除探针后对最终代码重新运行通过，不视为最终门禁豁免。
+
+本机最终 `dev-credentials-review-20261026` 在完整在线快照/归档校验后优雅换版（33 文件、49 表，SHA256 `f90edc9cbf77e5d4abd55791c74a04639ba3f5dc586ab8cced2977c05f50a37b`）。新增迁移 0，原 49 表/媒体/配置与最终 90 个 embed 资源字节/MIME 一致；三项凭证端点匿名 401 且私密头完整。原 7 份策略新建/轮换一个自动包，完整手工包含旧包，目录外钥匙不动。原商家凭证/模式、发件配置/文章/留言/权限均未改；不将虚构原生测试或本机启动替代真实支付、发信、远端 CI、1C1G 实测及剩余人工门禁。
+
+人工复测复用常驻库，约 5 分钟：
+
+1. 打开原后台“设置 → 收款/邮件/翻译”，核对原通道模式和已配置提示，密钥输入应为空；无需重新填写、发送密钥或切换正式模式。
+2. 查看“经营 → 客服留言”，有测试留言时核对详情/筛选/处理人，没有留言时检查空态即可；不要为验收改动待处理的真实顾客留言。
+3. 查看“系统 → 诊断/日志/关于”并刷新，缩窄窗口核对布局；现成员工按原权限检查，无需临时改权。外部通道实连/实发仍单独验收。
+
 ## 共用能力
 
 - [x] 严格 TypeScript、React 与 Ant Design 依赖及构建检查。
@@ -216,18 +242,18 @@ CGO=0 构建及实际版本 `dev-backup-capacity-20261026` 已核对。本机 31
 
 | 原页面 | React 状态 | 原页面使用的 API |
 |---|---|---|
-| About | React 已实现，待统一浏览器验收 | 组合页面/静态内容，核对其子组件 |
+| About | 原生许可文本与离线地址数据归属已核对 | 组合页面/静态内容，核对其子组件 |
 | AccountSettings | React 已实现，待统一浏览器验收 | `getAccount`、`updateAccount`、`updateStaffPassword` |
-| AuditEvents | React 已实现，待统一浏览器验收 | `auditEvents` |
+| AuditEvents | 原生店主日志/演示脱敏及390px表格局部滚动已核对 | `auditEvents` |
 | BackupSettings | 隔离原生策略保存/刷新、演示脱敏及390px已核对；原子失败回归通过，远端实连待 | `getBackupSettings`、`setBackupSettings`、`testBackup` |
 | BlogPostEdit | 商家确认封面/正文图片保存重开正常；隔离图文/视频及权限回归已过 | `createBlogPost`、`getBlogPost`、`listBlogPosts`、`previewBlog`、`updateBlogPost`、`uploadBlogImage` |
 | BlogPosts | React 已实现，待正式入口统一验收 | `deleteBlogPost`、`listBlogPosts` |
 | BlogSettings | 隔离原生店主开关/刷新及员工只读已核对；商家适用人工待 | `getBlogSettings`、`setBlogSettings` |
 | CategoryManagement | 隔离原生店主/只读员工已核对，关联保护有 HTTP 回归；人工待 | `createCategory`、`deleteCategory`、`listCategories`、`updateCategory` |
-| ContactInbox | React 已实现，待统一浏览器验收 | `contactMessage`、`contactMessages`、`updateContactStatus` |
+| ContactInbox | 原生处理→结案/筛选、员工只读/演示隐藏及390px已核对 | `contactMessage`、`contactMessages`、`updateContactStatus` |
 | ContactSettings | 隔离原生留存保存/员工只读及390px已核对；商家适用人工待 | `contactSettings`、`saveContactSettings` |
-| Dashboard | React 已实现，待统一浏览器验收 | `dashboard` |
-| Diagnostics | React 已实现，待统一浏览器验收 | `diagnostics` |
+| Dashboard | 原生零订单/权限入口及390px已核对；有单统计人工待 | `dashboard` |
+| Diagnostics | 原生数据库/磁盘/保护点显示及刷新已核对 | `diagnostics` |
 | DomainSettings | 隔离原生格式校验/保存、本地提示及演示只读已核对；真实TLS待 | `getDomain`、`setDomain` |
 | DomainWizard | React 已实现，待统一浏览器验收 | `wizardDomainSkip` |
 | ExportData | HTTP/整包恢复已验证，商家确认常驻浏览器下载成功 | 组合页面/静态内容，核对其子组件 |
@@ -235,16 +261,16 @@ CGO=0 构建及实际版本 `dev-backup-capacity-20261026` 已核对。本机 31
 | Merchandising | 隔离原生草稿→发布/重开/固定链接、员工授权/演示只读及390px已核对；删除仅取消 | `createContentPage`、`deleteContentPage`、`getContentPage`、`listContentPages`、`updateContentPage` |
 | OrderDetail | React 已实现，待正式入口统一验收 | `createRefund`、`fulfillOrder`、`getOrder`、`reconcileRefunds`、`refreshRefund`、`revokeOrderAccess` |
 | OrderList | React 已实现，待正式入口统一验收 | `exportOrdersCSV`、`listOrders` |
-| PaymentSettings | React 已实现，待统一浏览器验收 | `getPayment`、`setPayment`、`testStripeConnection` |
+| PaymentSettings | 原生空密钥保存/员工拒绝/演示只读及390px已核对；真实通道待 | `getPayment`、`setPayment`、`testStripeConnection` |
 | PaymentWizard | React 已实现，待统一浏览器验收 | `wizardPaymentSkip` |
 | PolicySettings | React 已实现，待统一浏览器验收 | `generateFooterPages`、`getPolicyProfile`、`setPolicyProfile` |
 | ProductEdit | 隔离原生店主/只读员工/演示及390px已核对；文件选择/其余人工待 | `createProduct`、`deleteMedia`、`getProduct`、`getTranslation`、`listCategories`、`listMedia`、`setInventory`、`setPrice`、`translateText`、`updateMediaAlt`、`updateProduct`、`uploadMedia` |
 | ProductList | 隔离原生店主/演示列表及390px已核对；其余人工待 | `deleteProduct`、`listProducts`、`setProductFeatured` |
 | ShippingSettings | React 已实现，待统一浏览器验收 | `createShippingZone`、`deleteShippingZone`、`listShippingCountries`、`listShippingZones`、`saveDefaultShippingZone`、`saveShippingCountries`、`updateShippingZone` |
 | ShopSettings | 隔离店主保存/演示只读/员工拒绝及390px已核对；Logo选择/其余人工待 | `deleteShopLogo`、`getShop`、`setShop`、`uploadShopLogo` |
-| SmtpSettings | React 已实现，待统一浏览器验收 | `getSmtp`、`setSmtp`、`smtpTest` |
+| SmtpSettings | 原生校验/空密码保存、员工拒绝/演示只读及390px已核对；实发待 | `getSmtp`、`setSmtp`、`smtpTest` |
 | SmtpWizard | React 已实现，待统一浏览器验收 | `wizardSmtpSkip` |
-| TranslationSettings | React 已实现，待统一浏览器验收 | `getTranslation`、`setTranslation` |
+| TranslationSettings | 原生空密钥保存/员工拒绝/演示只读及最终390px长选项已核对；实连待 | `getTranslation`、`setTranslation` |
 | UsersRoles | React 已实现，待统一浏览器验收 | `createRole`、`createUser`、`deleteRole`、`listRoles`、`listUsers`、`resetUserPassword`、`revokeUserSessions`、`updateRole`、`updateUser` |
 
 ## 已迁移配置页的验收边界
