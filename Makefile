@@ -7,7 +7,7 @@
 BIN := $(CURDIR)/.bin
 TOOLPATH := PATH="$(BIN):$$PATH"
 
-.PHONY: all build test vet lint vuln leaks gen tidy run check tools web
+.PHONY: all build test vet lint vuln leaks gen tidy run check tools web capacity
 
 all: check
 
@@ -50,3 +50,6 @@ run: build     ## 本地启动（默认 :8080、./data）
 
 check: vet test build lint vuln leaks  ## 合主干前本地全量门禁（与 CI 同口径）
 	@echo "✅ 全部门禁通过"
+
+capacity:      ## 显式运行1CPU/1GiB Linux实际程序容量检查（需现有Docker和ubuntu:24.04）
+	sh scripts/capacity-profile.sh

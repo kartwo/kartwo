@@ -10,6 +10,55 @@
 
 十二个设置页、十五个业务/系统页均按需加载，另有三个向导视图复用设置页；认证与导航外壳按会话分支加载。路由权限先于业务页面加载，未知地址默认拒绝，页面加载失败给出刷新入口且不显示内部错误。唯一入口集成测试覆盖真实页面映射、原有 32 个地址、HashRouter、严格模式生命周期及错误恢复。
 
+## 当前交付核对（2026-10-26）
+
+已实现与验收通过分别记录，当前尚不具备合并发版的完整证据。每项仍以对应源码、实际测试与下列专项记录为准；不以页面数或一次容量检查替代整体验收。
+
+| 要求 | 当前证据 | 剩余验收 |
+|---|---|---|
+| A1 安全依赖 | Go 1.27.3、唯一 React 构建、前后端本地静态/漏洞/密钥门禁；CI 与 Release 版本一致 | 当前分支远端 CI；既有未导入模块告警保留，无豁免 |
+| A2 下单与支付幂等 | 同车并发/原事务、持久支付尝试及跨通道切换；`attempt_test.go`、`checkout_switch_test.go` 与跨模块回归 | Stripe/PayPal 真实沙箱的断线恢复、重复与切换 |
+| A3 异步入账与退款 | 独立到账/退款账本、指定收款退款、持久请求及事件/完整清单核对；`refund_request/events/check/worker` 回归与 React 操作锁 | 真实沙箱异步付款、部分退款及平台状态核对 |
+| A4 订单隐私与权限 | 私密响应头、订单范围凭证/验证码、店主撤销及角色/对象隔离的实际 HTTP 回归 | 真实邮箱跨设备恢复和适用人工；没有以订单号代替授权 |
+| 唯一 React 后台 | 30 个原视图、32 个旧地址、299 React + 3 工具测试；店主/员工/演示与手机专项证据见各节；图片保存重开与 ZIP 下载已获商家确认 | CSV 原生选择/预览结果待商家反馈；实际改密/邀请等未追认为原生通过；完整键盘与业务人工仍待 |
+| B1–B4 经营闭环 | 订单工作台、发货通知、多国地址和基础售后均已接线；售后六步原生与实际 Go/CSP 验证、配送回执恢复等已过 | 常驻库适用人工、实际收件与资金；装箱单/批处理等后续范围未追认完成 |
+| D 交付与容量 | 完整备份/恢复/升级保护、临时凭证失效；新增 `make capacity` 实际 Linux 程序的 1CPU/1GiB 容器检查 | 真实 VPS 的磁盘/网络/持续负载、完整 30 分钟开店、历史真实 WebDAV及远端发布门禁 |
+| 后续增长/商业 | 依路线图在交易经营稳定后推进；AI 密钥来源/额度等业务选择待确认 | 不提前写 SaaS 控制面、计费专属内核逻辑或另起一套内核 |
+
+CSV 人工预览已准备持久虚构样例，只预览不确认导入；这项反馈不由接口桩、DOM 注入或未完成的连接器文件选择替代。无需重新开启扩展文件访问权限。
+
+## 1CPU / 1GiB 实际 Linux 程序检查
+
+新增显式开发入口 `make capacity`，普通 `make check` 和 CI 不自动执行此容量场景。入口只复用本机已有的 `ubuntu:24.04` 镜像（缺失直接失败，不隐式下载），按 Docker 实际架构交叉编译当前程序和验收驱动。容器无外网、只读根文件系统、无额外 capabilities、无新特权、不启用交换空间，并核对 cgroup v2 的 `cpu.max` 为一个 CPU、`memory.max` 为 1,073,741,824 字节。
+
+实际子进程运行正式 `kartwo serve`，使用新建的独立文件目录及正常 HTTP 初始化/登录、CSRF、市场设置与 CSV 预览/执行。仅映射本批二进制和专属结果目录，绝不挂载常驻商家数据。密码运行时随机生成且只保留内存；不继承本机收款/邮件环境凭证。后端 worker 按实际程序启动，但未配置外部通道且容器禁外网，末尾核对邮件和退款请求均为零。
+
+数据集为 1,000 个实际 CSV 导入商品、2,000 个变体，以及直接 SQL 构造的 10,000 条合成订单、8,000 条到账快照与 4,000 条历史发货快照。九类查询覆盖六个视图、状态筛选、单号与空结果，每类八次；另有四并发共二十次查询，均核对总数/分页数量和行标识唯一。退款待办在这个样本中为空，不能据此声称测过大量开放退款或售后；直接构造的订单也不能替代完整下单/支付过程或订单详情容量。
+
+媒体使用代码生成的 2400×1600 JPEG，实际 3,726,504 字节，经正式 multipart 上传与 WebP 处理，验证三份派生图和真实 `/media/` 字节。健康、后台入口、商品列表和详情公开路径均实际返回成功。最后核对数据计数、cgroup 峰值/完整 OOM 计数，并验证子进程优雅退出。
+
+本机一次文件目录样本（Apple Silicon / Docker Desktop、Ubuntu 24.04 ARM64，基于 `165cce1` 业务代码，验收工具独立新增）：
+
+| 项目 | 实测 |
+|---|---:|
+| 到首次健康响应 | 90 ms |
+| CSV 预览 / 执行 | 7 / 101 ms |
+| 约 3.7 MB 图片上传与三份 WebP | 581 ms |
+| 万单“全部”查询中位数 / 样本 P95 | 41.8 / 48.5 ms |
+| 四并发查询中位数 / 样本 P95 | 148.8 / 220.9 ms |
+| 整个容器峰值（驱动＋程序＋文件缓存） | 310,005,760 字节（约 296 MiB） |
+| OOM / OOM kill | 0 / 0 |
+
+以上是短时、合成且以读为主的容器样本，P95 样本量已注明，不是延迟承诺、真实顾客吞吐量或 VPS 性能保证。数据库使用 macOS 文件目录映射（本机 mountinfo 为 `fakeowner`），没有将内存临时盘的结果当作磁盘性能；首轮内存盘探索结果保留但不用于上表。未测试真实支付、SMTP、公网 HTTPS、x86 VPS、长时间负载或图片并发。
+
+开发端复跑：
+
+```sh
+make capacity
+```
+
+需已有 Docker daemon、cgroup v2、缓存的 Ubuntu 24.04 镜像和仓库指定 Go。每次保留独立 `.bin/capacity-profile.*/`：二进制、镜像摘要、源提交、`profile.log` 与私有 `results/report.json` / `server.log`；自动测试数据清理，原验收库不变。失败时保留日志及非零退出，不输出成功报告。此入口不打标签、不推送、不发布，也不要求商家重填数据或操作命令行。
+
 ## 支付、发货与通知联动自动回归
 
 新增隔离 HTTP 回归覆盖实际 Stripe 原始报文验签、异步付款入账、库存转实扣和确认信原子入队；错误签名/金额无副作用，重复回调不重复扣库或发信。实际本机 SMTP 协议测试覆盖 DATA 确认丢失后持久为“投递未知”、进程重启不自动重发、商家显式核对、运单更正以及部分/全额/迟到退款仍保留履约与通知证据、库存不自动回补。
@@ -257,10 +306,10 @@ CGO=0 构建及实际版本 `dev-backup-capacity-20261026` 已核对。本机 31
 | DomainSettings | 隔离原生格式校验/保存、本地提示及演示只读已核对；真实TLS待 | `getDomain`、`setDomain` |
 | DomainWizard | 原生未保存拦截/保存推进已核对；完整首次安装与真实TLS待 | `wizardDomainSkip` |
 | ExportData | HTTP/整包恢复已验证，商家确认常驻浏览器下载成功 | 组合页面/静态内容，核对其子组件 |
-| ImportCSV | React 已实现，待统一浏览器验收 | `executeImport`、`previewImportCSV` |
+| ImportCSV | 实际 HTTP 导入/恢复及 React 原任务核对已过；商家原生选择/预览反馈待 | `executeImport`、`previewImportCSV` |
 | Merchandising | 隔离原生草稿→发布/重开/固定链接、员工授权/演示只读及390px已核对；删除仅取消 | `createContentPage`、`deleteContentPage`、`getContentPage`、`listContentPages`、`updateContentPage` |
-| OrderDetail | React 已实现，待正式入口统一验收 | `createRefund`、`fulfillOrder`、`getOrder`、`reconcileRefunds`、`refreshRefund`、`revokeOrderAccess` |
-| OrderList | React 已实现，待正式入口统一验收 | `exportOrdersCSV`、`listOrders` |
+| OrderDetail | 实际 Go/CSP 售后六步、原数据只读及390px已过；资金/邮件与完整人工待 | `createRefund`、`fulfillOrder`、`getOrder`、`reconcileRefunds`、`refreshRefund`、`revokeOrderAccess` |
+| OrderList | 隔离原生搜索/分页/筛选与390px、万单受限容器查询已过；常驻适用人工待 | `exportOrdersCSV`、`listOrders` |
 | PaymentSettings | 原生空密钥保存/员工拒绝/演示只读及390px已核对；真实通道待 | `getPayment`、`setPayment`、`testStripeConnection` |
 | PaymentWizard | 原生识别预置配置已核对；新配置/跳过及外部支付验收待 | `wizardPaymentSkip` |
 | PolicySettings | 原生时效校验/七草稿/重复跳过、员工授权/演示只读及390px已核对；覆盖仅取消 | `generateFooterPages`、`getPolicyProfile`、`setPolicyProfile` |
@@ -337,7 +386,7 @@ CGO=0 构建及实际版本 `dev-backup-capacity-20261026` 已核对。本机 31
 
 ## 验证方式
 
-- `npm test`：3 项共用 Node 工具测试 + 271 项 React DOM、路由、会话、接口契约及业务交互测试。
+- `npm test`：3 项共用 Node 工具测试 + 当前 299 项 React DOM、路由、会话、接口契约及业务交互测试。
 - `npm run typecheck`：严格 TypeScript 检查。
 - `npm run build`：全部测试、严格 TypeScript、唯一正式 React 入口构建；不再存在迁移专用构建。
 - `npm audit --registry=https://registry.npmjs.org --audit-level=high`：包含开发依赖的安全门禁。
