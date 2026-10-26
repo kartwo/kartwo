@@ -31,10 +31,11 @@ printf 'Capacity artifacts: %s\n' "$capacity_run"
 docker image inspect ubuntu:24.04 --format '{{.Id}} {{json .RepoDigests}}' > "$capacity_run/image.txt"
 printf '%s\n' "$capacity_commit" > "$capacity_run/source-commit.txt"
 
-CGO_ENABLED=0 GOOS=linux GOARCH="$capacity_arch" go build -trimpath \
-  -ldflags "-s -w -X main.Version=$capacity_version" -o "$capacity_run/kartwo" ./cmd/kartwo
-CGO_ENABLED=0 GOOS=linux GOARCH="$capacity_arch" go test -c \
+GOOS=linux GOARCH="$capacity_arch" sh scripts/build.sh -trimpath \
+  -ldflags "-s -w -X main.Version=$capacity_version" -o "$capacity_run/kartwo"
+CGO_ENABLED=0 GOOS=linux GOARCH="$capacity_arch" go test -tags=nodynamic -c \
   -o "$capacity_run/capacity.test" ./internal/server
+sh scripts/check-static.sh "$capacity_run/kartwo" "$capacity_run/capacity.test" > "$capacity_run/static-check.log"
 mkdir "$capacity_run/results"
 if docker run --rm --pull=never --network none --cpus 1 --memory 1g --memory-swap 1g \
   --pids-limit 128 --cap-drop ALL --security-opt no-new-privileges --read-only \

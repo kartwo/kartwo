@@ -10,7 +10,7 @@
 
 - Linux x86_64：发布流水线在干净数据目录实跑迁移、20 件演示商品、店面、后台与健康检查。
 - Linux ARM64、macOS Apple Silicon、Windows x86_64：编译产出，尚未逐平台人工实跑。
-- Linux 二进制依赖 glibc；Alpine/musl 暂不支持。
+- 当前正式版 v0.8.1 的 Linux 二进制依赖 glibc；Alpine/musl 尚未验收。开发分支已改为严格静态 Linux 构建（内嵌 WASM 编解码），后续发布会校验无动态加载器及共享库依赖；此变更尚未发布。
 
 ## 在线演示
 
@@ -154,11 +154,11 @@ Environment=KARTWO_DEMO_CLEANUP_INTERVAL=5m
 ```bash
 make gen
 cd web/admin/ui && npm ci && npm run build && cd ../../..
-go build -o kartwo ./cmd/kartwo
+make build
 make check
 ```
 
-`make check` 包含 vet、race test、build、lint、govulncheck 与 gitleaks。 `make tools` 与 CI 固定使用 govulncheck [v1.9.0](https://pkg.go.dev/golang.org/x/vuln@v1.9.0/cmd/govulncheck)，CI 调用同一 `make vuln` 目标。漏洞扫描受构建平台影响；在非 Linux 开发机上，还需用 `GOOS=linux GOARCH=amd64 make vuln` 检查生产平台，不能将本机平台通过当作 Linux 已通过。发布工作流会重新构建 Admin 后再嵌入二进制，避免提交产物陈旧。
+`make check` 包含 vet、race test、build、lint、govulncheck 与 gitleaks。Linux 构建固定 `CGO_ENABLED=0` 与 `-tags=nodynamic`（内嵌 WASM 编解码），测试和扫描使用同一标签；Linux 的 `make check` 还验证实际 ELF 无动态加载器或共享库依赖。交叉编译使用 `GOOS=linux GOARCH=arm64 make build`，产物可在宿主用 `sh scripts/check-static.sh kartwo` 核对。`make tools` 与 CI 固定使用 govulncheck [v1.9.0](https://pkg.go.dev/golang.org/x/vuln@v1.9.0/cmd/govulncheck)，CI 调用同一 `make vuln` 目标。漏洞扫描受构建平台影响；在非 Linux 开发机上，还需用 `GOOS=linux GOARCH=amd64 make vuln` 检查生产平台，不能将本机平台通过当作 Linux 已通过。发布工作流会重新构建 Admin 后再嵌入二进制，避免提交产物陈旧。
 
 本机开发可在 `web/admin/ui` 运行 `npm run dev`，API 与媒体默认代理到 `http://127.0.0.1:8080`；后端监听其他端口时，使用 `KARTWO_DEV_PROXY=http://127.0.0.1:8189 npm run dev`。Vite 只监听本机；发布仍以 Go 内嵌页面为准。
 

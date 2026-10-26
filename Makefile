@@ -6,8 +6,14 @@
 # 注：用每条 recipe 内显式注入 PATH，兼容 macOS 自带的老 GNU make 3.81。
 BIN := $(CURDIR)/.bin
 TOOLPATH := PATH="$(BIN):$$PATH"
+KARTWO_BUILD_GOOS := $(shell go env GOOS)
+ifeq ($(KARTWO_BUILD_GOOS),linux)
+KARTWO_TAG_FLAGS := -tags=nodynamic
+KARTWO_LINT_FLAGS := --build-tags=nodynamic
+KARTWO_STATIC_CHECK := verify-static
+endif
 
-.PHONY: all build test vet lint vuln leaks gen tidy run check tools web capacity
+.PHONY: all build test vet lint vuln leaks gen tidy run check tools web capacity verify-static
 
 all: check
 
@@ -28,19 +34,22 @@ tidy:          ## 整理依赖
 	go mod tidy
 
 vet:
-	go vet ./...
+	go vet $(KARTWO_TAG_FLAGS) ./...
 
 test:
-	go test -race -count=1 -timeout=20m ./...
+	go test $(KARTWO_TAG_FLAGS) -race -count=1 -timeout=20m ./...
 
-build:         ## 构建单静态二进制
-	CGO_ENABLED=0 go build -o kartwo ./cmd/kartwo
+build:         ## 构建单二进制（Linux严格静态）
+	sh scripts/build.sh -o kartwo
+
+verify-static: build  ## 校验Linux ELF无动态加载器/共享库（仅开发/CI）
+	sh scripts/check-static.sh kartwo
 
 lint:
-	$(TOOLPATH) golangci-lint run ./...
+	$(TOOLPATH) golangci-lint run $(KARTWO_LINT_FLAGS) ./...
 
 vuln:
-	$(TOOLPATH) govulncheck ./...
+	$(TOOLPATH) govulncheck $(KARTWO_TAG_FLAGS) ./...
 
 leaks:
 	$(TOOLPATH) gitleaks detect --source . --redact --no-banner
@@ -48,7 +57,7 @@ leaks:
 run: build     ## 本地启动（默认 :8080、./data）
 	./kartwo
 
-check: vet test build lint vuln leaks  ## 合主干前本地全量门禁（与 CI 同口径）
+check: vet test build lint vuln leaks $(KARTWO_STATIC_CHECK)  ## 合主干前本地全量门禁（与 CI 同口径）
 	@echo "✅ 全部门禁通过"
 
 capacity:      ## 显式运行1CPU/1GiB Linux实际程序容量检查（需现有Docker和ubuntu:24.04）

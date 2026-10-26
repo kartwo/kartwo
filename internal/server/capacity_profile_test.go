@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
+	"debug/buildinfo"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -121,6 +122,20 @@ func TestConstrainedBinaryCapacityProfile(t *testing.T) {
 	output := os.Getenv("KARTWO_CAPACITY_OUTPUT")
 	if runtime.GOOS != "linux" || output == "" {
 		t.Fatal("Linux and private output directory required")
+	}
+	binaryInfo, err := buildinfo.ReadFile(binary)
+	if err != nil {
+		t.Fatal("read actual binary build info", err)
+	}
+	buildSettings := map[string]string{}
+	for _, setting := range binaryInfo.Settings {
+		switch setting.Key {
+		case "GOOS", "GOARCH", "CGO_ENABLED", "-tags":
+			buildSettings[setting.Key] = setting.Value
+		}
+	}
+	if buildSettings["GOOS"] != "linux" || buildSettings["GOARCH"] != runtime.GOARCH || buildSettings["CGO_ENABLED"] != "0" || buildSettings["-tags"] != "nodynamic" {
+		t.Fatal("capacity binary must use the official Linux static build settings")
 	}
 	cpu, err := os.ReadFile("/sys/fs/cgroup/cpu.max")
 	if err != nil {
@@ -251,6 +266,7 @@ func TestConstrainedBinaryCapacityProfile(t *testing.T) {
 		t.Fatal(binaryErr)
 	}
 	report := map[string]any{"binary_sha256": fmt.Sprintf("%x", digest.Sum(nil)), "database_filesystem": filesystem, "source_commit": os.Getenv("KARTWO_CAPACITY_COMMIT"), "binary_version": strings.TrimSpace(string(version)), "platform": runtime.GOOS + "/" + runtime.GOARCH, "cpu_max": strings.TrimSpace(string(cpu)), "memory_max_bytes": int64(1 << 30), "startup_ms": time.Since(started).Milliseconds(), "source": "actual child binary; isolated synthetic data; no external network"}
+	report["binary_build_settings"] = buildSettings
 	password := rand.Text()
 	c.json(t, "POST", "/admin/api/setup", map[string]string{"username": "capacity-owner", "password": password}, http.StatusCreated)
 	c.json(t, "POST", "/admin/api/login", map[string]string{"username": "capacity-owner", "password": password}, http.StatusOK)
