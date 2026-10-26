@@ -88,7 +88,7 @@ a:hover { text-decoration: underline; }
 .blog-rich-toolbar { border: 1px solid var(--border); border-bottom: 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0; background: var(--surface); }
 .blog-toolbar-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); padding: var(--sp-2); border-bottom: 1px solid var(--border); }
 .blog-toolbar-row:last-child { border-bottom: 0; }
-.blog-toolbar-row .ant-select { min-width: 100px; }
+.blog-rich-toolbar .blog-toolbar-row > .ant-select { width: auto; min-width: 100px; max-width: 100%; flex: 0 0 auto; }
 .blog-rich-editor { min-height: 360px; max-height: 70vh; overflow: auto; border: 1px solid var(--border); border-radius: 0 0 var(--radius-sm) var(--radius-sm); padding: var(--sp-4); background: var(--surface); color: var(--text); overflow-wrap: anywhere; white-space: pre-wrap; }
 .blog-rich-editor:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .blog-rich-editor:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
