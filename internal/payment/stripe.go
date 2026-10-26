@@ -127,37 +127,58 @@ func (p *StripeProvider) CreatePayment(ctx context.Context, ord OrderForPayment)
 	return PaymentSession{RedirectURL: out.URL, Reference: out.ID}, nil
 }
 
-// TestConnection 通过读取账户信息验证当前 Stripe Secret key，并核对测试/正式模式。
+// TestConnection validates the saved account key and its test/live prefix.
+// Stripe's account object has no livemode field; only a successful authenticated
+// account response verifies the key. This does not verify charges or webhooks.
 func (p *StripeProvider) TestConnection(ctx context.Context) error {
-	secret, ok := p.keys.secretKey()
+	secret, mode, ok := p.keys.stripeConnectionCredentials()
 	if !ok {
 		return ErrLocked
 	}
+	if mode != "test" && mode != "live" {
+		return fmt.Errorf("payment: Stripe 配置模式不合法")
+	}
+	parts := strings.SplitN(secret, "_", 3)
+	if len(parts) != 3 || (parts[0] != "sk" && parts[0] != "rk") || parts[2] == "" || strings.ContainsAny(secret, " \r\n\t\x00") {
+		return fmt.Errorf("payment: Stripe 账户密钥格式不合法")
+	}
+	if parts[1] != mode {
+		return fmt.Errorf("payment: Stripe 密钥模式与当前配置不匹配")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.apiBase+"/v1/account", nil)
 	if err != nil {
-		return fmt.Errorf("payment: 构造 Stripe 测试连接请求失败: %w", err)
+		return fmt.Errorf("payment: 构造 Stripe 测试连接请求失败")
 	}
 	req.Header.Set("Authorization", "Bearer "+secret)
 	req.Header.Set("Stripe-Version", stripeAPIVersion)
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("payment: 调用 Stripe 测试连接失败: %w", err)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("payment: 调用 Stripe 测试连接失败")
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf("payment: Stripe 测试连接失败 (%d): %s", resp.StatusCode, stripeErrMsg(body))
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("payment: Stripe 测试连接失败 (%d)", resp.StatusCode)
+	}
+	const maxAccountBody = 1 << 20
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAccountBody+1))
+	if err != nil || len(body) > maxAccountBody {
+		return fmt.Errorf("payment: Stripe 账户响应读取失败")
 	}
 	var account struct {
-		Livemode bool `json:"livemode"`
+		ID     string `json:"id"`
+		Object string `json:"object"`
 	}
-	if err := json.Unmarshal(body, &account); err != nil {
-		return fmt.Errorf("payment: 解析 Stripe 账户响应失败: %w", err)
+	if json.Unmarshal(body, &account) != nil || account.Object != "account" || !strings.HasPrefix(account.ID, "acct_") || len(account.ID) <= len("acct_") || !validRefundReference(account.ID) {
+		return fmt.Errorf("payment: Stripe 账户响应不合法")
 	}
-	if account.Livemode != (p.keys.Status().StripeMode == "live") {
-		return fmt.Errorf("payment: Stripe 密钥模式与当前配置不匹配")
+	currentSecret, currentMode, currentOK := p.keys.stripeConnectionCredentials()
+	if !currentOK || currentSecret != secret || currentMode != mode {
+		return fmt.Errorf("payment: Stripe 配置已变化，请重新测试")
 	}
-	return nil
+	return ctx.Err()
 }
 
 // VerifyWebhook 第一道校验：用内存中的 whsec 对原始字节验签 + 时间戳容差；通过后规范化事件。
