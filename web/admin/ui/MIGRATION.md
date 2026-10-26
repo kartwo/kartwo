@@ -148,6 +148,29 @@ CGO=0 构建及实际版本 `dev-backup-capacity-20261026` 已核对。本机 31
 
 本批无需商家制造大文件、清空数据或重复下载：上批常驻后台 ZIP 下载已由商家确认成功。图片文件选择与其余适用人工、真实支付/SMTP、远端 CI 仍按各自证据验收。
 
+### 商品、分类与店铺设置的原生验收（2026-10-26）
+
+独立随机 `.localhost` 主机名、文件 SQLite 和真实 `server.New` 承载正式 React 构建，正常初始化/登录店主、邀请并接受只读员工，再由浏览器进入公开演示。没有启用外部支付或发信 worker，没有改动常驻库或复制其登录凭据。
+
+原生店主操作完成分类名称自动生成 slug、排序、新建后计数回显；有关联商品的删除按钮禁用。新建两个尺码变体时，空价格被拦截且原输入保留；填写 19.99/22.49 和库存 7/8 后保存草稿，再明确保存为上架，列表正确显示状态。已有商品改名后 slug 固定，价格 25.50、实存 9 和图片 alt 保存并刷新后仍保留；店铺名称保存成功。图片使用隔离接口预置的虚构 PNG，经正式媒体管线处理，只验证已有图片显示和说明编辑，不追认原生文件选择上传。
+
+只读员工的商品字段、价量和图片说明全部禁用，没有保存/上传按钮；分类只有只读表单，直接访问无权店铺设置显示拒绝页。演示身份的受保护商品与设置保持只读。原生复核发现受保护图片仍提示“删除当前图片后可重新上传”，现按实际图片管理权限显示额度提示，受保护示例明确只读，无图的只读商品显示“暂无商品图片”。自己创建的临时演示商品仍保留原有图片额度和上传约束。
+
+390×844 视口下，实际 `innerWidth=390`、文档可用宽与滚动宽均为 375；店铺设置、商品列表与编辑页没有整页横向溢出，抽屉导航点击后正常跳转并关闭。完成后恢复默认视口。此证据不覆盖全部设置页、完整键盘遍历或任意设备尺寸。
+
+第一轮原生操作后由 Go 直接核对两商品/四变体、2550 整数分/9 库存、固定 slug、图片说明和店铺名，订单/邮件/退款为零（963.042s）。最终提示复核确认受保护图片与无分类/无图片商品均可只读查看，错误上传/删除指引消失，虚构数据计数不变（203.474s）。临时服务、入口源文件、凭据/完成标记和自建标签均已清理；另关闭此前下载留下的失效隔离标签，原常驻标签保留。浏览器日志保留第一轮两条、提示复核一条 `Receiving end does not exist` 连接消息，来源尚未定位；不据此宣称控制台零错误。
+
+永久真实 HTTP 回归 `92ca06d` 验证分类关联删除 409、草稿公开 404→上架 200、固定 slug 和读回价量，以及只读/仅改价/仅库存三种员工的独立授权。匿名、缺 CSRF、负数和越权操作均拒绝，演示不能改受保护商品，最终 2550 分/9 实存/0 预留及原分类保留，订单/邮件/退款仍为零。完整 server 竞态 28.089s；294 React + 3 工具测试、严格 TS 与 Vite 构建通过（63.67s/1.96s），最大块 449.56KB 无包体告警。vet/lint 为零问题，npm 官方审计 0 漏洞，govulncheck 可达及导入包 0，既有一个未使用模块告警保留。
+
+本机最终 `dev-catalog-review-20261026` 静态程序在 31 文件/49 表完整备份与归档校验后优雅换版，新增迁移 0；原表、媒体/配置和 90 个嵌入资源字节/MIME 已核对。继续使用原账号和原常驻库；没有把这些虚构商品、员工或权限写入真实店铺。文件选择、其余适用人工、真实通道、远端 CI 和容量实测仍按各自清单验收。
+
+人工复测可复用现有数据，约 5–8 分钟：
+
+1. 刷新原后台并用原账号登录，查看原分类和商品，无需重建库或重配收款。
+2. 仅在测试草稿中检查标题/固定链接、价量保存与重开；分类关联存在时确认删除按钮保护。不要为验收改动正式售卖商品。
+3. 如有现成只读员工账号，核对商品只读及设置拒绝；无需临时新增员工或扩大权限。
+4. 缩窄窗口检查菜单和表单。博客封面/正文图片保存重开的人工结果仍单独确认，正常手动操作无需扩展文件访问权限；已通过的 ZIP 下载不用重复。
+
 ## 共用能力
 
 - [x] 严格 TypeScript、React 与 Ant Design 依赖及构建检查。
@@ -178,7 +201,7 @@ CGO=0 构建及实际版本 `dev-backup-capacity-20261026` 已核对。本机 31
 | BlogPostEdit | React 已实现，待正式入口统一验收 | `createBlogPost`、`getBlogPost`、`listBlogPosts`、`previewBlog`、`updateBlogPost`、`uploadBlogImage` |
 | BlogPosts | React 已实现，待正式入口统一验收 | `deleteBlogPost`、`listBlogPosts` |
 | BlogSettings | React 已实现，待统一浏览器验收 | `getBlogSettings`、`setBlogSettings` |
-| CategoryManagement | React 已实现，待统一浏览器验收 | `createCategory`、`deleteCategory`、`listCategories`、`updateCategory` |
+| CategoryManagement | 隔离原生店主/只读员工已核对，关联保护有 HTTP 回归；人工待 | `createCategory`、`deleteCategory`、`listCategories`、`updateCategory` |
 | ContactInbox | React 已实现，待统一浏览器验收 | `contactMessage`、`contactMessages`、`updateContactStatus` |
 | ContactSettings | React 已实现，待统一浏览器验收 | `contactSettings`、`saveContactSettings` |
 | Dashboard | React 已实现，待统一浏览器验收 | `dashboard` |
@@ -193,10 +216,10 @@ CGO=0 构建及实际版本 `dev-backup-capacity-20261026` 已核对。本机 31
 | PaymentSettings | React 已实现，待统一浏览器验收 | `getPayment`、`setPayment`、`testStripeConnection` |
 | PaymentWizard | React 已实现，待统一浏览器验收 | `wizardPaymentSkip` |
 | PolicySettings | React 已实现，待统一浏览器验收 | `generateFooterPages`、`getPolicyProfile`、`setPolicyProfile` |
-| ProductEdit | React 已实现，待正式入口统一验收 | `createProduct`、`deleteMedia`、`getProduct`、`getTranslation`、`listCategories`、`listMedia`、`setInventory`、`setPrice`、`translateText`、`updateMediaAlt`、`updateProduct`、`uploadMedia` |
-| ProductList | React 已实现，待正式入口统一验收 | `deleteProduct`、`listProducts`、`setProductFeatured` |
+| ProductEdit | 隔离原生店主/只读员工/演示及390px已核对；文件选择/其余人工待 | `createProduct`、`deleteMedia`、`getProduct`、`getTranslation`、`listCategories`、`listMedia`、`setInventory`、`setPrice`、`translateText`、`updateMediaAlt`、`updateProduct`、`uploadMedia` |
+| ProductList | 隔离原生店主/演示列表及390px已核对；其余人工待 | `deleteProduct`、`listProducts`、`setProductFeatured` |
 | ShippingSettings | React 已实现，待统一浏览器验收 | `createShippingZone`、`deleteShippingZone`、`listShippingCountries`、`listShippingZones`、`saveDefaultShippingZone`、`saveShippingCountries`、`updateShippingZone` |
-| ShopSettings | React 已实现，待统一浏览器验收 | `deleteShopLogo`、`getShop`、`setShop`、`uploadShopLogo` |
+| ShopSettings | 隔离店主保存/演示只读/员工拒绝及390px已核对；Logo选择/其余人工待 | `deleteShopLogo`、`getShop`、`setShop`、`uploadShopLogo` |
 | SmtpSettings | React 已实现，待统一浏览器验收 | `getSmtp`、`setSmtp`、`smtpTest` |
 | SmtpWizard | React 已实现，待统一浏览器验收 | `wizardSmtpSkip` |
 | TranslationSettings | React 已实现，待统一浏览器验收 | `getTranslation`、`setTranslation` |
