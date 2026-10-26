@@ -7,23 +7,8 @@ package server
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"github.com/kartwo/kartwo/internal/admin"
 	"github.com/kartwo/kartwo/internal/blog"
-	"github.com/kartwo/kartwo/internal/cart"
-	"github.com/kartwo/kartwo/internal/catalog"
-	"github.com/kartwo/kartwo/internal/config"
-	"github.com/kartwo/kartwo/internal/mail"
-	"github.com/kartwo/kartwo/internal/media"
-	"github.com/kartwo/kartwo/internal/migrate"
-	"github.com/kartwo/kartwo/internal/order"
-	"github.com/kartwo/kartwo/internal/payment"
-	"github.com/kartwo/kartwo/internal/redirect"
-	"github.com/kartwo/kartwo/internal/settings"
-	"github.com/kartwo/kartwo/internal/store"
-	"github.com/kartwo/kartwo/internal/storefront"
-	"github.com/kartwo/kartwo/migrations"
 	"image"
 	"image/color"
 	"image/png"
@@ -36,38 +21,10 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 )
 
-func newBlogEntryFixture(t *testing.T) (http.Handler, *store.Store, string) {
-	t.Helper()
-	ctx := context.Background()
-	dir := t.TempDir()
-	st, err := store.Open(&config.Config{DBEngine: "sqlite", DataDir: dir, DBPath: filepath.Join(dir, "shop.db")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
-	if _, err = migrate.Run(ctx, st.DB, migrations.FS); err != nil {
-		t.Fatal(err)
-	}
-	set := settings.New(st.DB)
-	svc := admin.New(st.DB)
-	keys := payment.NewKeyCache(set)
-	svc.SetPaymentKeys(keys)
-	cache := mail.NewCache(set)
-	svc.SetMailKeys(cache)
-	root := filepath.Join(dir, "media")
-	md := media.New(st.DB, media.NewLocalBackend(root), media.NewDefaultPolicy(root, 10<<20, 0), 20)
-	h := admin.NewHTTP(svc, catalog.New(st.DB), nil, md, set, order.New(st.DB, set), nil, cache, nil, admin.BackupConfig{}, "", false, nil)
-	h.ConfigureDemo(admin.DemoConfig{Enabled: true, SessionTTL: time.Hour, MaxProducts: 3})
-	customer := storefront.NewHTTP(storefront.New(st.DB), cart.New(st.DB), order.New(st.DB, set), set, nil, redirect.New(st.DB), "Blog fixture", "https://blog.example.invalid", nil)
-	handler := New(&config.Config{DataDir: dir}, st, "blog-entry-test", h, customer, payment.NewHTTP(payment.NewService(st.DB, set, keys)), false)
-	return handler, st, root
-}
-
 func TestBlogImagePublicationLegacyAndPermissionFlow(t *testing.T) {
-	handler, st, root := newBlogEntryFixture(t)
+	handler, st, root := newAdminEntryFixture(t)
 	call := func(method, path string, body []byte, contentType string, cookies []*http.Cookie, csrf string, want int) *httptest.ResponseRecorder {
 		t.Helper()
 		r := httptest.NewRequest(method, "https://blog.example.invalid"+path, bytes.NewReader(body))
