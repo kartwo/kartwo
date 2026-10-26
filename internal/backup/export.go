@@ -216,10 +216,15 @@ func writeFile(zw *zip.Writer, name, source string) error {
 
 func (e *Exporter) writeMedia(zw *zip.Writer) error {
 	root := filepath.Join(e.dataDir, "media")
-	if _, err := os.Stat(root); os.IsNotExist(err) {
+	// Inspect the directory entry itself so a dangling link is not mistaken for no media.
+	info, err := os.Lstat(root)
+	if os.IsNotExist(err) {
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("backup: 读取媒体目录失败: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("backup: 媒体路径不是目录")
 	}
 	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {

@@ -195,3 +195,110 @@ func TestRestoreRejectsExistingTargetAndUnsafeArchive(t *testing.T) {
 		t.Fatal("路径穿越 ZIP 应被拒绝")
 	}
 }
+
+func TestCreateRejectsNonDirectoryMediaRoot(t *testing.T) {
+	dir := t.TempDir()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "shop.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	defer func() { _ = db.Close() }()
+	if _, err = db.Exec(`CREATE TABLE fixture (value TEXT); INSERT INTO fixture VALUES ('source-preserved')`); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(dir, "media")
+	marker := []byte("virtual-file-mistaken-for-media-directory")
+	if err = os.WriteFile(root, marker, 0600); err != nil {
+		t.Fatal(err)
+	}
+	exporter := New(db, dir, "media-root-test")
+	for _, tc := range []struct {
+		name   string
+		create func(context.Context) (string, Manifest, error)
+	}{
+		{"download", exporter.Create}, {"automatic", exporter.CreatePersistent}, {"upgrade", exporter.CreateUpgradeSnapshot},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path, _, e := tc.create(context.Background())
+			if e == nil {
+				defer func() { _ = os.Remove(path) }()
+				zr, openErr := zip.OpenReader(path)
+				var names []string
+				if openErr == nil {
+					for _, entry := range zr.File {
+						names = append(names, entry.Name)
+					}
+					_ = zr.Close()
+				}
+				_, restoreErr := Restore(path, filepath.Join(t.TempDir(), "restored"))
+				t.Errorf("non-directory media unexpectedly exported; entries=%v restore_error=%v", names, restoreErr)
+			} else if path != "" {
+				t.Fatal("failed export returned a usable archive path")
+			}
+		})
+	}
+	if leftovers, err := filepath.Glob(filepath.Join(dir, "backups", "*")); err != nil || len(leftovers) != 0 {
+		t.Fatal("invalid export left files", err)
+	}
+	if got, err := os.ReadFile(root); err != nil || string(got) != string(marker) {
+		t.Fatal("failure changed original media path", err)
+	}
+	var value string
+	if err = db.QueryRow(`SELECT value FROM fixture`).Scan(&value); err != nil || value != "source-preserved" {
+		t.Fatal("failure changed source database", err)
+	}
+	if err = os.Remove(root); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Mkdir(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(root, "repaired.txt"), []byte("repaired-media"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	path, _, err := exporter.Create(context.Background())
+	if err != nil {
+		t.Fatal("repair did not recover export", err)
+	}
+	defer func() { _ = os.Remove(path) }()
+	target := filepath.Join(t.TempDir(), "restored-repaired")
+	if _, err = Restore(path, target); err != nil {
+		t.Fatal("repaired export not restorable", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(target, "media", "repaired.txt")); err != nil || string(data) != "repaired-media" {
+		t.Fatal("repaired media lost", err)
+	}
+}
+
+func TestCreateRejectsDanglingMediaRoot(t *testing.T) {
+	dir := t.TempDir()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "shop.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err = db.Exec(`CREATE TABLE fixture (value TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(dir, "media")
+	target := filepath.Join(dir, "missing-media-target")
+	if err = os.Symlink(target, root); err != nil {
+		t.Skipf("symbolic links unavailable on this host: %v", err)
+	}
+	path, _, err := New(db, dir, "dangling-media-test").Create(context.Background())
+	if err == nil {
+		_ = os.Remove(path)
+		t.Fatal("dangling media root silently treated as an absent media directory")
+	}
+	info, err := os.Lstat(root)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("failure modified media root", err)
+	}
+	if _, err = os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatal("failure created the missing link target")
+	}
+	if paths, err := filepath.Glob(filepath.Join(dir, "backups", ".export-*")); err != nil || len(paths) != 0 {
+		t.Fatal("failed export left temporary files", err)
+	}
+}

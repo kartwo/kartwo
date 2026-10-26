@@ -389,3 +389,44 @@ func TestDataImportExportRestoreFlow(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+func TestDataExportInvalidMediaRootIsPrivateAndRecoverable(t *testing.T) {
+	handler, st, root := newAdminEntryFixture(t)
+	owner, _ := dataEntryOwner(t, handler)
+	marker := "VIRTUAL-MEDIA-ROOT-ERROR"
+	if err := os.WriteFile(root, []byte(marker), 0600); err != nil {
+		t.Fatal(err)
+	}
+	failed := owner.json("GET", "/admin/api/export", nil, 500)
+	if failed.Header().Get("Content-Disposition") != "" || !strings.Contains(failed.Header().Get("Content-Type"), "application/json") {
+		t.Fatal("failed export looked like a download")
+	}
+	for _, unsafe := range []string{marker, root, filepath.Dir(root)} {
+		if strings.Contains(failed.Body.String(), unsafe) {
+			t.Fatal("export failure exposed private file details")
+		}
+	}
+	var audit int
+	if err := st.DB.QueryRow(`SELECT count(*) FROM audit_event WHERE action='export.create'`).Scan(&audit); err != nil || audit != 0 {
+		t.Fatal("failed export recorded success", err)
+	}
+	if paths, err := filepath.Glob(filepath.Join(filepath.Dir(root), "backups", ".export-*")); err != nil || len(paths) != 0 {
+		t.Fatal("failed export leaked temporary files", err)
+	}
+	if err := os.Remove(root); err != nil {
+		t.Fatal(err)
+	}
+	for _, state := range []string{"missing", "empty"} {
+		if state == "empty" {
+			if err := os.Mkdir(root, 0700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		response := owner.json("GET", "/admin/api/export", nil, 200)
+		archive, err := zip.NewReader(bytes.NewReader(response.Body.Bytes()), int64(response.Body.Len()))
+		if err != nil || len(archive.File) != 2 {
+			t.Fatalf("%s media root must support a database-only export: %v", state, err)
+		}
+	}
+	dataEntryCounts(t, st, 0, 0, 0)
+}
