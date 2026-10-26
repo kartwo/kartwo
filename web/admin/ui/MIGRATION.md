@@ -243,7 +243,7 @@ CGO=0 构建及实际版本 `dev-backup-capacity-20261026` 已核对。本机 31
 | 原页面 | React 状态 | 原页面使用的 API |
 |---|---|---|
 | About | 原生许可文本与离线地址数据归属已核对 | 组合页面/静态内容，核对其子组件 |
-| AccountSettings | React 已实现，待统一浏览器验收 | `getAccount`、`updateAccount`、`updateStaffPassword` |
+| AccountSettings | 原生店主/员工空校验及390px、演示身份隐藏已核对；实际改密人工待 | `getAccount`、`updateAccount`、`updateStaffPassword` |
 | AuditEvents | 原生店主日志/演示脱敏及390px表格局部滚动已核对 | `auditEvents` |
 | BackupSettings | 隔离原生策略保存/刷新、演示脱敏及390px已核对；原子失败回归通过，远端实连待 | `getBackupSettings`、`setBackupSettings`、`testBackup` |
 | BlogPostEdit | 商家确认封面/正文图片保存重开正常；隔离图文/视频及权限回归已过 | `createBlogPost`、`getBlogPost`、`listBlogPosts`、`previewBlog`、`updateBlogPost`、`uploadBlogImage` |
@@ -255,23 +255,51 @@ CGO=0 构建及实际版本 `dev-backup-capacity-20261026` 已核对。本机 31
 | Dashboard | 原生零订单/权限入口及390px已核对；有单统计人工待 | `dashboard` |
 | Diagnostics | 原生数据库/磁盘/保护点显示及刷新已核对 | `diagnostics` |
 | DomainSettings | 隔离原生格式校验/保存、本地提示及演示只读已核对；真实TLS待 | `getDomain`、`setDomain` |
-| DomainWizard | React 已实现，待统一浏览器验收 | `wizardDomainSkip` |
+| DomainWizard | 原生未保存拦截/保存推进已核对；完整首次安装与真实TLS待 | `wizardDomainSkip` |
 | ExportData | HTTP/整包恢复已验证，商家确认常驻浏览器下载成功 | 组合页面/静态内容，核对其子组件 |
 | ImportCSV | React 已实现，待统一浏览器验收 | `executeImport`、`previewImportCSV` |
 | Merchandising | 隔离原生草稿→发布/重开/固定链接、员工授权/演示只读及390px已核对；删除仅取消 | `createContentPage`、`deleteContentPage`、`getContentPage`、`listContentPages`、`updateContentPage` |
 | OrderDetail | React 已实现，待正式入口统一验收 | `createRefund`、`fulfillOrder`、`getOrder`、`reconcileRefunds`、`refreshRefund`、`revokeOrderAccess` |
 | OrderList | React 已实现，待正式入口统一验收 | `exportOrdersCSV`、`listOrders` |
 | PaymentSettings | 原生空密钥保存/员工拒绝/演示只读及390px已核对；真实通道待 | `getPayment`、`setPayment`、`testStripeConnection` |
-| PaymentWizard | React 已实现，待统一浏览器验收 | `wizardPaymentSkip` |
-| PolicySettings | React 已实现，待统一浏览器验收 | `generateFooterPages`、`getPolicyProfile`、`setPolicyProfile` |
+| PaymentWizard | 原生识别预置配置已核对；新配置/跳过及外部支付验收待 | `wizardPaymentSkip` |
+| PolicySettings | 原生时效校验/七草稿/重复跳过、员工授权/演示只读及390px已核对；覆盖仅取消 | `generateFooterPages`、`getPolicyProfile`、`setPolicyProfile` |
 | ProductEdit | 隔离原生店主/只读员工/演示及390px已核对；文件选择/其余人工待 | `createProduct`、`deleteMedia`、`getProduct`、`getTranslation`、`listCategories`、`listMedia`、`setInventory`、`setPrice`、`translateText`、`updateMediaAlt`、`updateProduct`、`uploadMedia` |
 | ProductList | 隔离原生店主/演示列表及390px已核对；其余人工待 | `deleteProduct`、`listProducts`、`setProductFeatured` |
-| ShippingSettings | React 已实现，待统一浏览器验收 | `createShippingZone`、`deleteShippingZone`、`listShippingCountries`、`listShippingZones`、`saveDefaultShippingZone`、`saveShippingCountries`、`updateShippingZone` |
+| ShippingSettings | 原生四国/整数分/已保存读失败恢复、员工授权/演示只读及390px已核对；删除仅取消 | `createShippingZone`、`deleteShippingZone`、`listShippingCountries`、`listShippingZones`、`saveDefaultShippingZone`、`saveShippingCountries`、`updateShippingZone` |
 | ShopSettings | 隔离店主保存/演示只读/员工拒绝及390px已核对；Logo选择/其余人工待 | `deleteShopLogo`、`getShop`、`setShop`、`uploadShopLogo` |
 | SmtpSettings | 原生校验/空密码保存、员工拒绝/演示只读及390px已核对；实发待 | `getSmtp`、`setSmtp`、`smtpTest` |
-| SmtpWizard | React 已实现，待统一浏览器验收 | `wizardSmtpSkip` |
+| SmtpWizard | 原生保存虚构配置/完成推进已核对；真实发信待 | `wizardSmtpSkip` |
 | TranslationSettings | 原生空密钥保存/员工拒绝/演示只读及最终390px长选项已核对；实连待 | `getTranslation`、`setTranslation` |
-| UsersRoles | React 已实现，待统一浏览器验收 | `createRole`、`createUser`、`deleteRole`、`listRoles`、`listUsers`、`resetUserPassword`、`revokeUserSessions`、`updateRole`、`updateUser` |
+| UsersRoles | 原生预设/自定义改权及会话失效、员工/演示拒绝与390px已核对；邀请/重置等完整原生待 | `createRole`、`createUser`、`deleteRole`、`listRoles`、`listUsers`、`resetUserPassword`、`revokeUserSessions`、`updateRole`、`updateUser` |
+
+## 配送、政策、角色和向导的隔离原生验收（2026-10-26）
+
+配送写入已获服务器确认，但随后读取失败时，原界面仍将整次操作显示为失败。现四类写入（配送范围、默认运费、特殊规则保存、删除）沿用已确认回执，显示读取失败的独立提示并暂停当前页面的新写入；“刷新配送设置”只有完整读取成功后才解除屏障。再次读取失败仍保持屏障。没有改变配送范围、金额协议或后端 API，也不将未收到写入响应的网络异常当作已确认成功。
+
+五项新回归先红后绿：四类接口回执与一次交互测试覆盖读取失败、禁止再次写入、失败刷新后继续锁定及成功刷新后恢复。相关 21 项、最终全部 299 React + 3 Node 工具测试、严格 TypeScript 与 Vite 正式构建通过（64.14s/1.92s），最大块 449.57 kB，无包体警告；无新增依赖或迁移。
+
+实际 `server.New`、38 次迁移、文件 SQLite、独立随机 `.localhost` 和正式嵌入资源承载隔离原生验收，未改常驻店铺的配置、账号或权限：
+
+- 向导识别接口预置的虚构收款配置；未保存域名时拦截继续，明确保存域名与虚构 SMTP 资料后完成。保存期间导航锁定，未测试公网证书、支付平台或真实发信；不能替代完整首次安装或 30 分钟计时验收。
+- 配送国家在原 US/CA/GB 上增加 AU，保存后为四个；默认运费 9.999 拒绝，9.99 与满 100.01 免邮保存。装配仅在写入成功后注入两次读取 500：先出现成功回执和写入屏障，第一次手工刷新失败仍锁定，第二次成功恢复；数据库核对默认运费只有一次写入。CA 特殊规则 14.99 保存并回显，删除只打开确认并取消。
+- 政策资料校验配送最多天数不得小于最少天数；修正后保存。取消“新建页面后直接发布”并生成七页草稿，再生成跳过已有七页；覆盖确认只取消，不覆盖或发布正文。
+- 预设“只读”角色移除查看订单，自定义角色改名并移除修改库存，保存和刷新后保留；预设名称固定，关联员工的自定义角色不可删除。原员工会话实际失效，新登录按剩余权限可进入配送/政策，用户管理直接拒绝。
+- 账号页仅核对店主/员工空表单校验、员工用户名固定和密码为空；没有通过浏览器输入或修改新凭据。演示账号隐藏身份且只读，配送/政策没有写入按钮，用户管理直接拒绝。实际改密、重置邀请和撤销的完整原生动作仍按适用人工验收，不能由此次空表单校验代替。
+- 390×844 下，配送/政策文档宽与滚动宽均为 390，角色/账号为 375，无整页横向溢出；完成后恢复默认视口。本地工作区验收截图（未随源码提交）：配送恢复屏障 `docs/screenshots/operations-native-shipping-recovery-20261026.png`、配送手机 `operations-native-shipping-mobile-20261026.png`、政策手机 `operations-native-policy-mobile-20261026.png`、角色手机 `operations-native-roles-mobile-20261026.png`（后三项同目录）。
+
+临时 Go 流程实际退出 0（858.367s），末尾直接核对四国、999/10001/1499 整数分、角色及旧会话、域名/发件人和政策七草稿；商品、变体、导入、订单、邮件与退款为零，外部测试请求计数为零。装配拦截外部通道，这只能证明此次未调用，不能证明通道可用。临时服务、源码、私有凭据/完成标记和自建标签已清理。控制台保留两条 `Receiving end does not exist` 连接消息，来源未定位，不宣称零错误。
+
+全仓 Go vet/lint 通过（0 issues）；本批未改 Go 业务源码，全仓竞态沿用上一批相同后端的通过结果，本次另运行上述真实原生装配核对。npm 官方审计 0 漏洞；govulncheck 可达及导入包漏洞为零，既有一个未被导入/调用的依赖模块告警保留，无门禁豁免。远端 CI 和真实通道仍待。
+
+本机已在完整在线快照/归档逐文件校验后优雅换为 `dev-operations-review-20261026`（33 文件、49 表，SHA256 `ed34c930b90a6f1b2c18c7279ed7cc8169bae3c79cae7ed6afc188a2dc3bac76`）。新增迁移 0，原 49 表、媒体/配置、目录外钥匙及最终 90 个 embed 资源字节/MIME 全部一致；配送/政策/用户接口匿名 401 且私密头完整。原 7 份策略新建/轮换一个自动备份，完整手工包仍保留旧包。本次没有更新生产服务器、推送或发布。
+
+人工复测（约 5–10 分钟，继续复用常驻库）：
+
+1. 用原账号打开 `http://127.0.0.1:8189/admin/`，刷新后进入“设置 → 配送”，核对原国家、默认运费和特殊规则。不必修改正式配送范围或制造读取故障；异常恢复已在隔离测试完成。
+2. 进入“店铺政策”，核对经营资料与时效；不要为测试点击覆盖正文或发布。此批七草稿只存在于独立虚构测试库，常驻内容不变。
+3. 查看“用户与角色”与“账号与安全”，核对当前角色及布局；无需临时扩大员工权限或修改密码。已有安全操作如需人工验收，应由店主本人输入凭据并完成提交，不发送密码给开发端。
+4. 缩窄窗口检查配送、政策和角色表单无整页横向溢出。博客图片已确认正常保留、ZIP 已确认下载成功，无需重复操作。
 
 ## 已迁移配置页的验收边界
 

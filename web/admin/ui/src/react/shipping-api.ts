@@ -5,6 +5,7 @@
 // 时间：2026-10-25 11:01:04
 
 import { request } from './transport'
+import { writeAndReload } from './catalog-api'
 import { record, string, bool, choice, integer } from './api-values'
 import { moneyToCents, centsToMoney } from './money'
 export const continents = ['Asia', 'Europe', 'North America', 'South America', 'Africa', 'Oceania', 'Antarctica', 'Other'] as const
@@ -65,17 +66,14 @@ export const shippingAPI = {
     return { countries, zones }
   },
   saveCountries: async (countries: string[]) => {
-    await request('PUT', '/settings/shipping/countries', { countries: [...new Set(countries)] })
-    return shippingAPI.countries()
+    return writeAndReload(() => request('PUT', '/settings/shipping/countries', { countries: [...new Set(countries)] }), shippingAPI.countries)
   },
   saveDefault: async (input: RateFields) => {
-    await request('PUT', '/settings/shipping/default', { name: 'Default', countries: '', ...ratePayload(input) })
-    return shippingAPI.zones()
+    return writeAndReload(() => request('PUT', '/settings/shipping/default', { name: 'Default', countries: '', ...ratePayload(input) }), shippingAPI.zones)
   },
   saveRule: async (input: RuleFields, id = '') => {
     if (!input.name.trim() || !input.countries.length || !input.countries.every(code)) throw new Error('请填写规则名称并选择有效国家')
-    await request(id ? 'PATCH' : 'POST', '/settings/shipping' + (id ? '/' + zoneID(id) : ''), { name: input.name.trim(), countries: [...new Set(input.countries)].join(','), ...ratePayload(input) })
-    return shippingAPI.zones()
+    return writeAndReload(() => request(id ? 'PATCH' : 'POST', '/settings/shipping' + (id ? '/' + zoneID(id) : ''), { name: input.name.trim(), countries: [...new Set(input.countries)].join(','), ...ratePayload(input) }), shippingAPI.zones)
   },
-  removeRule: async (id: string) => { await request('DELETE', '/settings/shipping/' + zoneID(id)); return shippingAPI.zones() },
+  removeRule: async (id: string) => writeAndReload(() => request('DELETE', '/settings/shipping/' + zoneID(id)), shippingAPI.zones),
 }

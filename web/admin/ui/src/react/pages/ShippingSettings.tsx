@@ -4,7 +4,7 @@
 // 邮箱：3442535897@qq.com
 // 时间：2026-10-25 11:01:04
 
-import { CheckSquareOutlined, ClearOutlined, CloseOutlined, DeleteOutlined, EditOutlined, SaveOutlined } from '@ant-design/icons'
+import { CheckSquareOutlined, ClearOutlined, CloseOutlined, DeleteOutlined, EditOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { useEffect, useState } from 'react'
 import { Alert, App, Button, Card, Checkbox, Empty, Form, Input, Modal, Radio, Select, Space, Tabs, Typography } from 'antd'
 import type { FormInstance } from 'antd'
@@ -91,26 +91,31 @@ function SpecialRules({ zones, countries, writable, busy, save, remove }: { zone
 }
 export default function ShippingSettings() {
   const { state } = useSession(), resource = useResource(shippingAPI.load), task = useTask(), { message } = App.useApp()
-  const data = resource.data, writable = can(state.session, 'settings.shipping')
+  const [recovery, setRecovery] = useState('')
+  const data = resource.data, canManage = can(state.session, 'settings.shipping'), writable = canManage && !recovery
+  async function refreshConfirmed() {
+    await task.run(() => shippingAPI.load(new AbortController().signal), next => { resource.setData(next); setRecovery('') })
+  }
   async function saveCountries(codes: string[]) {
     if (!writable) return
-    await task.run(() => shippingAPI.saveCountries(codes), countries => { resource.setData(current => current && { ...current, countries }); void message.success('可配送范围已保存') })
+    await task.run(() => shippingAPI.saveCountries(codes), result => { const countries = result.data; if (countries) resource.setData(current => current && { ...current, countries }); setRecovery(result.warning); void message.success('可配送范围已保存') })
   }
   async function saveDefault(values: RateFields) {
     if (!writable) return
-    await task.run(() => shippingAPI.saveDefault(values), zones => { resource.setData(current => current && { ...current, zones }); void message.success('默认运费已保存') })
+    await task.run(() => shippingAPI.saveDefault(values), result => { const zones = result.data; if (zones) resource.setData(current => current && { ...current, zones }); setRecovery(result.warning); void message.success('默认运费已保存') })
   }
   async function saveRule(values: RuleFields, id: string, done: () => void) {
     if (!writable) return
-    await task.run(() => shippingAPI.saveRule(values, id), zones => { resource.setData(current => current && { ...current, zones }); done(); void message.success('特殊地区规则已保存') })
+    await task.run(() => shippingAPI.saveRule(values, id), result => { const zones = result.data; if (zones) resource.setData(current => current && { ...current, zones }); setRecovery(result.warning); done(); void message.success('特殊地区规则已保存') })
   }
   async function remove(id: string) {
     if (!writable) return
-    await task.run(() => shippingAPI.removeRule(id), zones => { resource.setData(current => current && { ...current, zones }); void message.success('配送规则已删除') })
+    await task.run(() => shippingAPI.removeRule(id), result => { const zones = result.data; if (zones) resource.setData(current => current && { ...current, zones }); setRecovery(result.warning); void message.success('配送规则已删除') })
   }
   return <div className="shipping-settings"><PageState {...resource} retry={resource.refresh}>
     {data && <>
-      {!writable && <Alert type="info" title="当前账号只允许查看配送设置。搜索、标签页和规则查看仍可使用。" />}
+      {!canManage && <Alert type="info" title="当前账号只允许查看配送设置。搜索、标签页和规则查看仍可使用。" />}
+      {recovery && <Alert type="warning" showIcon title={recovery} description="当前页面尚未取得最新配置，已暂停写入。请刷新后继续。" action={<Button icon={<ReloadOutlined aria-hidden />} disabled={task.busy} onClick={() => void refreshConfirmed()}>刷新配送设置</Button>} />}
       {task.error && <Alert type="error" showIcon title={task.error} />}
       <Tabs aria-label="配送设置" items={[
         { key: 'countries', label: `可配送国家/地区 ${data.countries.enabled.length}`, children: <CountrySelection data={data.countries} writable={writable} busy={task.busy} save={codes => void saveCountries(codes)} /> },

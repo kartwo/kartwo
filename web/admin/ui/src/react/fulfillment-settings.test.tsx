@@ -27,6 +27,44 @@ const countryData = { countries: [
 const defaultZone = { public_id: 'default-fixture-id', name: 'Default', countries: '', rate_cents: 500, free_over_cents: 0, active: true, is_default: true }
 const specialZone = { public_id: 'special-fixture-id', name: 'Fixture USA', countries: 'US', rate_cents: 899, free_over_cents: 10000, active: true, is_default: false }
 function profileFixture() { return { configured: true, profile: { support_email: 'support@example.com', ship_from: 'China', processing_hours: 48, return_window_days: 7, return_shipping_payer: 'buyer', business_name: 'Fixture Store', delivery_estimates: policyRegions.map(region => ({ region, min_business_days: 5, max_business_days: 10 })) } } }
+
+it.each(['countries', 'default', 'create', 'delete'] as const)('配送写入已确认后 %s 重读失败仍保留成功回执', async operation => {
+  const fetch = vi.fn(async (_url: string, options: RequestInit) => options.method === 'GET'
+    ? response({ error: '配送读取失败' }, 500)
+    : response(options.method === 'DELETE' ? null : { public_id: 'saved-shipping-rule' }, options.method === 'DELETE' ? 204 : 200))
+  vi.stubGlobal('fetch', fetch)
+  const actions = {
+    countries: () => shippingAPI.saveCountries(['US']),
+    default: () => shippingAPI.saveDefault({ mode: 'flat', rate: '5.00', freeOver: '' }),
+    create: () => shippingAPI.saveRule({ name: 'Saved rule', countries: ['US'], mode: 'flat', rate: '8.99', freeOver: '' }),
+    delete: () => shippingAPI.removeRule(specialZone.public_id),
+  }
+  await expect(actions[operation]()).resolves.toMatchObject({ data: null, warning: expect.stringContaining('保存操作已完成') })
+  expect(fetch.mock.calls.filter(([, options]) => options.method !== 'GET')).toHaveLength(1)
+})
+
+it('配送写入已确认但重读失败时锁定写入，刷新失败保留屏障，成功后才恢复', async () => {
+  let saved = false, failRead = true
+  const fetch = vi.fn(async (url: string, options: RequestInit) => {
+    if (options.method === 'PUT') { saved = true; return response({ countries: ['CN', 'US'] }) }
+    if (saved && failRead) return response({ error: '配送读取失败' }, 500)
+    return response(url.endsWith('/countries') ? countryData : { zones: [defaultZone] })
+  })
+  vi.stubGlobal('fetch', fetch); mount('/shipping')
+  await screen.findByLabelText('搜索配送国家')
+  await userEvent.setup().click(screen.getByRole('button', { name: '保存配送范围' }))
+  await screen.findByText(/保存操作已完成/)
+  expect(screen.queryByRole('button', { name: '保存配送范围' })).toBeNull()
+  expect((screen.getByRole('checkbox', { name: /United States/ }) as HTMLInputElement).disabled).toBe(true)
+  await userEvent.setup().click(screen.getByRole('button', { name: '刷新配送设置' }))
+  await screen.findByText('配送读取失败')
+  expect(screen.queryByRole('button', { name: '保存配送范围' })).toBeNull()
+  failRead = false
+  await userEvent.setup().click(screen.getByRole('button', { name: '刷新配送设置' }))
+  await screen.findByRole('button', { name: '保存配送范围' })
+  expect(screen.queryByText(/保存操作已完成/)).toBeNull()
+  expect(fetch.mock.calls.filter(([, options]) => options.method === 'PUT')).toHaveLength(1)
+})
 function response(value: unknown, status = 200) { return new Response(status === 204 ? null : JSON.stringify(value), { status }) }
 function mount(path: keyof typeof settingsPages, session: Session = account()) {
   const controller = new SessionController(fakeAPI(session))
