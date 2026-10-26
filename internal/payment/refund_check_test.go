@@ -404,29 +404,80 @@ func TestStripeRefundInventoryBound(t *testing.T) {
 }
 
 func TestRefundCheckTrackedBrowserCancellation(t *testing.T) {
-	svc, db, _ := newTestSvc(t)
-	seedPaidOrder(t, db, "tracked-cancel", 2500, "pi-refund")
-	f, ts := newRefundServer(t)
-	svc.stripe.apiBase = ts.URL
-	if _, err := svc.ReconcileRefunds(context.Background(), "tracked-cancel", "stripe", "pi-refund"); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	f.callback = func(string, int64) { cancel() }
-	first, err := svc.RequestRefund(ctx, "tracked-cancel", refundInput("tracked-cancel-001", 500, 0))
-	if err != nil || first.ID == "" || first.State != "review" {
-		t.Fatalf("cancel lost request: %+v %v", first, err)
-	}
-	next, err := svc.RetryRefund(context.Background(), "tracked-cancel", first.ID, "")
-	if err != nil || next.State != "succeeded" {
-		t.Fatalf("recovery %+v %v", next, err)
-	}
-	assertLedger(t, db, 2500, 500, 1)
-	if posts, _ := f.counts(); posts != 2 {
-		t.Fatalf("expected only same-key resend after unknown result, posts=%d", posts)
-	}
-	if _, created := f.counts(); created != 1 {
-		t.Fatal("created duplicate refund")
+	for _, test := range []struct {
+		name           string
+		knownReference bool
+		posts, lookups int
+	}{
+		{name: "cancel_before_refund_result", posts: 2},
+		{name: "cancel_after_refund_id", knownReference: true, posts: 1, lookups: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			svc, db, _ := newTestSvc(t)
+			seedPaidOrder(t, db, "tracked-cancel", 2500, "pi-refund")
+			f, ts := newRefundServer(t)
+			svc.stripe.apiBase = ts.URL
+			if _, err := svc.ReconcileRefunds(context.Background(), "tracked-cancel", "stripe", "pi-refund"); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if test.knownReference {
+				// The refund ID has been decoded before the charge lookup starts.
+				// Cancel at this exact boundary, rather than race the HTTP response.
+				base := svc.stripe.httpClient.Transport
+				if base == nil {
+					base = http.DefaultTransport
+				}
+				var interrupted atomic.Bool
+				svc.stripe.httpClient.Transport = attemptRoundTripper(func(request *http.Request) (*http.Response, error) {
+					if request.URL.Path == "/v1/charges/ch-refund" && interrupted.CompareAndSwap(false, true) {
+						cancel()
+						return nil, context.Canceled
+					}
+					return base.RoundTrip(request)
+				})
+			} else {
+				// The first response contains no refund ID even if the transport
+				// manages to read it after cancellation. The gateway still created it.
+				f.loseFirst = true
+				f.callback = func(string, int64) { cancel() }
+			}
+			first, err := svc.RequestRefund(ctx, "tracked-cancel", refundInput("tracked-cancel-001", 500, 0))
+			if err != nil || first.ID == "" || first.State != "review" || ctx.Err() != context.Canceled {
+				t.Fatalf("cancel lost request: %+v %v", first, err)
+			}
+			var reference string
+			if err = db.QueryRow(`SELECT gateway_ref FROM refund_request WHERE public_id=?`, first.ID).Scan(&reference); err != nil {
+				t.Fatal(err)
+			}
+			wantReference := ""
+			if test.knownReference {
+				wantReference = "re-1"
+			}
+			if reference != wantReference {
+				t.Fatalf("cancellation boundary reference=%q want%q", reference, wantReference)
+			}
+			assertLedger(t, db, 2500, 0, 1)
+			next, err := svc.RetryRefund(context.Background(), "tracked-cancel", first.ID, "")
+			if err != nil || next.ID != first.ID || next.State != "succeeded" {
+				t.Fatalf("recovery %+v %v", next, err)
+			}
+			assertLedger(t, db, 2500, 500, 1)
+			if posts, created := f.counts(); posts != test.posts || created != 1 {
+				t.Fatalf("gateway writes posts=%d want%d created=%d want1", posts, test.posts, created)
+			}
+			f.mu.Lock()
+			lookups := f.lookups
+			f.mu.Unlock()
+			if lookups != test.lookups {
+				t.Fatalf("read-only refund lookups=%d want%d", lookups, test.lookups)
+			}
+			var requests int
+			var key string
+			if err = db.QueryRow(`SELECT count(*),min(client_key) FROM refund_request`).Scan(&requests, &key); err != nil || requests != 1 || key != "tracked-cancel-001" {
+				t.Fatalf("original durable request changed: count%d key%q err%v", requests, key, err)
+			}
+		})
 	}
 }
