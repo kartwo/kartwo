@@ -157,7 +157,7 @@ go build -o kartwo ./cmd/kartwo
 make check
 ```
 
-`make check` 包含 vet、race test、build、lint、govulncheck 与 gitleaks。发布工作流会重新构建 Admin 后再嵌入二进制，避免提交产物陈旧。
+`make check` 包含 vet、race test、build、lint、govulncheck 与 gitleaks。 `make tools` 与 CI 固定使用 govulncheck [v1.9.0](https://pkg.go.dev/golang.org/x/vuln@v1.9.0/cmd/govulncheck)，CI 调用同一 `make vuln` 目标。漏洞扫描受构建平台影响；在非 Linux 开发机上，还需用 `GOOS=linux GOARCH=amd64 make vuln` 检查生产平台，不能将本机平台通过当作 Linux 已通过。发布工作流会重新构建 Admin 后再嵌入二进制，避免提交产物陈旧。
 
 本机开发可在 `web/admin/ui` 运行 `npm run dev`，API 与媒体默认代理到 `http://127.0.0.1:8080`；后端监听其他端口时，使用 `KARTWO_DEV_PROXY=http://127.0.0.1:8189 npm run dev`。Vite 只监听本机；发布仍以 Go 内嵌页面为准。
 

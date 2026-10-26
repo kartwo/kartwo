@@ -17,7 +17,7 @@ web:           ## 构建 Admin 前端(React+TypeScript+Vite+Ant Design) 到 web/
 tools:         ## 安装钉死版本的开发工具到 ./.bin（版本与 CI 一致）
 	GOBIN=$(BIN) go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
 	GOBIN=$(BIN) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
-	GOBIN=$(BIN) go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+	GOBIN=$(BIN) go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
 	GOBIN=$(BIN) go install github.com/zricethezav/gitleaks/v8@v8.30.1
 	@echo "✅ 工具已装入 ./.bin"
 

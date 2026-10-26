@@ -43,7 +43,7 @@
 | golang.org/x/image | 图片缩放（draw）与 WebP 解码 | BSD-3-Clause | 已引入 |
 | 工具：sqlc | 由纯 SQL 生成类型安全数据层代码（构建期，不进二进制） | MIT | 已引入 |
 | 工具：golangci-lint | 静态检查（CI 门禁，不进二进制） | GPL-3.0（仅作为外部 CLI 调用，不链接进产物） | 已引入 |
-| 工具：govulncheck | 依赖漏洞扫描（CI 门禁，不进二进制） | BSD-3-Clause | 已引入 |
+| 工具：govulncheck | 依赖漏洞扫描（CI 门禁，不进二进制） | BSD-3-Clause | 已引入；开发与 CI 固定 v1.9.0 |
 | 工具：gitleaks | 密钥泄漏扫描（CI 门禁，不进二进制） | MIT | 已引入 |
 
 > 注：上述 sqlc/golangci-lint/govulncheck/gitleaks 均为开发/CI 期外部工具，不被编译链接进发布二进制，故其许可不影响产物分发。modernc.org/sqlite 的间接依赖（go-humanize/uuid 等）均为 BSD/MIT 系宽松许可，随 `go.mod` 管理。
