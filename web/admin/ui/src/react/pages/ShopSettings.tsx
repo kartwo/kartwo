@@ -6,7 +6,7 @@
 
 import { FilePicker } from '../FilePicker'
 import { DeleteOutlined, SaveOutlined } from '@ant-design/icons'
-import { useEffect, type ChangeEvent } from 'react'
+import type { ChangeEvent } from 'react'
 import { Alert, App, Button, Card, Form, Input, Typography } from 'antd'
 import { storeSettingsAPI } from '../store-settings-api'
 import { PageState } from '../PageState'
@@ -19,10 +19,8 @@ export default function ShopSettings() {
   const resource = useResource(storeSettingsAPI.shop), task = useTask()
   const { message } = App.useApp()
   const [form] = Form.useForm<{ name: string }>()
-  const data = resource.data, name = data?.name
+  const data = resource.data
   const writable = can(state.session, 'settings.shop') && data?.source === 'db' && !data.readonly
-  // Logo operations must not replace a merchant's unsaved name with the previous saved name.
-  useEffect(() => { if (name !== undefined) form.setFieldsValue({ name }) }, [name, form])
   async function save(values: { name: string }) {
     if (!writable) return
     await task.run(() => storeSettingsAPI.saveShop(values.name), next => {
@@ -49,7 +47,8 @@ export default function ShopSettings() {
       {!writable && <Alert type="info" title="当前账号只允许查看店铺设置。" />}
       {task.error && <Alert type="error" showIcon title={task.error} />}
       <Typography.Paragraph type="secondary">店铺名称用于页脚、浏览器标题与 SEO；上传 Logo 后，店面左上角只显示 Logo。</Typography.Paragraph>
-      <Form name="shop" form={form} layout="vertical" disabled={!writable || task.busy} onFinish={save}>
+      {/* Seed the field when the form mounts; only a confirmed name save may replace its draft. */}
+      <Form name="shop" form={form} initialValues={{ name: data.name }} layout="vertical" disabled={!writable || task.busy} onFinish={save}>
         <Form.Item name="name" label="店铺名称" extra="最多 120 个字符。" rules={[{ required: true, whitespace: true, message: '请填写店铺名称' }, { validator: (_, value: string) => Array.from((value ?? '').trim()).length <= 120 && !/[\u0000-\u001f\u007f-\u009f]/.test(value ?? '') ? Promise.resolve() : Promise.reject(new Error('店铺名称最多 120 个字符，不能含控制字符')) }]}>
           <Input autoComplete="organization" />
         </Form.Item>

@@ -67,11 +67,37 @@ it('授权员工可上传与移除 Logo，上传保留未保存名称，保存�
   await userEvent.setup().click(screen.getByRole('button', { name: '删除 Logo' }))
   await screen.findByText('Logo 已删除，店面页眉恢复显示店铺名称。')
   expect(screen.queryByRole('img', { name: 'Fixture Store Logo' })).toBeNull()
+  expect((screen.getByLabelText('店铺名称') as HTMLInputElement).value).toBe(' New Store ')
   expect(writes[1]?.options.method).toBe('DELETE')
   submit('店铺名称')
   await screen.findByText('店铺名称已保存，店面会立即使用新名称。')
   expect(JSON.parse(writes[2]?.options.body as string)).toEqual({ name: 'New Store' })
   expect((screen.getByLabelText('店铺名称') as HTMLInputElement).value).toBe('New Store')
+})
+
+it('Logo 请求返回较新的已保存名称时，上传和移除仍保留当前名称草稿', async () => {
+  const upload = deferred<Response>(), removal = deferred<Response>()
+  const writes: string[] = []
+  vi.stubGlobal('fetch', vi.fn(async (_url: string, options: RequestInit) => {
+    if (options.method === 'GET') return response(shop)
+    writes.push(options.method!)
+    if (options.method === 'POST') return upload.promise
+    return removal.promise
+  }))
+  mount('/shop', account('staff', ['settings.shop']))
+  await screen.findByDisplayValue('Fixture Store')
+  const user = userEvent.setup()
+  const input = screen.getByLabelText('店铺名称') as HTMLInputElement
+  await user.clear(input); await user.type(input, 'Unsaved merchant name')
+  await user.upload(screen.getByLabelText('上传 Logo'), new File(['x'], 'logo.png', { type: 'image/png' }))
+  await act(async () => upload.resolve(response({ ...shop, name: 'Updated saved name', logo_url: '/media/brand/new.webp' })))
+  expect(await screen.findByAltText('Updated saved name Logo')).toBeTruthy()
+  expect(input.value).toBe('Unsaved merchant name')
+  await user.click(screen.getByRole('button', { name: '删除 Logo' }))
+  await act(async () => removal.resolve(response({ ...shop, name: 'Latest saved name' })))
+  await screen.findByText('Logo 已删除，店面页眉恢复显示店铺名称。')
+  expect(input.value).toBe('Unsaved merchant name')
+  expect(writes).toEqual(['POST', 'DELETE'])
 })
 
 it('上传未结束时阻止重复上传和名称保存；错误后保留原 Logo 和输入并可重试', async () => {
