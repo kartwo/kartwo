@@ -14,7 +14,7 @@ export interface OrderOperationsValue {
   refreshRefund: (request: Pick<RefundRequest, 'public_id' | 'provider' | 'amount_cents' | 'currency'>, gateway: string) => void
   fulfill: (input: ShipmentInput) => void; revoke: () => void; ack: RefundResult | null
   afterSaleAllowed: boolean; afterSaleIntent: AfterSaleIntent | null; afterSaleEditor: AfterSaleEditor | null; afterSaleError: string
-  openAfterSale: (item: AfterSaleCase, action: AfterSaleAction) => void; changeAfterSale: (values: Pick<AfterSaleIntent, 'message' | 'refund_request_id'>) => void
+  openAfterSale: (item: AfterSaleCase, action: AfterSaleAction, trigger?: HTMLElement) => void; changeAfterSale: (values: Pick<AfterSaleIntent, 'message' | 'refund_request_id'>) => void
   closeAfterSale: () => void; rebaseAfterSale: () => void; refreshAfterSale: () => Promise<void>; confirmAfterSale: (values: Pick<AfterSaleIntent, 'message' | 'refund_request_id'>) => Promise<boolean>; resumeAfterSale: () => void; confirmReturnReceived: (value: boolean) => void
   shipmentAllowed: boolean; shipmentIntent: ShipmentIntent | null; shipmentError: string
   updateShipment: (input: TrackingUpdate) => Promise<boolean>; manageNotice: (input: NoticeActionInput) => Promise<boolean>; resumeShipment: () => void

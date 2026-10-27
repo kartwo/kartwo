@@ -61,6 +61,34 @@ function fillMessage(dialog: HTMLElement, value: string, label = '处理说明�
 async function submit(dialog: HTMLElement, name = '批准退款申请') { await userEvent.click(within(dialog).getByRole('button', { name })) }
 async function close(dialog: HTMLElement) { await userEvent.click(within(dialog).getByRole('button', { name: '关闭并保留说明' })) }
 
+it('键盘关闭售后弹窗后回到原按钮并保留说明', async () => {
+  const { fetch } = fixture(); await mount(); await ready()
+  const trigger = within(panel()).getByRole('button', { name: '拒绝申请' })
+  trigger.focus(); await userEvent.keyboard('{Enter}')
+  const dialog = await screen.findByRole('dialog')
+  await userEvent.type(within(dialog).getByLabelText('处理说明（顾客可见）'), 'Keyboard review draft')
+  await userEvent.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  await waitFor(() => expect(document.activeElement).toBe(trigger))
+  await userEvent.keyboard('{Enter}')
+  const reopened = await screen.findByRole('dialog')
+  expect((within(reopened).getByLabelText('处理说明（顾客可见）') as HTMLTextAreaElement).value).toBe('Keyboard review draft')
+  expect(writes(fetch)).toHaveLength(0)
+})
+it('键盘审核完成且原按钮消失后聚焦刷新订单，不重复提交', async () => {
+  const { fetch, state } = fixture(); await mount(); await ready()
+  within(panel()).getByRole('button', { name: '拒绝申请' }).focus()
+  await userEvent.keyboard('{Enter}')
+  const dialog = await screen.findByRole('dialog')
+  await userEvent.type(within(dialog).getByLabelText('处理说明（顾客可见）'), 'Keyboard reviewed request')
+  within(dialog).getByRole('button', { name: '拒绝申请' }).focus()
+  await userEvent.keyboard('{Enter}')
+  await screen.findByText('已拒绝', { selector: '.ant-tag' })
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: '刷新订单' })))
+  expect(state.cases[0]?.state).toBe('rejected')
+  expect(writes(fetch)).toHaveLength(1)
+})
 it.each(['staff', 'demo'] as const)('%s 无客户资料时不请求或保留售后全文，伪造处理权限也无入口', async role => {
   const { fetch } = fixture(); await mount(account(role, ['orders.view', 'orders.aftersales']))
   await screen.findByText('客户资料和支付参考号已隐藏。')

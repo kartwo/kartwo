@@ -5,7 +5,7 @@
 // 时间：2026-10-25 12:46:12
 
 import { ArrowLeftOutlined, ReloadOutlined } from '@ant-design/icons'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, App, Button, Space } from 'antd'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { orderAPI, refundStates, type Order, type RefundInput, type RefundResult } from '../order-api'
@@ -43,10 +43,21 @@ function Detail({ id }: { id: string }) {
   const [afterSaleIntent, setAfterSaleIntent] = useState<AfterSaleIntent | null>(null)
   const [afterSaleEditor, setAfterSaleEditor] = useState<AfterSaleEditor | null>(null)
   const [afterSaleAck, setAfterSaleAck] = useState<{ snapshot: Order | null; result: AfterSaleCase } | null>(null)
+  const afterSaleTrigger = useRef<HTMLElement | null>(null), refreshButton = useRef<HTMLButtonElement | null>(null)
   const afterSaleAllowed = readAfterSales && can(state.session, 'orders.aftersales')
   const shipmentAllowed = can(state.session, 'orders.fulfill') && customer
   // A new validated GET object removes the barrier. A failed GET or old snapshot cannot do so.
   const stale = !!afterSaleIntent || !!shipmentIntent || blockedSnapshot !== null && (!resource.data || resource.data === blockedSnapshot), busy = task.busy || resource.loading
+  const restoreAfterSaleFocus = useCallback(() => {
+    const trigger = afterSaleTrigger.current
+    if (!trigger || afterSaleEditor?.open) return
+    const target = trigger.isConnected && !trigger.matches(':disabled') ? trigger : refreshButton.current
+    if (target?.isConnected && !target.matches(':disabled')) { target.focus(); afterSaleTrigger.current = null }
+  }, [afterSaleEditor?.open])
+  useEffect(() => {
+    // Successful review removes the dialog and may also remove its action button.
+    if (afterSaleEditor === null && !busy) restoreAfterSaleFocus()
+  }, [afterSaleEditor, busy, restoreAfterSaleFocus])
   async function refresh(keepEditor = false) {
     if (lock.current || afterSaleEditor?.open && !keepEditor) return
     lock.current = true
@@ -114,9 +125,10 @@ function Detail({ id }: { id: string }) {
   const operations: OrderOperationsValue = {
     busy, stale, owner, customer, intent, ack: ackSnapshot === blockedSnapshot ? ack : null,
     afterSaleAllowed, afterSaleIntent, afterSaleEditor, afterSaleError: task.error,
-    openAfterSale: (item, action) => {
+    openAfterSale: (item, action, trigger) => {
       const history = resource.data?.afterSales, current = history?.cases.find(c => c.public_id === item.public_id)
       if (!afterSaleAllowed || busy || stale || intent || afterSaleIntent || !current || !history || !allowedAfterSaleActions(current).includes(action)) return
+      afterSaleTrigger.current = trigger ?? null
       const retained = afterSaleEditor?.intent.case_id === item.public_id && afterSaleEditor.intent.action === action ? afterSaleEditor.intent.message : ''
       setAfterSaleEditor({ open: true, case: current, receipt_confirmed: false, intent: { case_id: current.public_id, request_key: history.next_action_key, expected_version: current.version, amount_cents: current.amount_cents, currency: current.currency, action, message: retained, refund_request_id: '' } })
     },
@@ -161,7 +173,7 @@ function Detail({ id }: { id: string }) {
     },
   }
   return <OrderOperations.Provider value={operations}><div className="read-page">
-    <Space wrap><Button icon={<ArrowLeftOutlined aria-hidden />} disabled={busy || !!afterSaleEditor?.open || !!afterSaleIntent} onClick={() => void navigate('/orders')}>返回订单列表</Button><Button icon={<ReloadOutlined aria-hidden />} disabled={busy || !!afterSaleEditor?.open} onClick={() => void refresh()}>刷新订单</Button></Space>
+    <Space wrap><Button icon={<ArrowLeftOutlined aria-hidden />} disabled={busy || !!afterSaleEditor?.open || !!afterSaleIntent} onClick={() => void navigate('/orders')}>返回订单列表</Button><Button ref={refreshButton} icon={<ReloadOutlined aria-hidden />} disabled={busy || !!afterSaleEditor?.open} onClick={() => void refresh()}>刷新订单</Button></Space>
     {task.busy && <div role="status">正在处理订单操作，请稍候…</div>}
     {task.error && <Alert type="error" showIcon title={task.error} />}
     {stale && <Alert type="warning" showIcon title="操作后的订单状态尚未重新确认，请刷新核对。暂停新退款、发货、售后审核和运单通知操作；原请求仍可继续核对。" />}
@@ -169,7 +181,7 @@ function Detail({ id }: { id: string }) {
     <RefundRecovery />
     <ShipmentRecovery />
     <AfterSaleRecovery intent={afterSaleIntent} acknowledgement={!afterSaleIntent && stale && afterSaleAck?.snapshot === blockedSnapshot ? afterSaleAck.result : null} />
-    {afterSaleAllowed && <AfterSaleDialog order={resource.data} history={resource.data?.afterSales ?? null} /> }
+    {afterSaleAllowed && <AfterSaleDialog order={resource.data} history={resource.data?.afterSales ?? null} onClosed={restoreAfterSaleFocus} /> }
     {!shipmentIntent && stale && shipmentAck?.snapshot === blockedSnapshot && <Alert type="info" showIcon title={`已收到${shipmentAck.label}操作确认，详情尚待刷新核对。`} description="操作已确认，请勿再次创建相同操作。" />}
     <PageState {...resource} retry={refresh}>{resource.data && <><OrderRecords order={resource.data} shipment={<OrderShipment order={resource.data} />} aftersales={<OrderAfterSales order={resource.data} history={resource.data.afterSales} />} /><OrderFulfillment /><NewRefund order={resource.data} /><RefundRequests order={resource.data} /></>}</PageState>
   </div></OrderOperations.Provider>

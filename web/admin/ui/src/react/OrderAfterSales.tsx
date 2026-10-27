@@ -46,7 +46,7 @@ function CaseRecord({ item, order, history }: { item: AfterSaleCase; order: Orde
     {item.state === 'approved' && actions.owner && refundableReceipts(order).length > 0 && <Button icon={<RollbackOutlined aria-hidden />} disabled={disabled} onClick={() => { const target = document.getElementById('order-refund-form'); if (target && typeof target.scrollIntoView === 'function') target.scrollIntoView({ block: 'start' }) }}>前往按付款退款</Button>}
     {item.state === 'awaiting_return' && <Typography.Paragraph type="secondary">退回运单由顾客填写；物流信息不代表实际收到包裹，收到后请明确确认并检查商品。</Typography.Paragraph>}
     {item.refund_needs_review && <Alert type="error" showIcon title="已办结退款出现新的待核对情况。" description="请联系店主核对支付平台记录；原售后办结、退款和发货历史会继续保留。" />}
-    {actions.afterSaleAllowed && <Space wrap>{allowedAfterSaleActions(item).map(action => <Button key={action} icon={actionIcon(action)} danger={action === 'reject'} disabled={disabled || action === 'complete' && !matches.length} onClick={() => actions.openAfterSale(item, action)}>{buttonLabel(item, action)}</Button>)}</Space>}
+    {actions.afterSaleAllowed && <Space wrap>{allowedAfterSaleActions(item).map(action => <Button key={action} icon={actionIcon(action)} danger={action === 'reject'} disabled={disabled || action === 'complete' && !matches.length} onClick={event => actions.openAfterSale(item, action, event.currentTarget)}>{buttonLabel(item, action)}</Button>)}</Space>}
     {item.state === 'approved' && !matches.length && <Typography.Paragraph type="secondary">目前没有可关联的成功退款：需属于本订单、申请之后创建、金额和币种完全匹配，且无未解决的资金核对问题。系统会在办结时再次核对。</Typography.Paragraph>}
     <Collapse items={[{ key: 'events', label: `处理历史（${item.events.length} 条）`, children: item.events.map(event => <div className="order-record" key={event.version}><Typography.Text strong>{afterSaleActions[event.action]} · {event.actor === 'customer' ? '顾客' : '商家'}</Typography.Text><Typography.Paragraph type="secondary">{event.created_at}（UTC） · {afterSaleStates[event.state]}</Typography.Paragraph>{event.message && <Typography.Paragraph className="order-address-text">{event.message}</Typography.Paragraph>}{event.tracking_number && <Typography.Paragraph className="order-address-text">{event.carrier} · {event.tracking_number}</Typography.Paragraph>}</div>) }]} />
   </Card>
@@ -65,7 +65,7 @@ export function OrderAfterSales({ order, history }: { order: Order; history: Aft
   </Card>
 }
 
-export function AfterSaleDialog({ order, history }: { order: Order | null; history: AfterSaleHistory | null }) {
+export function AfterSaleDialog({ order, history, onClosed }: { order: Order | null; history: AfterSaleHistory | null; onClosed: () => void }) {
   const actions = useOrderOperations(), editor = actions.afterSaleEditor
   const [form] = Form.useForm<Pick<AfterSaleIntent, 'message' | 'refund_request_id'>>()
   const [attempted, setAttempted] = useState(false)
@@ -77,7 +77,7 @@ export function AfterSaleDialog({ order, history }: { order: Order | null; histo
   const canRebase = !!current && allowedAfterSaleActions(current).includes(intent.action), matches = order && current && history ? matchingRefunds(order, current, history) : []
   const unknown = !!actions.afterSaleIntent, disabled = actions.busy || actions.stale || unknown || !current || changed || intent.action === 'receive_return' && !editor.receipt_confirmed || intent.action === 'complete' && !matches.length
   const instructions = intent.action === 'approve' && item.kind === 'return_refund' && item.state === 'requested'
-  return <Modal destroyOnHidden open={editor.open} title={buttonLabel(item, intent.action)} okText={buttonLabel(item, intent.action)} cancelText="关闭并保留说明" confirmLoading={actions.busy} okButtonProps={{ disabled, danger: intent.action === 'reject' }} cancelButtonProps={{ disabled: actions.busy }} onCancel={actions.closeAfterSale} onOk={() => form.submit()}>
+  return <Modal destroyOnHidden focusTriggerAfterClose={false} afterClose={onClosed} open={editor.open} title={buttonLabel(item, intent.action)} okText={buttonLabel(item, intent.action)} cancelText="关闭并保留说明" confirmLoading={actions.busy} okButtonProps={{ disabled, danger: intent.action === 'reject' }} cancelButtonProps={{ disabled: actions.busy }} onCancel={actions.closeAfterSale} onOk={() => form.submit()}>
     <Descriptions column={1} size="small" items={[{ key: 'kind', label: '申请类型', children: kindLabel(item) }, { key: 'amount', label: '申请金额', children: money(item.amount_cents, item.currency) }, { key: 'state', label: '打开时状态', children: afterSaleStates[item.state] }, { key: 'reason', label: '顾客理由', children: <span className="order-address-text">{item.reason}</span> }, ...(item.return_tracking_number ? [{ key: 'return', label: '打开时退回运单', children: <span className="order-address-text">{item.return_carrier} · {item.return_tracking_number}</span> }] : []) ]} />
     <Alert type="info" showIcon title={intent.action === 'complete' ? '仅关联已成功退款并办结，不会再次退款或回补库存。' : instructions ? '请输入明确的退回指引，顾客会在私密订单页看到。不要直接沿用发货地作为退回地址。' : '说明会展示给顾客；此次审核不会自动退款、发邮件或回补库存。'} />
     {attempted && actions.afterSaleError && <Alert type="error" showIcon title={actions.afterSaleError} />}
