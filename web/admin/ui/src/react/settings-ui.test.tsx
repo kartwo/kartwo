@@ -30,6 +30,32 @@ function response(body: unknown, status = 200) { return new Response(JSON.string
 function submit(label: string | RegExp) { fireEvent.submit(screen.getByLabelText(label).closest('form')!) }
 function field(label: string | RegExp, value: string) { fireEvent.change(screen.getByLabelText(label), { target: { value } }) }
 
+it.each(['stripe', 'paypal'] as const)('保存 %s 只清空本通道密钥，保留另一个通道未保存的草稿', async channel => {
+  const writes: RequestInit[] = []
+  vi.stubGlobal('fetch', vi.fn(async (_url: string, options: RequestInit) => {
+    if (options.method !== 'GET') writes.push(options)
+    return response(paymentFixture())
+  }))
+  mount('/payment')
+  await screen.findByDisplayValue('fixture-public')
+  await screen.findByDisplayValue('fixture-client')
+  const user = userEvent.setup()
+  await user.type(screen.getByLabelText(/Secret key（/), 'stripe-draft-value')
+  await user.type(screen.getByLabelText('PayPal Secret'), 'paypal-draft-value')
+  if (channel === 'stripe') {
+    await user.clear(screen.getByLabelText('Client ID')); await user.type(screen.getByLabelText('Client ID'), 'Unsaved PayPal client')
+  } else {
+    await user.clear(screen.getByLabelText('Publishable key')); await user.type(screen.getByLabelText('Publishable key'), 'Unsaved Stripe public')
+  }
+  await user.click(screen.getByRole('button', { name: channel === 'stripe' ? '保存 Stripe' : '保存 PayPal' }))
+  await screen.findByText(channel === 'stripe' ? 'Stripe 已保存，收款配置已即时生效。' : 'PayPal 已保存，收款配置已即时生效。')
+  expect(writes).toHaveLength(1)
+  expect(Object.keys(JSON.parse(writes[0]!.body as string))).toEqual([channel])
+  expect((screen.getByLabelText(channel === 'stripe' ? /Secret key（/ : 'PayPal Secret') as HTMLInputElement).value).toBe('')
+  expect((screen.getByLabelText(channel === 'stripe' ? 'PayPal Secret' : /Secret key（/) as HTMLInputElement).value).toBe(channel === 'stripe' ? 'paypal-draft-value' : 'stripe-draft-value')
+  expect((screen.getByLabelText(channel === 'stripe' ? 'Client ID' : 'Publishable key') as HTMLInputElement).value).toBe(channel === 'stripe' ? 'Unsaved PayPal client' : 'Unsaved Stripe public')
+})
+
 it('收款分开保存，成功清空密钥；测试连接不提交未保存内容', async () => {
   const data = paymentFixture()
   const writes: RequestInit[] = []
@@ -176,7 +202,14 @@ it('向导复用实际表单，配置写入未完成时不能提前进入下一�
   await user.click(screen.getByRole('button', { name: /配好了，下一步$/ }))
   expect(await screen.findByText('请先保存当前配置，或选择“稍后再配”。')).toBeTruthy()
   submit('Publishable key')
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith('/admin/api/settings/payment', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ stripe: { mode: 'test', publishable: 'fixture-public', secret: '', webhook_secret: '' } }) })))
   await waitFor(() => expect((screen.getByRole('button', { name: /配好了，下一步$/ }) as HTMLButtonElement).disabled).toBe(true))
+  const reads = vi.mocked(api.wizard).mock.calls.length
+  await user.click(screen.getByRole('button', { name: /配好了，下一步$/ }))
+  await user.click(screen.getByRole('button', { name: /稍后再配$/ }))
+  expect(api.wizard).toHaveBeenCalledTimes(reads)
+  expect(api.skipWizard).not.toHaveBeenCalled()
+  expect(controller.getSnapshot().wizard).toBe('payment')
   await act(async () => pending.resolve(response(paymentFixture())))
   expect(await screen.findByText('Stripe 已保存，收款配置已即时生效。')).toBeTruthy()
   await waitFor(() => expect((screen.getByRole('button', { name: /配好了，下一步$/ }) as HTMLButtonElement).disabled).toBe(false))

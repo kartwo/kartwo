@@ -5,13 +5,20 @@
 // 时间：2026-10-25 10:23:15
 
 import { ApiOutlined, SaveOutlined } from '@ant-design/icons'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Alert, App, Button, Card, Form, Input, Select, Space, Tag, Typography } from 'antd'
-import { settingsAPI, type StripeFields, type PayPalFields } from '../settings-api'
+import { settingsAPI, type StripeFields, type PayPalFields, type StripeStatus, type PayPalStatus } from '../settings-api'
 import { useResource, useTask } from '../useResource'
 import { PageState, SourceNotice } from '../PageState'
 import { useSession } from '../SessionProvider'
 import { useWizardActivity } from '../WizardActivity'
+
+function stripeFields(data: StripeStatus): StripeFields {
+  return { mode: data.mode, publishable: data.publishable, secret: '', webhook_secret: '' }
+}
+function paypalFields(data: PayPalStatus): PayPalFields {
+  return { mode: data.mode, client_id: data.client_id, webhook_id: data.webhook_id, secret: '' }
+}
 
 export default function PaymentSettings() {
   const { state } = useSession()
@@ -23,11 +30,6 @@ export default function PaymentSettings() {
   const [operation, setOperation] = useState('')
   const data = resource.data
   useWizardActivity(resource.loading || task.busy)
-  useEffect(() => {
-    if (!data) return
-    stripeForm.setFieldsValue({ mode: data.stripe.mode, publishable: data.stripe.publishable, secret: '', webhook_secret: '' })
-    paypalForm.setFieldsValue({ mode: data.paypal.mode, client_id: data.paypal.client_id, webhook_id: data.paypal.webhook_id, secret: '' })
-  }, [data, stripeForm, paypalForm])
   const owner = state.session?.role === 'owner'
   const stripeWritable = owner && data?.stripe.source === 'db' && !data.stripe.readonly
   const paypalWritable = owner && data?.paypal.source === 'db' && !data.paypal.readonly
@@ -36,6 +38,7 @@ export default function PaymentSettings() {
     if (!stripeWritable) return
     await task.run(async () => { setOperation('stripe'); return settingsAPI.savePayment({ stripe: values }) }, next => {
       resource.setData(next)
+      stripeForm.setFieldsValue(stripeFields(next.stripe))
       void message.success('Stripe 已保存，收款配置已即时生效。')
     })
   }
@@ -43,6 +46,7 @@ export default function PaymentSettings() {
     if (!paypalWritable) return
     await task.run(async () => { setOperation('paypal'); return settingsAPI.savePayment({ paypal: values }) }, next => {
       resource.setData(next)
+      paypalForm.setFieldsValue(paypalFields(next.paypal))
       void message.success('PayPal 已保存，收款配置已即时生效。')
     })
   }
@@ -59,7 +63,7 @@ export default function PaymentSettings() {
         {task.error && <Alert type="error" showIcon title={task.error} />}
         <Card title={<Space>Stripe（信用卡）<Tag color={data.stripe.has_secret ? 'success' : 'default'}>{data.stripe.has_secret ? '已配置' : '未配置'}</Tag></Space>}>
           <SourceNotice source={data.stripe.source} readonly={!stripeWritable} env="STRIPE_*" />
-          <Form name="stripe" form={stripeForm} layout="vertical" disabled={!stripeWritable || task.busy} onFinish={saveStripe}>
+          <Form name="stripe" form={stripeForm} initialValues={stripeFields(data.stripe)} layout="vertical" disabled={!stripeWritable || task.busy} onFinish={saveStripe}>
             <Form.Item name="mode" label="Stripe 模式"><Select options={[{ value: 'test', label: '测试 / 沙箱' }, { value: 'live', label: '正式' }]} /></Form.Item>
             <Form.Item name="publishable" label="Publishable key"><Input autoComplete="off" placeholder="pk_…" /></Form.Item>
             <Form.Item name="secret" label="Secret key（推荐使用受限密钥 rk_）" extra="仅授予所需权限；留空保留已保存的密钥。"><Input.Password autoComplete="new-password" placeholder={secretPlaceholder(!stripeWritable, data.stripe.has_secret)} /></Form.Item>
@@ -75,7 +79,7 @@ export default function PaymentSettings() {
         <Card title={<Space>PayPal<Tag color={data.paypal.has_secret ? 'success' : 'default'}>{data.paypal.has_secret ? '已配置' : '未配置'}</Tag></Space>}>
           <SourceNotice source={data.paypal.source} readonly={!paypalWritable} env="PAYPAL_*" />
           <Typography.Paragraph type="secondary">使用同一个沙箱或正式应用的 Client ID 与 Secret。</Typography.Paragraph>
-          <Form name="paypal" form={paypalForm} layout="vertical" disabled={!paypalWritable || task.busy} onFinish={savePayPal}>
+          <Form name="paypal" form={paypalForm} initialValues={paypalFields(data.paypal)} layout="vertical" disabled={!paypalWritable || task.busy} onFinish={savePayPal}>
             <Form.Item name="mode" label="PayPal 模式"><Select options={[{ value: 'sandbox', label: '沙箱' }, { value: 'live', label: '正式' }]} /></Form.Item>
             <Form.Item name="client_id" label="Client ID"><Input autoComplete="off" /></Form.Item>
             <Form.Item name="secret" label="PayPal Secret"><Input.Password autoComplete="new-password" placeholder={secretPlaceholder(!paypalWritable, data.paypal.has_secret)} /></Form.Item>
