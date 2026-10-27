@@ -28,6 +28,66 @@ const defaultZone = { public_id: 'default-fixture-id', name: 'Default', countrie
 const specialZone = { public_id: 'special-fixture-id', name: 'Fixture USA', countries: 'US', rate_cents: 899, free_over_cents: 10000, active: true, is_default: false }
 function profileFixture() { return { configured: true, profile: { support_email: 'support@example.com', ship_from: 'China', processing_hours: 48, return_window_days: 7, return_shipping_payer: 'buyer', business_name: 'Fixture Store', delivery_estimates: policyRegions.map(region => ({ region, min_business_days: 5, max_business_days: 10 })) } } }
 
+it('键盘取消政策覆盖后回到原按钮，保留资料和发布选择且不提交', async () => {
+  const fetch = vi.fn(async () => response(profileFixture()))
+  vi.stubGlobal('fetch', fetch); mount('/policies')
+  await screen.findByDisplayValue('Fixture Store')
+  const user = userEvent.setup()
+  const business = screen.getByRole('textbox', { name: '经营主体名称' })
+  await user.clear(business); await user.type(business, 'Unsaved keyboard policy')
+  const publish = screen.getByRole('checkbox', { name: '新建页面后直接发布到店面页脚' }) as HTMLInputElement
+  publish.focus(); await user.keyboard(' ')
+  expect(publish.checked).toBe(false)
+  const trigger = screen.getByRole('button', { name: '重新生成并覆盖正文' })
+  trigger.focus(); await user.keyboard('{Enter}')
+  await screen.findByRole('dialog', { name: '覆盖标准页面正文' })
+  await user.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  await waitFor(() => expect(document.activeElement).toBe(trigger))
+  expect((business as HTMLInputElement).value).toBe('Unsaved keyboard policy')
+  expect(publish.checked).toBe(false)
+  await user.keyboard('{Enter}')
+  await screen.findByRole('dialog', { name: '覆盖标准页面正文' })
+  expect(fetch.mock.calls).toHaveLength(1)
+})
+
+it('键盘搜索与选择配送国家仅显式保存时写入，运费键盘切换保持整数分', async () => {
+  let enabled = [...countryData.enabled]
+  const writes: { url: string; body: unknown }[] = []
+  const fetch = vi.fn(async (url: string, options: RequestInit) => {
+    if (options.method !== 'GET') {
+      const body = JSON.parse(options.body as string)
+      writes.push({ url, body })
+      if (url.endsWith('/countries')) enabled = body.countries
+      return response({ ok: true })
+    }
+    return response(url.endsWith('/countries') ? { ...countryData, enabled } : { zones: [defaultZone] })
+  })
+  vi.stubGlobal('fetch', fetch); mount('/shipping', account('staff', ['settings.shipping']))
+  const search = await screen.findByRole('textbox', { name: '搜索配送国家' })
+  const user = userEvent.setup()
+  await user.type(search, 'Japan'); await user.keyboard('{Enter}')
+  expect(writes).toHaveLength(0)
+  const japan = screen.getByRole('checkbox', { name: /Japan/ }) as HTMLInputElement
+  japan.focus(); await user.keyboard(' ')
+  expect(japan.checked).toBe(true)
+  screen.getByRole('button', { name: '保存配送范围' }).focus(); await user.keyboard('{Enter}')
+  await screen.findByText('可配送范围已保存')
+  expect(writes).toEqual([{ url: '/admin/api/settings/shipping/countries', body: { countries: ['CN', 'US', 'JP'] } }])
+  screen.getByRole('tab', { name: '默认配送费' }).focus(); await user.keyboard('{Enter}')
+  const flat = await screen.findByRole('radio', { name: '固定运费' })
+  flat.focus(); await user.keyboard('{ArrowRight}')
+  expect((screen.getByRole('radio', { name: '固定运费，满额包邮' }) as HTMLInputElement).checked).toBe(true)
+  const rate = screen.getByRole('textbox', { name: '默认固定运费（US$）' })
+  await user.clear(rate); await user.type(rate, '0.29')
+  const threshold = screen.getByRole('textbox', { name: '默认包邮门槛（US$）' })
+  await user.clear(threshold); await user.type(threshold, '20.01')
+  screen.getByRole('button', { name: '保存默认运费' }).focus(); await user.keyboard('{Enter}')
+  await screen.findByText('默认运费已保存')
+  expect(writes).toHaveLength(2)
+  expect(writes[1]).toEqual({ url: '/admin/api/settings/shipping/default', body: { name: 'Default', countries: '', rate_cents: 29, free_over_cents: 2001 } })
+})
+
 it.each(['countries', 'default', 'create', 'delete'] as const)('配送写入已确认后 %s 重读失败仍保留成功回执', async operation => {
   const fetch = vi.fn(async (_url: string, options: RequestInit) => options.method === 'GET'
     ? response({ error: '配送读取失败' }, 500)

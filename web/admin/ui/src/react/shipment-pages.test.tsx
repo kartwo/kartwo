@@ -46,6 +46,37 @@ function fixture(order: () => Order = () => shippedOrder, history: () => unknown
 const writes = (fetch: ReturnType<typeof fixture>) => fetch.mock.calls.filter(([, options]) => options.method !== 'GET')
 async function dialogButton(name: string | RegExp) { await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name })) }
 
+it('键盘核对未知通知必须先勾选声明，确认收到仅提交一次核对动作', async () => {
+  let received = false
+  const history = () => ({ ...shipmentFixture(), notices: [{ ...noticeA, status: 'delivery_unknown', reason: 'delivery_unknown', resolution: received ? 'received' : '' }] })
+  const fetch = fixture(() => shippedOrder, history, (_url, options) => {
+    if (options.method === 'POST') { received = true; return response({ ok: true, notice_id: noticeA.public_id, action: 'received' }) }
+  })
+  await mount(account('staff', ['orders.view', 'orders.customer_data', 'orders.fulfill']))
+  const trigger = await screen.findByRole('button', { name: '确认已收到' })
+  const user = userEvent.setup()
+  trigger.focus(); await user.keyboard('{Enter}')
+  const dialog = within(await screen.findByRole('dialog', { name: '确认收到发货通知' }))
+  const confirm = dialog.getByRole('button', { name: '确认已收到' }) as HTMLButtonElement
+  expect(confirm.disabled).toBe(true)
+  const statement = dialog.getByRole('checkbox', { name: '我已核对，确认顾客已收到此邮件' }) as HTMLInputElement
+  statement.focus(); await user.keyboard('{Enter}')
+  expect(writes(fetch)).toHaveLength(0)
+  expect(statement.checked).toBe(false)
+  await user.keyboard(' ')
+  expect(statement.checked).toBe(true)
+  expect(confirm.disabled).toBe(false)
+  confirm.focus(); await user.keyboard('{Enter}')
+  await screen.findByText('商家已核对收到')
+  expect(screen.getByText('投递结果待核对')).toBeTruthy()
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  expect(writes(fetch)).toHaveLength(1)
+  expect(writes(fetch)[0]![0]).toBe(`/admin/api/orders/${shippedOrder.public_id}/shipment-notices/${noticeA.public_id}/actions`)
+  expect(JSON.parse(writes(fetch)[0]![1].body as string)).toMatchObject({ action: 'received', confirm_unknown: true })
+  expect(screen.queryByRole('button', { name: '核对后重发' })).toBeNull()
+  expect(screen.queryByRole('button', { name: '提交退款' })).toBeNull()
+})
+
 it('通知契约拒绝错对象、未知状态、重复 ID、混乱版本与缺失当前通知，非授权资料在解析前丢弃', () => {
   const base = shipmentFixture()
   for (const data of [
