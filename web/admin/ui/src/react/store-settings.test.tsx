@@ -54,6 +54,7 @@ it('授权员工可上传与移除 Logo，上传保留未保存名称，保存�
     return response(data)
   }))
   mount('/shop', account('staff', ['settings.shop']))
+  await screen.findByRole('heading', { name: '店铺', level: 2 })
   await screen.findByLabelText('店铺名称')
   change('店铺名称', ' New Store ')
   const file = new File(['fixture-image-bytes'], 'logo.png', { type: 'image/png' })
