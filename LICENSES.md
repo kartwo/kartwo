@@ -37,6 +37,7 @@
 | modernc.org/sqlite | 纯 Go SQLite 驱动（默认数据库） | BSD-3-Clause | 已引入 |
 | github.com/google/uuid | 外部 ID（UUIDv7）生成 | BSD-3-Clause | 已引入 |
 | golang.org/x/crypto/argon2 | 主口令哈希与 KEK 派生（argon2id） | BSD-3-Clause | 已引入 |
+| golang.org/x/net v0.62.0 | 博客 HTML 解析及网络基础；https://pkg.go.dev/golang.org/x/net | BSD-3-Clause | 已引入；2026-10-31 升级修复 GO-2026-6860，已核对模块 LICENSE；关联 crypto/sys/text 按模块要求更新 |
 | github.com/gen2brain/webp | WebP 编解码（无 CGO；Linux发布固定nodynamic，使用wazero跑内嵌libwebp WASM） | MIT | 已引入；2026-10-26仅改变Linux构建标签，无新依赖 |
 | github.com/tetratelabs/wazero | gen2brain/webp 依赖：纯 Go WASM 运行时 | Apache-2.0 | 已引入（间接） |
 | github.com/ebitengine/purego | gen2brain/webp 依赖 | Apache-2.0 | 已引入（间接） |
