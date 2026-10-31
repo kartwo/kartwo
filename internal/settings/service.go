@@ -114,6 +114,26 @@ func (s *Service) Market(ctx context.Context) market.Market {
 // Currency 返回当前市场货币（如 USD）。
 func (s *Service) Currency(ctx context.Context) string { return s.Market(ctx).Currency }
 
+// CurrencySnapshot uses the caller's SQL snapshot. Unlike display-only Currency,
+// a failed authoritative read must not silently charge the default currency.
+func CurrencySnapshot(ctx context.Context, q *sqlcgen.Queries) (string, error) {
+	row, err := q.GetSetting(ctx, keyMarketCode)
+	if errors.Is(err, sql.ErrNoRows) {
+		return market.Default().Currency, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if row.Encrypted != 0 {
+		return "", errors.New("settings: market code cannot be encrypted")
+	}
+	m, ok := market.Lookup(row.Value)
+	if !ok {
+		m = market.Default()
+	}
+	return m.Currency, nil
+}
+
 // Domain 返回 DB 中配置的站点域名；未设返回空串（非错误，视为未配）。
 // 注意：这是"env 覆盖 DB"域名来源的 DB 回退支路——env KARTWO_DOMAIN 非空时优先于此，见 config/server。
 func (s *Service) Domain(ctx context.Context) (string, error) {

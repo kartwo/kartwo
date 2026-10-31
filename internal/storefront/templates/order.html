@@ -5,11 +5,14 @@
 {{else if eq $o.Status "cancelled"}}<h1>Order expired</h1>
 {{else if eq $o.Status "payment_review"}}<h1>Payment under review</h1>
 {{else}}<h1>Order placed ✓</h1>{{end}}
+<form method="post" action="/order/{{$o.PublicID}}/access/logout"><button class="btn" type="submit">Close private order view</button></form>
 <p class="muted">Order <strong>{{$o.PublicID}}</strong> — status: {{$o.Status}}.</p>
+<p><a href="/order/{{$o.PublicID}}/after-sales">Returns and refund requests</a></p>
 {{if eq $o.Status "payment_review"}}<p>We received your payment after the order expired. Please do not place another payment for this order. Contact the store for a refund.</p>{{end}}
 {{if eq $o.Status "cancelled"}}<p>This order was not paid within 30 minutes, so its stock hold has ended. Please place a new order if you still want these items.</p>{{end}}
 
 {{if eq $o.Status "pending"}}
+{{if .PaymentError}}<p role="alert">{{.PaymentError}}</p>{{end}}
 <div class="panel" style="border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin:1rem 0">
   <strong>This order isn't paid yet.</strong>
   <p class="muted" style="font-size:.9rem;margin:.3rem 0 .6rem">Complete payment to confirm your order.</p>
@@ -52,7 +55,7 @@
     <h3>Shipping details</h3>
     <p>{{$o.ShipName}}{{if $o.ShipPhone}} · {{$o.ShipPhone}}{{end}}<br>
     {{$o.Email}}<br>
-    <span style="white-space:pre-wrap">{{$o.ShipAddress}}</span>{{if $o.ShipCountry}}<br>{{$o.ShipCountry}}{{end}}</p>
+    <span class="order-address-text">{{$o.ShipAddress}}</span>{{if $o.ShipCountry}}<br>{{$o.ShipCountry}}{{end}}</p>
     {{if $o.TrackingNumber}}<p><strong>Shipped with {{$o.TrackingCarrier}}</strong><br>Tracking: {{if $o.TrackingURL}}<a href="{{$o.TrackingURL}}" rel="noopener noreferrer">{{$o.TrackingNumber}}</a>{{else}}{{$o.TrackingNumber}}{{end}}</p>{{end}}
     <p><a href="/">← Continue shopping</a></p>
   </div>

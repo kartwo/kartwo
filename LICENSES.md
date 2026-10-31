@@ -22,29 +22,43 @@
 | Lucide | Admin/Storefront 图标 | ISC | https://github.com/lucide-icons/lucide | 计划 |
 | Tabler Icons | 备选图标集 | MIT | https://github.com/tabler/tabler-icons | 备选 |
 | Heroicons | 备选图标集 | MIT | https://github.com/tailwindlabs/heroicons | 备选 |
+| Ant Design Icons 6.3.4 | 正式 Admin 导航、概览、操作按钮、富文本工具栏及组件内置图标 | MIT | https://github.com/ant-design/ant-design-icons | 已显式引入并锁定版本 |
 
 ## 代码依赖（关键第三方库）
 
 | 名称 | 用途 | 许可证 | 状态 |
 |---|---|---|---|
+| React / React DOM 19.3.1 | 新后台组件与 DOM 渲染；https://github.com/facebook/react | MIT | 已引入（正式 Admin） |
+| Ant Design 6.6.7 | 新后台表单、菜单、抽屉、反馈和设计主题；https://github.com/ant-design/ant-design | MIT | 已引入（正式 Admin） |
+| React Router 7.18.4 | 保留 hash 路由；https://github.com/remix-run/react-router | MIT | 已引入（正式 Admin） |
+| TypeScript 7.0.2 | 构建期严格类型检查；https://github.com/microsoft/TypeScript | Apache-2.0 | 已引入 |
+| Vite / React 插件 | 前端构建期工具；https://github.com/vitejs/vite | MIT | 已引入 |
+| Vitest / Testing Library / jsdom | 构建期会话与 DOM 交互测试；https://github.com/vitest-dev/vitest · https://github.com/testing-library/react-testing-library · https://github.com/jsdom/jsdom | MIT | 已引入 |
 | modernc.org/sqlite | 纯 Go SQLite 驱动（默认数据库） | BSD-3-Clause | 已引入 |
 | github.com/google/uuid | 外部 ID（UUIDv7）生成 | BSD-3-Clause | 已引入 |
 | golang.org/x/crypto/argon2 | 主口令哈希与 KEK 派生（argon2id） | BSD-3-Clause | 已引入 |
-| github.com/gen2brain/webp | WebP 编解码（wazero 跑内嵌 libwebp WASM，无 CGO） | MIT | 已引入 |
+| golang.org/x/net v0.62.0 | 博客 HTML 解析及网络基础；https://pkg.go.dev/golang.org/x/net | BSD-3-Clause | 已引入；2026-10-31 升级修复 GO-2026-6860，已核对模块 LICENSE；关联 crypto/sys/text 按模块要求更新 |
+| github.com/gen2brain/webp | WebP 编解码（无 CGO；Linux发布固定nodynamic，使用wazero跑内嵌libwebp WASM） | MIT | 已引入；2026-10-26仅改变Linux构建标签，无新依赖 |
 | github.com/tetratelabs/wazero | gen2brain/webp 依赖：纯 Go WASM 运行时 | Apache-2.0 | 已引入（间接） |
 | github.com/ebitengine/purego | gen2brain/webp 依赖 | Apache-2.0 | 已引入（间接） |
 | golang.org/x/image | 图片缩放（draw）与 WebP 解码 | BSD-3-Clause | 已引入 |
 | 工具：sqlc | 由纯 SQL 生成类型安全数据层代码（构建期，不进二进制） | MIT | 已引入 |
 | 工具：golangci-lint | 静态检查（CI 门禁，不进二进制） | GPL-3.0（仅作为外部 CLI 调用，不链接进产物） | 已引入 |
-| 工具：govulncheck | 依赖漏洞扫描（CI 门禁，不进二进制） | BSD-3-Clause | 已引入 |
+| 工具：govulncheck | 依赖漏洞扫描（CI 门禁，不进二进制） | BSD-3-Clause | 已引入；开发与 CI 固定 v1.9.0 |
 | 工具：gitleaks | 密钥泄漏扫描（CI 门禁，不进二进制） | MIT | 已引入 |
+| 工具：Stripe CLI 1.55.1 | 按需读取 Stripe 官方公开文档；开发端独立配置，不接入 CI 或应用 | Apache-2.0 | 外部工具；https://github.com/stripe/stripe-cli |
 
-> 注：上述 sqlc/golangci-lint/govulncheck/gitleaks 均为开发/CI 期外部工具，不被编译链接进发布二进制，故其许可不影响产物分发。modernc.org/sqlite 的间接依赖（go-humanize/uuid 等）均为 BSD/MIT 系宽松许可，随 `go.mod` 管理。
+> 注：上述 sqlc/golangci-lint/govulncheck/gitleaks/Stripe CLI 均为开发/CI 期外部工具，不被编译链接进发布二进制，故其许可不影响产物分发。modernc.org/sqlite 的间接依赖（go-humanize/uuid 等）均为 BSD/MIT 系宽松许可，随 `go.mod` 管理。
 
 ## 逐片核对记录
 
 | 日期 | 片子 | 核对结论 |
 |---|---|---|
+| 2026-10-27 | 订单售后键盘焦点与原生验收 | 无新增依赖、字体、图标或媒体资源。继续使用现有 React/Ant Design；本机验收截图仅含虚构店铺数据，不进入发布包。 |
+| 2026-10-27 | 店铺名称草稿与 Logo 响应修复 | 无新增依赖或资源；继续使用已登记的 React、Ant Design 及图标，不引入测试图片到发布包。 |
+| 2026-10-27 | 配送政策与通知键盘行为回归 | 仅新增自动化测试和验收说明，无新增软件、字体、图标或媒体；虚构装配及凭据不进入源码或发布包。 |
+| 2026-10-27 | 收款双通道草稿隔离 | 沿用现有 React/Ant Design 及官方图标，无新增软件或媒体资源；回归仅使用无效虚构字段，不包含平台凭据。 |
+| 2026-10-27 | 政策焦点修复与配送通知原生复核 | 无新增依赖、字体、图标或发布媒体；本机截图仅含独立虚构店铺数据，不进入发布包。 |
 | 2026-08-06 | M4.3 SMTP + 邮件队列 + 订单确认信 | **无变更**。邮件发送全部走 Go 标准库 `net/smtp` + `crypto/tls`，**未引入任何第三方库**（`go.mod`/`go.sum` 零改动）；邮件正文为纯文本英文模板，**无字体、无图标、无媒体资源**；前端 SMTP 设置页/向导步沿用既有 unicode 字符与设计 token，`package.json` 零改动。
 
 ## 其他媒体（示例图/demo 数据图等）
@@ -55,7 +69,9 @@
 | `running-tee-hero.png` | 跑步品牌店面首页首屏产品图 | AI 原创，项目自有使用权；不含第三方商标或素材 | Kartwo 项目内由 OpenAI Image Generation 于 2026-09-07 生成 | 已引入 |
 | `assets/generated-products/*.webp`（20 张） | 跑步演示商品独立封面；PNG 原稿仅本机保留、不进入仓库 | AI 原创，项目自有使用权；不含人物、文字、第三方商标或素材 | Kartwo 项目内由 OpenAI Image Generation 于 2026-09-07、2026-09-12 生成，并由正式媒体管线压缩 | 已引入 |
 | `assets/branding/kartwo-logo.png` | Kartwo 横版品牌 Logo（抽象 K + 双跑道 + kartwo 字标） | AI 原创，项目自有使用权；未引入或嵌入商业字体文件 | Kartwo 项目内由 OpenAI Image Generation 于 2026-09-12 生成 | 已引入 |
+| `assets/blog-generated/everyday-running-*.webp`（3 张） | 《A Simple Running Kit for Everyday Miles》封面及正文跑步场景示意；不作为具体商品实拍图 | AI 原创，项目自有使用权；不含第三方商标或素材 | Kartwo 项目内由 OpenAI Image Generation 于 2026-10-14 生成，WebP 版本存仓库 | 已引入 |
 | IANA tz database `iso3166.tab` 国家/地区名称 | 后台配送国家多选与结账下拉目录 | Public Domain | IANA tz database（2025-07-01 版本；名称仅作通用英文展示） | 已引入 |
+| Google libaddressinput 国家级地址元数据（249 个既有目录国家/地区及默认规则） | 离线字段要求/标签/邮编语法；不上传地址，不开启新配送范围，不保证实际投递 | 数据 CC-BY-4.0（代码 Apache-2.0 与数据许可分别说明）；Google 及贡献者归属、许可链接与精简修改说明保留在 `internal/address/NOTICE.md`、快照元数据及后台“关于” | https://github.com/google/libaddressinput；2026-10-25 从官方数据服务生成快照，每份响应记录 SHA256；KP/MY/SY 未发布独立数据，采用官方库自带字段格式且不编造缺失邮编语法 | 已引入（开发分支） |
 
 ---
 

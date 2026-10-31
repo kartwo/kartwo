@@ -32,7 +32,7 @@ type RestoreResult struct {
 }
 
 // Restore 将 ZIP 恢复到不存在的 dataDir。它绝不覆盖既有目录，所有文件先解压到同盘临时目录，
-// 通过校验后才原子改名为目标目录。
+// 通过校验并失效备份中的临时访问凭证后才原子改名为目标目录。
 func Restore(zipPath, dataDir string) (RestoreResult, error) {
 	if err := ensureNewDataDir(dataDir); err != nil {
 		return RestoreResult{}, err
@@ -65,6 +65,9 @@ func Restore(zipPath, dataDir string) (RestoreResult, error) {
 		return RestoreResult{}, err
 	}
 	if err := verifyRestoredDatabase(filepath.Join(stage, "shop.db")); err != nil {
+		return RestoreResult{}, err
+	}
+	if err := invalidateRestoredAccess(filepath.Join(stage, "shop.db")); err != nil {
 		return RestoreResult{}, err
 	}
 	if err := os.Rename(stage, dataDir); err != nil {
@@ -144,10 +147,15 @@ func restoreEntryName(file *zip.File) (string, error) {
 		return "", fmt.Errorf("backup: 导出包包含非普通文件: %s", file.Name)
 	}
 	name := file.Name
-	if name == "" || strings.HasPrefix(name, "/") || path.Clean(name) != name || strings.Contains(name, "\\") {
+	if !validArchivePath(name) {
 		return "", fmt.Errorf("backup: 导出包路径不安全: %s", file.Name)
 	}
 	return name, nil
+}
+
+// validArchivePath is shared with export so generated file names obey the restore format.
+func validArchivePath(name string) bool {
+	return name != "" && !strings.HasPrefix(name, "/") && path.Clean(name) == name && !strings.Contains(name, "\\")
 }
 
 func extractRestoreArchive(files []*zip.File, stage string) (int, error) {

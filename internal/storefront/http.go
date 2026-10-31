@@ -53,6 +53,11 @@ type HTTP struct {
 	cartTmpl         *template.Template
 	ckoutTmpl        *template.Template
 	orderTmpl        *template.Template
+	afterSaleTmpl    *template.Template
+	afterSaleLimit   *commerceLimiter
+	orderAccessTmpl  *template.Template
+	guestMailReady   func() bool
+	accessLimit      *commerceLimiter
 	pageTmpl         *template.Template
 	blogListTmpl     *template.Template
 	blogPostTmpl     *template.Template
@@ -60,6 +65,9 @@ type HTTP struct {
 	contactTmpl      *template.Template
 	contact          *contact.Service
 	contactLimit     *contactLimiter
+	cartLimit        *commerceLimiter
+	checkoutLimit    *commerceLimiter
+	payLimit         *commerceLimiter
 }
 
 // secureFor 判定本次响应的 Cookie 是否该带 Secure：直连 TLS 始终安全；
@@ -81,19 +89,26 @@ func NewHTTP(svc *Service, cartSvc *cart.Service, orderSvc *order.Service, setti
 	h := &HTTP{
 		trusted: trusted,
 		svc:     svc, cart: cartSvc, order: orderSvc, settings: settingsSvc, pay: pay, redirect: redirectSvc, shopNameFallback: shopName,
-		baseURL:      strings.TrimRight(baseURL, "/"),
-		homeTmpl:     parse("templates/home.html"),
-		catalogTmpl:  parse("templates/catalog.html"),
-		prodTmpl:     parse("templates/product.html"),
-		cartTmpl:     parse("templates/cart.html"),
-		ckoutTmpl:    parse("templates/checkout.html"),
-		orderTmpl:    parse("templates/order.html"),
-		pageTmpl:     parse("templates/content_page.html"),
-		blogListTmpl: parse("templates/blog_list.html"),
-		blogPostTmpl: parse("templates/blog_post.html"),
-		blog:         blog.New(svc.db, settingsSvc),
-		contactTmpl:  parse("templates/contact.html"),
-		contactLimit: newContactLimiter(),
+		baseURL:         strings.TrimRight(baseURL, "/"),
+		homeTmpl:        parse("templates/home.html"),
+		catalogTmpl:     parse("templates/catalog.html"),
+		prodTmpl:        parse("templates/product.html"),
+		cartTmpl:        parse("templates/cart.html"),
+		ckoutTmpl:       parse("templates/checkout.html"),
+		orderTmpl:       parse("templates/order.html"),
+		afterSaleTmpl:   parse("templates/after_sale.html"),
+		afterSaleLimit:  newCommerceLimiter(12),
+		orderAccessTmpl: parse("templates/order_access.html"),
+		accessLimit:     newCommerceLimiter(6),
+		pageTmpl:        parse("templates/content_page.html"),
+		blogListTmpl:    parse("templates/blog_list.html"),
+		blogPostTmpl:    parse("templates/blog_post.html"),
+		blog:            blog.New(svc.db, settingsSvc),
+		contactTmpl:     parse("templates/contact.html"),
+		contactLimit:    newContactLimiter(),
+		cartLimit:       newCommerceLimiter(120),
+		checkoutLimit:   newCommerceLimiter(12),
+		payLimit:        newCommerceLimiter(20),
 	}
 	if len(shopNameOverride) > 0 {
 		if fallback := strings.TrimSpace(shopNameOverride[0]); fallback != "" {
@@ -133,19 +148,26 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /sitemap.xml", h.sitemap)
 	mux.HandleFunc("GET /robots.txt", h.robots)
 	mux.HandleFunc("GET /static/cart.js", h.cartJS)
+	mux.HandleFunc("GET /static/checkout.js", h.checkoutJS)
 	mux.HandleFunc("GET /static/running-tee-hero.png", h.runningTeeHero)
-	// 购物车（匿名，cookie 标识；SameSite=Lax 缓解 CSRF）。
-	mux.HandleFunc("GET /cart", h.cartPage)
-	mux.HandleFunc("GET /cart/data", h.cartData)
-	mux.HandleFunc("POST /cart/items", h.cartAdd)
-	mux.HandleFunc("PATCH /cart/items/{vid}", h.cartSet)
-	mux.HandleFunc("DELETE /cart/items/{vid}", h.cartRemove)
+	// 购物车（匿名，cookie 标识；写入必须同源，SameSite=Lax 为额外保护）。
+	mux.HandleFunc("GET /cart", httpx.PrivateHandler(h.cartPage))
+	mux.HandleFunc("GET /cart/data", httpx.PrivateHandler(h.cartData))
+	mux.HandleFunc("POST /cart/items", h.protectCommerce(h.cartLimit, h.cartAdd))
+	mux.HandleFunc("PATCH /cart/items/{vid}", h.protectCommerce(h.cartLimit, h.cartSet))
+	mux.HandleFunc("DELETE /cart/items/{vid}", h.protectCommerce(h.cartLimit, h.cartRemove))
 	// 结算/订单（表单提交，无 JS 也可用）。
-	mux.HandleFunc("GET /checkout", h.checkoutPage)
-	mux.HandleFunc("POST /checkout", h.checkoutSubmit)
-	mux.HandleFunc("GET /order/{id}", h.orderPage)
-	mux.HandleFunc("POST /order/{id}/pay", h.orderPay)   // 未付订单「去支付」重新发起
-	mux.HandleFunc("GET /paypal/return", h.paypalReturn) // PayPal 审批后跳回做同步 capture
+	mux.HandleFunc("GET /checkout", httpx.PrivateHandler(h.checkoutPage))
+	mux.HandleFunc("POST /checkout", h.protectCommerce(h.checkoutLimit, h.checkoutSubmit))
+	mux.HandleFunc("GET /order/{id}", httpx.PrivateHandler(h.orderPage))
+	mux.HandleFunc("GET /order/{id}/after-sales", httpx.PrivateHandler(h.afterSalePage))
+	mux.HandleFunc("POST /order/{id}/after-sales", h.protectCommerce(h.afterSaleLimit, h.createAfterSale))
+	mux.HandleFunc("POST /order/{id}/after-sales/{case}/actions", h.protectCommerce(h.afterSaleLimit, h.updateAfterSale))
+	mux.HandleFunc("POST /order/{id}/access/request", h.protectCommerce(h.accessLimit, h.requestGuestAccess))
+	mux.HandleFunc("POST /order/{id}/access/verify", h.protectCommerce(h.accessLimit, h.verifyGuestAccess))
+	mux.HandleFunc("POST /order/{id}/access/logout", h.protectCommerce(h.accessLimit, h.logoutGuestAccess))
+	mux.HandleFunc("POST /order/{id}/pay", h.protectCommerce(h.payLimit, h.orderPay))   // 未付订单「去支付」重新发起
+	mux.HandleFunc("GET /paypal/return", h.protectCommerce(h.payLimit, h.paypalReturn)) // PayPal 审批后跳回做同步 capture
 }
 
 // shopifyProductRedirect 将 Shopify 历史商品链接永久迁移到 Kartwo 商品页。
@@ -437,7 +459,7 @@ func (h *HTTP) sitemap(w http.ResponseWriter, r *http.Request) {
 
 func (h *HTTP) robots(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = fmt.Fprintf(w, "User-agent: *\nAllow: /\nDisallow: /admin/\nSitemap: %s/sitemap.xml\n", h.base(r))
+	_, _ = fmt.Fprintf(w, "User-agent: *\nAllow: /\nDisallow: /admin/\nDisallow: /order/\nDisallow: /checkout\nDisallow: /cart\nDisallow: /paypal/\nSitemap: %s/sitemap.xml\n", h.base(r))
 }
 
 // runningTeeHero 提供内嵌的原创跑步产品首屏图；固定路径，不接受用户输入。
@@ -453,15 +475,23 @@ func (h *HTTP) runningTeeHero(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *HTTP) render(w http.ResponseWriter, r *http.Request, t *template.Template, data map[string]any) {
-	categories, err := h.svc.ListCategories(r.Context())
-	if err != nil {
+	if err := h.preparePage(r.Context(), data); err != nil {
 		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
 	}
-	pages, err := h.svc.ListContentPages(r.Context())
+	writePage(w, t, data)
+}
+
+// Prepare public navigation before writing headers. Private forms can preserve
+// their original POST in a minimal recovery document if these reads fail.
+func (h *HTTP) preparePage(ctx context.Context, data map[string]any) error {
+	categories, err := h.svc.ListCategories(ctx)
 	if err != nil {
-		http.Error(w, "Something went wrong", http.StatusInternalServerError)
-		return
+		return err
+	}
+	pages, err := h.svc.ListContentPages(ctx)
+	if err != nil {
+		return err
 	}
 	data["NavigationCategories"] = categories
 	data["FooterPages"] = pages
@@ -471,21 +501,26 @@ func (h *HTTP) render(w http.ResponseWriter, r *http.Request, t *template.Templa
 			break
 		}
 	}
-	data["ShopLogoURL"] = h.settings.ShopLogoURL(r.Context())
-	blogEnabled, err := h.blog.Enabled(r.Context())
+	data["ShopLogoURL"] = h.settings.ShopLogoURL(ctx)
+	blogEnabled, err := h.blog.Enabled(ctx)
 	if err != nil {
-		http.Error(w, "Something went wrong", 500)
-		return
+		return err
 	}
 	if blogEnabled {
-		visible, err := h.blog.HasPublished(r.Context())
+		visible, err := h.blog.HasPublished(ctx)
 		if err != nil {
-			http.Error(w, "Something went wrong", 500)
-			return
+			return err
 		}
 		data["BlogVisible"] = visible
 	}
+	return nil
+}
+
+func writePage(w http.ResponseWriter, t *template.Template, data map[string]any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if status, ok := data["HTTPStatus"].(int); ok {
+		w.WriteHeader(status)
+	}
 	if err := t.ExecuteTemplate(w, "base", data); err != nil {
 		http.Error(w, "Render error", http.StatusInternalServerError)
 	}

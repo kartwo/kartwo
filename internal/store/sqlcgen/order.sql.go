@@ -98,24 +98,31 @@ func (q *Queries) GetCustomerByEmail(ctx context.Context, email string) (GetCust
 }
 
 const getOrderByPublicID = `-- name: GetOrderByPublicID :one
-SELECT id, public_id, status, email, ship_name, ship_phone, ship_address, ship_country, currency, subtotal_cents, total_cents, payment_provider, payment_ref, created_at FROM "order" WHERE public_id = ?
+SELECT id, public_id, status, email, ship_name, ship_phone, ship_address, ship_country, currency, subtotal_cents, total_cents, payment_provider, payment_ref, created_at, ship_address_version, ship_address_line1, ship_address_line2, ship_city, ship_district, ship_region, ship_postal_code FROM "order" WHERE public_id = ?
 `
 
 type GetOrderByPublicIDRow struct {
-	ID              int64  `db:"id" json:"id"`
-	PublicID        string `db:"public_id" json:"public_id"`
-	Status          string `db:"status" json:"status"`
-	Email           string `db:"email" json:"email"`
-	ShipName        string `db:"ship_name" json:"ship_name"`
-	ShipPhone       string `db:"ship_phone" json:"ship_phone"`
-	ShipAddress     string `db:"ship_address" json:"ship_address"`
-	ShipCountry     string `db:"ship_country" json:"ship_country"`
-	Currency        string `db:"currency" json:"currency"`
-	SubtotalCents   int64  `db:"subtotal_cents" json:"subtotal_cents"`
-	TotalCents      int64  `db:"total_cents" json:"total_cents"`
-	PaymentProvider string `db:"payment_provider" json:"payment_provider"`
-	PaymentRef      string `db:"payment_ref" json:"payment_ref"`
-	CreatedAt       string `db:"created_at" json:"created_at"`
+	ID                 int64  `db:"id" json:"id"`
+	PublicID           string `db:"public_id" json:"public_id"`
+	Status             string `db:"status" json:"status"`
+	Email              string `db:"email" json:"email"`
+	ShipName           string `db:"ship_name" json:"ship_name"`
+	ShipPhone          string `db:"ship_phone" json:"ship_phone"`
+	ShipAddress        string `db:"ship_address" json:"ship_address"`
+	ShipCountry        string `db:"ship_country" json:"ship_country"`
+	Currency           string `db:"currency" json:"currency"`
+	SubtotalCents      int64  `db:"subtotal_cents" json:"subtotal_cents"`
+	TotalCents         int64  `db:"total_cents" json:"total_cents"`
+	PaymentProvider    string `db:"payment_provider" json:"payment_provider"`
+	PaymentRef         string `db:"payment_ref" json:"payment_ref"`
+	CreatedAt          string `db:"created_at" json:"created_at"`
+	ShipAddressVersion int64  `db:"ship_address_version" json:"ship_address_version"`
+	ShipAddressLine1   string `db:"ship_address_line1" json:"ship_address_line1"`
+	ShipAddressLine2   string `db:"ship_address_line2" json:"ship_address_line2"`
+	ShipCity           string `db:"ship_city" json:"ship_city"`
+	ShipDistrict       string `db:"ship_district" json:"ship_district"`
+	ShipRegion         string `db:"ship_region" json:"ship_region"`
+	ShipPostalCode     string `db:"ship_postal_code" json:"ship_postal_code"`
 }
 
 func (q *Queries) GetOrderByPublicID(ctx context.Context, publicID string) (GetOrderByPublicIDRow, error) {
@@ -136,6 +143,13 @@ func (q *Queries) GetOrderByPublicID(ctx context.Context, publicID string) (GetO
 		&i.PaymentProvider,
 		&i.PaymentRef,
 		&i.CreatedAt,
+		&i.ShipAddressVersion,
+		&i.ShipAddressLine1,
+		&i.ShipAddressLine2,
+		&i.ShipCity,
+		&i.ShipDistrict,
+		&i.ShipRegion,
+		&i.ShipPostalCode,
 	)
 	return i, err
 }
@@ -324,13 +338,16 @@ func (q *Queries) ListRefundsByOrder(ctx context.Context, orderID int64) ([]List
 	return items, nil
 }
 
-const markCartConverted = `-- name: MarkCartConverted :exec
-UPDATE cart SET status = 'converted', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?
+const markCartConverted = `-- name: MarkCartConverted :execrows
+UPDATE cart SET status = 'converted', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND status = 'active'
 `
 
-func (q *Queries) MarkCartConverted(ctx context.Context, id int64) error {
-	_, err := q.db.ExecContext(ctx, markCartConverted, id)
-	return err
+func (q *Queries) MarkCartConverted(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markCartConverted, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const reserveInventory = `-- name: ReserveInventory :execrows

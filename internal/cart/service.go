@@ -79,6 +79,21 @@ func (s *Service) GetOrCreate(ctx context.Context, token string) (cartID int64, 
 	return id, newTok, nil
 }
 
+// ActiveID 只查询现有活跃购物车；没有有效 token 时返回 0，不写入空购物车。
+func (s *Service) ActiveID(ctx context.Context, token string) (int64, error) {
+	if token == "" {
+		return 0, nil
+	}
+	c, err := s.q.GetActiveCartByToken(ctx, token)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("cart: 取购物车失败: %w", err)
+	}
+	return c.ID, nil
+}
+
 // AddItem 加入（或累加）一个变体。
 func (s *Service) AddItem(ctx context.Context, cartID int64, variantPublicID string, qty int64) error {
 	if qty <= 0 || qty > maxQtyPerLine {
@@ -97,6 +112,9 @@ func (s *Service) AddItem(ctx context.Context, cartID int64, variantPublicID str
 
 // SetQty 设置某行数量；qty<=0 视为删除。
 func (s *Service) SetQty(ctx context.Context, cartID int64, variantPublicID string, qty int64) error {
+	if qty <= 0 {
+		return s.RemoveItem(ctx, cartID, variantPublicID)
+	}
 	if qty > maxQtyPerLine {
 		return ErrInvalidQty
 	}
@@ -104,27 +122,23 @@ func (s *Service) SetQty(ctx context.Context, cartID int64, variantPublicID stri
 	if err != nil {
 		return err
 	}
-	if qty <= 0 {
-		if err := s.q.RemoveCartItem(ctx, sqlcgen.RemoveCartItemParams{CartID: cartID, VariantID: v.ID}); err != nil {
-			return fmt.Errorf("cart: 删除失败: %w", err)
-		}
-	} else if err := s.q.SetCartItemQty(ctx, sqlcgen.SetCartItemQtyParams{Quantity: qty, CartID: cartID, VariantID: v.ID}); err != nil {
+	if err := s.q.SetCartItemQty(ctx, sqlcgen.SetCartItemQtyParams{Quantity: qty, CartID: cartID, VariantID: v.ID}); err != nil {
 		return fmt.Errorf("cart: 改量失败: %w", err)
 	}
 	_ = s.q.TouchCart(ctx, cartID)
 	return nil
 }
 
-// RemoveItem 删除某行。
+// RemoveItem removes only this active cart's line, including unavailable
+// variants. Missing/already removed lines are idempotent and reveal no other cart.
 func (s *Service) RemoveItem(ctx context.Context, cartID int64, variantPublicID string) error {
-	v, err := s.variant(ctx, variantPublicID)
+	removed, err := s.q.RemoveOwnedCartItem(ctx, sqlcgen.RemoveOwnedCartItemParams{CartID: cartID, VariantPublicID: variantPublicID})
 	if err != nil {
-		return err
-	}
-	if err := s.q.RemoveCartItem(ctx, sqlcgen.RemoveCartItemParams{CartID: cartID, VariantID: v.ID}); err != nil {
 		return fmt.Errorf("cart: 删除失败: %w", err)
 	}
-	_ = s.q.TouchCart(ctx, cartID)
+	if removed > 0 {
+		_ = s.q.TouchCart(ctx, cartID)
+	}
 	return nil
 }
 

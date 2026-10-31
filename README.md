@@ -6,11 +6,11 @@
 
 ## 当前版本
 
-当前正式版本：`v0.8.0`。
+当前正式版本：`v0.8.1`。React 后台及本轮经营功能仍在开发分支验收，尚未包含在这个已发布版本中。
 
 - Linux x86_64：发布流水线在干净数据目录实跑迁移、20 件演示商品、店面、后台与健康检查。
 - Linux ARM64、macOS Apple Silicon、Windows x86_64：编译产出，尚未逐平台人工实跑。
-- Linux 二进制依赖 glibc；Alpine/musl 暂不支持。
+- 当前正式版 v0.8.1 的 Linux 二进制依赖 glibc；Alpine/musl 尚未验收。开发分支已改为严格静态 Linux 构建（内嵌 WASM 编解码），后续发布会校验无动态加载器及共享库依赖；此变更尚未发布。
 
 ## 在线演示
 
@@ -49,9 +49,23 @@
 
 版本变更和已知边界见 [CHANGELOG.md](CHANGELOG.md)。
 
+### 开发分支：订单工作台（尚未正式发布）
+
+后台订单页新增服务端搜索、分页及六个待处理视图，可按订单号、授权客户邮箱、状态、支付方式和 UTC 日期筛选；资金异常、待处理退款与实际发货分别呈现。客户资料权限同时约束搜索范围和响应，条件不进入网址。升级新增 `0035` 查询索引，保留原订单及运单；CSV 仍使用独立的导出条件。功能边界和人工步骤见 [后台验收清单](web/admin/ui/MIGRATION.md)。
+
+### 开发分支：游客订单隐私（尚未正式发布）
+
+- 订单链接本身不再授权查看收货资料或重新付款。下单浏览器获得订单专用 HttpOnly Cookie，有效期 30 天；顾客可点击“Close private order view”退出。
+- 换设备、清除 Cookie 或打开升级前的旧链接时，需要订单邮箱的 8 位验证码。验证码有效期 10 分钟、最多尝试 5 次；每订单发送至少间隔 1 分钟、每小时最多 3 次，公开入口另有 IP 限流。
+- **升级前请在后台确认邮件配置并测试发信**。邮件未配置或暂时锁定时，跨设备查询会提示联系店铺；下单浏览器和后台正常授权访问不依赖发信。
+- 店主可在订单详情撤销该订单的全部顾客访问凭证及未用验证码；顾客仍可通过邮箱重新验证。后台查看客户资料、撤销和导出均记录最小审计信息。
+- 浏览器凭证只存摘要；验证码邮件投递前短暂保存在本机发件队列，发送完成、作废或到期后清除正文。数据目录及其备份仍须按客户数据保护。
+- 迁移 `0034_guest_order_access.sql` 自动新增授权表，保留原订单；它不会为旧链接自动授予访问权。生产部署仍应使用 HTTPS。
+
+
 ## 下载与快速体验
 
-从 [GitHub Releases](https://github.com/kartwo/kartwo/releases) 下载 `v0.8.0` 对应平台文件和 `SHA256SUMS.txt`。
+从 [GitHub Releases](https://github.com/kartwo/kartwo/releases) 下载 `v0.8.1` 对应平台文件和 `SHA256SUMS.txt`。
 
 | 平台 | 文件 | 状态 |
 |---|---|---|
@@ -115,9 +129,15 @@ Environment=KARTWO_DEMO_CLEANUP_INTERVAL=5m
 生产模式可直接监听 `:80` 和 `:443`，内嵌 Let's Encrypt 自动签发与续期证书，不强制依赖 Nginx 或 Certbot。完整步骤见[生产部署手册](docs/production-deployment.md)。
 
 - 使用持久目录，例如 `/data/kartwo`，并定期验证备份可恢复。
+- 使用 `kartwo restore` 恢复 ZIP 后，旧后台会话、员工邀请链接和顾客订单访问凭证失效。店主使用原账号密码重新登录；顾客重新验证订单邮箱，未使用的员工邀请需重新生成。账号、角色、加密收款/邮件配置及订单/售后历史保留，旧验证码邮件不会补发。此规则仅用于恢复新目录，普通重启和升级不受影响。
 - 放行 TCP 80/443；`KARTWO_DOMAIN` 只填域名，不含协议、路径或端口。
 - 建议交给 systemd 守护；升级前先停止服务并备份完整数据目录。
+- 导出、自动备份和升级快照会拒绝被误建为普通文件或符号链接的 `media` 根路径，避免生成无法恢复的包；程序不会自动覆盖或删除该路径。修复存储路径后可重试。尚无图片的新店不需要预建媒体目录。
+- 备份会拒绝恢复格式不支持的媒体路径（如反斜杠文件名），不会把它们改名或静默漏掉；普通中文、空格文件名正常保留。
+- ZIP 备份沿用恢复格式的容量护栏：单文件最多 1 GiB，解压总计最多 4 GiB，最多 100,000 条目（含数据库和清单）。压缩前检查容量，完成后再按恢复规则自检；超限明确失败，原数据保留。
+- 后台收款、邮件、翻译和备份设置整次校验并在一个事务中保存；无效字段或写入失败时原配置保留，密码留空仍保留已配置密码。
 - 收款先用 Stripe/PayPal 沙箱完成一笔付款与退款，再切正式密钥。
+- Stripe 连接测试验证已保存的账户级 `sk_` / `rk_` 密钥、测试或正式模式及账户读取权限；成功连接不等于付款、Webhook 和退款均已验收。
 - 未付款订单保留库存 30 分钟，到期自动取消并释放；若支付平台较晚确认付款，后台会标为「收款异常待处理」，店主应核对并退款，不要发货。
 - 店主首次设置或登录后，程序会在数据目录旁建立仅运行用户可读的 `数据目录.unlock-key`，供重启后自动恢复收款与邮件。受限 systemd 部署可用 `KARTWO_RUNTIME_KEY_PATH` 指向数据目录外的可写私有目录，详见生产部署手册。请保护此文件的权限；它不包含在数据目录的导出包中。只搬数据目录到新机器时，店主首次登录后台即可重新配对。
 
@@ -129,14 +149,18 @@ Environment=KARTWO_DEMO_CLEANUP_INTERVAL=5m
 
 要求 Go 与 Node 版本见 [CI 配置](.github/workflows/ci.yml)。
 
+开发分支后台使用 React + TypeScript + Vite + Ant Design；保留原 `/admin/#/...` 地址和细分权限。Vite 构建到 `web/admin/dist` 后嵌入 Go 二进制，服务器运行时无需 Node。迁移状态和分批人工步骤见 [后台验收清单](web/admin/ui/MIGRATION.md)。
+
 ```bash
 make gen
 cd web/admin/ui && npm ci && npm run build && cd ../../..
-go build -o kartwo ./cmd/kartwo
+make build
 make check
 ```
 
-`make check` 包含 vet、race test、build、lint、govulncheck 与 gitleaks。发布工作流会重新构建 Admin 后再嵌入二进制，避免提交产物陈旧。
+`make check` 包含 vet、race test、build、lint、govulncheck 与 gitleaks。Linux 构建固定 `CGO_ENABLED=0` 与 `-tags=nodynamic`（内嵌 WASM 编解码），测试和扫描使用同一标签；Linux 的 `make check` 还验证实际 ELF 无动态加载器或共享库依赖。交叉编译使用 `GOOS=linux GOARCH=arm64 make build`，产物可在宿主用 `sh scripts/check-static.sh kartwo` 核对。`make tools` 与 CI 固定使用 govulncheck [v1.9.0](https://pkg.go.dev/golang.org/x/vuln@v1.9.0/cmd/govulncheck)，CI 调用同一 `make vuln` 目标。漏洞扫描受构建平台影响；在非 Linux 开发机上，还需用 `GOOS=linux GOARCH=amd64 make vuln` 检查生产平台，不能将本机平台通过当作 Linux 已通过。发布工作流会重新构建 Admin 后再嵌入二进制，避免提交产物陈旧。
+
+本机开发可在 `web/admin/ui` 运行 `npm run dev`，API 与媒体默认代理到 `http://127.0.0.1:8080`；后端监听其他端口时，使用 `KARTWO_DEV_PROXY=http://127.0.0.1:8189 npm run dev`。Vite 只监听本机；发布仍以 Go 内嵌页面为准。
 
 ## 许可
 

@@ -117,11 +117,11 @@ func (h *HTTP) ConfigureDemo(cfg DemoConfig) {
 
 // Register 在给定 mux 上注册 /admin/api/* 路由。
 func (h *HTTP) Register(mux *http.ServeMux) {
-	mux.HandleFunc("GET /admin/api/status", h.status)
-	mux.HandleFunc("POST /admin/api/setup", h.setup)
-	mux.HandleFunc("POST /admin/api/login", h.login)
-	mux.HandleFunc("POST /admin/api/invites/accept", h.acceptInvite)
-	mux.HandleFunc("POST /admin/api/demo-session", h.demoSession)
+	mux.HandleFunc("GET /admin/api/status", httpx.PrivateHandler(h.status))
+	mux.HandleFunc("POST /admin/api/setup", httpx.PrivateHandler(h.setup))
+	mux.HandleFunc("POST /admin/api/login", httpx.PrivateHandler(h.login))
+	mux.HandleFunc("POST /admin/api/invites/accept", httpx.PrivateHandler(h.acceptInvite))
+	mux.HandleFunc("POST /admin/api/demo-session", httpx.PrivateHandler(h.demoSession))
 	mux.Handle("POST /admin/api/logout", h.requireAuth(http.HandlerFunc(h.logout)))
 	mux.Handle("GET /admin/api/me", h.requireAuth(http.HandlerFunc(h.me)))
 	mux.Handle("POST /admin/api/demo/reset", h.requireAuth(http.HandlerFunc(h.resetDemo)))
@@ -230,10 +230,20 @@ func (h *HTTP) Register(mux *http.ServeMux) {
 
 	// 订单 + 退款（M3.3a）。
 	mux.Handle("GET /admin/api/orders", protect(h.listOrders))
+	mux.Handle("POST /admin/api/orders/search", protect(h.searchOrders))
 	mux.Handle("GET /admin/api/orders/export", owner(h.exportOrdersCSV))
 	mux.Handle("GET /admin/api/orders/{id}", protect(h.getOrder))
+	mux.Handle("POST /admin/api/orders/{id}/revoke-access", owner(h.revokeOrderAccess))
 	mux.Handle("POST /admin/api/orders/{id}/refund", owner(h.refundOrder))
+	mux.Handle("POST /admin/api/orders/{id}/refunds", owner(h.createRefundRequest))
+	mux.Handle("POST /admin/api/orders/{id}/refund-check", owner(h.reconcileRefunds))
+	mux.Handle("POST /admin/api/orders/{id}/refunds/{refund}/refresh", owner(h.retryRefundRequest))
 	mux.Handle("POST /admin/api/orders/{id}/fulfill", owner(h.fulfillOrder))
+	mux.Handle("GET /admin/api/orders/{id}/after-sales", owner(h.getAfterSales))
+	mux.Handle("POST /admin/api/orders/{id}/after-sales/{case}/actions", owner(h.reviewAfterSale))
+	mux.Handle("GET /admin/api/orders/{id}/shipment", owner(h.getShipment))
+	mux.Handle("PATCH /admin/api/orders/{id}/shipment", owner(h.updateShipment))
+	mux.Handle("POST /admin/api/orders/{id}/shipment-notices/{notice}/actions", owner(h.manageShipmentNotice))
 	mux.Handle("GET /admin/api/settings/shipping/countries", protect(h.listShippingCountries))
 	mux.Handle("PUT /admin/api/settings/shipping/countries", owner(h.saveShippingCountries))
 	mux.Handle("PUT /admin/api/settings/shipping/default", owner(h.saveDefaultShippingZone))

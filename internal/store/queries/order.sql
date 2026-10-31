@@ -18,11 +18,11 @@ INSERT INTO order_item (order_id, variant_id, product_title, variant_label, sku,
 -- name: ReserveInventory :execrows
 UPDATE inventory SET reserved = reserved + ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE variant_id = ? AND quantity - reserved >= ?;
 
--- name: MarkCartConverted :exec
-UPDATE cart SET status = 'converted', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?;
+-- name: MarkCartConverted :execrows
+UPDATE cart SET status = 'converted', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ? AND status = 'active';
 
 -- name: GetOrderByPublicID :one
-SELECT id, public_id, status, email, ship_name, ship_phone, ship_address, ship_country, currency, subtotal_cents, total_cents, payment_provider, payment_ref, created_at FROM "order" WHERE public_id = ?;
+SELECT id, public_id, status, email, ship_name, ship_phone, ship_address, ship_country, currency, subtotal_cents, total_cents, payment_provider, payment_ref, created_at, ship_address_version, ship_address_line1, ship_address_line2, ship_city, ship_district, ship_region, ship_postal_code FROM "order" WHERE public_id = ?;
 
 -- name: ListOrderItems :many
 SELECT product_title, variant_label, sku, unit_cents, quantity, line_cents FROM order_item WHERE order_id = ? ORDER BY id;

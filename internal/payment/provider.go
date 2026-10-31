@@ -33,6 +33,8 @@ const (
 )
 
 var (
+	// ErrRefundUnconfirmed 网关已接收但尚未确认退款成功，不能提前记为已退。
+	ErrRefundUnconfirmed = errors.New("payment: 网关尚未确认退款成功，请等待退款回调或在支付平台核对")
 	// ErrLocked 收款密钥未解锁（进程重启后无人登录过）；Webhook 据此返回非 2xx 交给网关重投。
 	ErrLocked = errors.New("payment: 收款密钥未解锁（请登录一次后台以激活收款）")
 	// ErrBadSignature Webhook 签名校验失败（伪造/篡改/过期）；下游一律拒绝改单。
@@ -51,13 +53,15 @@ var (
 
 // OrderForPayment 是发起一次收款所需的最小订单信息。
 type OrderForPayment struct {
-	PublicID    string // 订单 public_id，写入网关 client_reference_id 作回调对账锚点
-	Email       string
-	Currency    string // 如 USD
-	AmountCents int64  // 应收总额（分），与 Webhook amount_total 比对
-	Description string // 收银台展示用一行描述
-	SuccessURL  string
-	CancelURL   string
+	IdempotencyKey string // 持久化的尝试 UUID；重试时保持不变
+	ExpiresAt      int64  // Stripe 会话绝对过期时间；随请求快照持久化
+	PublicID       string // 订单 public_id，写入网关 client_reference_id 作回调对账锚点
+	Email          string
+	Currency       string // 如 USD
+	AmountCents    int64  // 应收总额（分），与 Webhook amount_total 比对
+	Description    string // 收银台展示用一行描述
+	SuccessURL     string
+	CancelURL      string
 }
 
 // PaymentSession 是 CreatePayment 的结果：把买家引导到何处付款。
@@ -68,13 +72,16 @@ type PaymentSession struct {
 
 // WebhookEvent 是 VerifyWebhook 验签通过后规范化的事件（供幂等处理）。
 type WebhookEvent struct {
-	ID            string // 网关事件 ID（幂等去重键）
-	Type          string // 如 checkout.session.completed / charge.refunded
-	OrderRef      string // 我方订单 public_id（来自 client_reference_id；退款事件无）
-	PaymentRef    string // 网关支付引用（Stripe payment_intent）；用于退款与退款事件回查订单
-	PaymentStatus string // 如 paid（不假设事件类型即已付，须显式校验）
-	AmountCents   int64  // 网关侧成交总额（分）
-	Currency      string // 网关侧币种
+	ID              string // 网关事件 ID（幂等去重键）
+	Type            string // 如 checkout.session.completed / charge.refunded
+	OrderRef        string // 我方订单 public_id（来自 client_reference_id；退款事件无）
+	PaymentRef      string // 网关支付引用（Stripe payment_intent）；用于退款与退款事件回查订单
+	PaymentStatus   string // 如 paid（不假设事件类型即已付，须显式校验）
+	AmountCents     int64  // 网关侧成交总额（分）
+	Currency        string // 网关侧币种
+	RefundRef       string // 平台单笔退款 ID
+	RefundRequestID string // 本系统退款请求元数据；仅用于定位，仍须核对网关当前资源
+	RefundedCents   int64  // 平台提供的累计已退金额
 }
 
 // PaymentProvider 支付通道抽象（ARCHITECTURE §9）。双校验在 VerifyWebhook 内：验签 + 由调用方比对订单/金额。
@@ -82,6 +89,4 @@ type PaymentProvider interface {
 	Name() string
 	CreatePayment(ctx context.Context, ord OrderForPayment) (PaymentSession, error)
 	VerifyWebhook(payload []byte, sigHeader string) (WebhookEvent, error)
-	// Refund 整数分退款，返回网关退款 ID（provider_refund_id）。
-	Refund(ctx context.Context, reference string, amountCents int64) (string, error)
 }

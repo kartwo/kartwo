@@ -1,0 +1,97 @@
+<!-- 售后申请页面 / After Sale Request Page
+功能：在已验证订单内提交申请、查看审核和退回记录，保留失败草稿与原操作
+作者：仗键天涯(daxing)
+邮箱：3442535897@qq.com
+时间：2026-10-25 21:28:26 -->
+{{define "content"}}
+<div class="after-sale-page">
+  <h1>Returns and refunds</h1>
+  <p class="order-address-text">Order <strong>{{.OrderID}}</strong></p>
+  <p><a href="/order/{{.OrderID}}">← Back to your order</a></p>
+  <p>Requests are reviewed by the store. An approval does not mean a refund has been sent. For an exchange, contact support.</p>
+  {{range .FooterPages}}{{if eq .Slug "returns-refunds"}}<p><a href="/pages/returns-refunds">Read the store's returns and refunds policy</a></p>{{end}}{{end}}
+  {{if .PolicyUnavailable}}<p role="status">Current policy details are temporarily unavailable. Existing requests can still be viewed and managed; contact the store before starting a new request.</p>
+  {{else if .Terms.Configured}}
+  <p>Store policy details: returns may be requested within {{.Terms.WindowDays}} days after receipt. Return shipping is paid by {{if eq .Terms.ShippingPayer "buyer"}}the buyer{{else if eq .Terms.ShippingPayer "merchant"}}the store{{else}}the party confirmed by support{{end}}.</p>
+  {{if .Terms.SupportEmail}}<p>Questions or exchanges: <a href="mailto:{{.Terms.SupportEmail}}">{{.Terms.SupportEmail}}</a>.</p>{{end}}
+  {{else}}<p class="muted">Contact the store to confirm the applicable return terms before sending anything back.</p>{{end}}
+
+  {{if .Message}}<p class="after-sale-error" role="alert">{{.Message}}</p>{{end}}
+  {{if .ReadError}}<p>Latest request records are unavailable. No previous records are shown until they can be confirmed.</p>{{end}}
+  {{if .NeedsReview}}<p><a href="{{.RequestPath}}">Review the latest requests before making another action</a></p>{{end}}
+  {{if .Uncertain}}
+  <section class="checkout-card after-sale-card" aria-label="Original request recovery">
+    <h2>Continue the original request</h2>
+    <p>The original details have been kept below. Continuing checks the same operation; it does not create a second request.</p>
+    {{if .Draft}}{{if eq .Draft.Operation "request"}}<p>Requested amount: {{.Draft.Amount}}</p><p class="order-address-text">{{.Draft.Reason}}</p>{{else}}<p class="order-address-text">{{.Draft.Carrier}} {{.Draft.Number}}</p><p class="order-address-text">{{.Draft.Message}}</p>{{end}}{{end}}
+    <form method="post" action="{{.RecoveryPath}}">
+      {{range .Recovery}}<input type="hidden" name="{{.Name}}" value="{{.Value}}">{{end}}
+      <button class="btn" type="submit">Continue original request</button>
+    </form>
+  </section>
+  {{end}}
+
+  {{if .ShowRequestForm}}
+  <section class="checkout-card after-sale-card" aria-labelledby="after-sale-new-title">
+    <h2 id="after-sale-new-title">New request</h2>
+    {{if .Order}}<p>Order currency: <strong>{{.Order.Currency}}</strong>. You can request up to <strong>{{call .Money .Snapshot.MaxRequestCents}}</strong>.</p>{{end}}
+    <form method="post" action="{{.RequestPath}}">
+      <input type="hidden" name="request_key" value="{{.Form.RequestKey}}">
+      <fieldset class="after-sale-fields" {{if .RequestDisabled}}disabled{{end}}>
+        <label for="after-sale-kind">Request type</label>
+        <select id="after-sale-kind" name="kind">
+          <option value="refund" {{if eq .Form.Kind "refund"}}selected{{end}}>Refund only</option>
+          {{if or .Snapshot.CanRequestReturn (eq .Form.Kind "return_refund")}}<option value="return_refund" {{if eq .Form.Kind "return_refund"}}selected{{end}}>Return and refund</option>{{end}}
+        </select>
+        <label for="after-sale-amount">Requested amount{{if .Order}} ({{.Order.Currency}}){{end}}</label>
+        <input id="after-sale-amount" name="amount" inputmode="decimal" value="{{.Form.Amount}}" maxlength="20" required placeholder="0.00">
+        <label for="after-sale-reason">Reason and items concerned</label>
+        <textarea id="after-sale-reason" name="reason" rows="5" maxlength="2000" required>{{.Form.Reason}}</textarea>
+        <p class="muted">Describe which items you need help with. Do not include payment details or passwords. Wait for the store's return instructions before sending items.</p>
+        <button class="btn" type="submit">Submit request for review</button>
+      </fieldset>
+    </form>
+  </section>
+  {{else if not .ReadError}}
+    {{if not .Cards}}<p>No requests yet. A request becomes available after payment has been recorded; contact the store if you need help.</p>{{else if not .Snapshot.CanRequestRefund}}<p class="muted">A new request is currently unavailable. Check the active request or contact the store for help.</p>{{end}}
+  {{end}}
+
+  <h2>Your requests</h2>
+  {{range .Cards}}{{$card := .}}{{$c := .Case}}
+  <section class="checkout-card after-sale-card" aria-label="Request {{$c.PublicID}}">
+    <h3>{{.KindLabel}} · {{.StateLabel}}</h3>
+    <p class="order-address-text">Request reference: {{$c.PublicID}}<br>Requested: {{call $.Money $c.AmountCents}} {{$c.Currency}} · {{$c.CreatedAt}} (UTC)</p>
+    <p class="order-address-text">{{$c.Reason}}</p>
+    {{if $c.Terms.Configured}}<p class="muted">Policy details when requested: {{$c.Terms.WindowDays}} days after receipt; return shipping paid by {{if eq $c.Terms.ShippingPayer "merchant"}}the store{{else if eq $c.Terms.ShippingPayer "buyer"}}the buyer{{else}}the party confirmed by support{{end}}.</p>{{end}}
+    {{if and $c.MerchantMessage (ne $c.MerchantMessage $c.ReturnInstructions)}}<h4>Message from the store</h4><p class="order-address-text">{{$c.MerchantMessage}}</p>{{end}}
+    {{if $c.ReturnInstructions}}<h4>Return instructions</h4><p class="order-address-text">{{$c.ReturnInstructions}}</p>{{end}}
+    {{if $c.ReturnTrackingNumber}}<p class="order-address-text">Your return tracking: {{$c.ReturnCarrier}} · {{$c.ReturnTrackingNumber}}</p>{{end}}
+    {{if $c.RefundNeedsReview}}<p class="after-sale-error" role="alert">The recorded refund needs another check. Contact the store for the current result.</p>{{end}}
+    {{if eq $c.State "approved"}}<p>The store approved the request. The actual refund has not yet been recorded as complete.</p>{{end}}
+    {{if eq $c.State "completed"}}<p>The store has linked a verified refund to this request. Your bank or payment provider may need additional time to credit the original payment method.</p>{{end}}
+
+    {{if .CanTrack}}
+    <form method="post" action="{{$.RequestPath}}/{{$c.PublicID}}/actions">
+      <input type="hidden" name="request_key" value="{{.Form.RequestKey}}"><input type="hidden" name="expected_version" value="{{.Form.ExpectedVersion}}"><input type="hidden" name="action" value="return_tracking">
+      <fieldset class="after-sale-fields" {{if $.Disabled}}disabled{{end}}>
+        <label for="after-sale-carrier-{{$c.PublicID}}">Return carrier</label><input id="after-sale-carrier-{{$c.PublicID}}" name="carrier" maxlength="128" value="{{.Form.Carrier}}" required>
+        <label for="after-sale-tracking-{{$c.PublicID}}">Return tracking number</label><input id="after-sale-tracking-{{$c.PublicID}}" name="tracking_number" maxlength="128" value="{{.Form.Number}}" required>
+        <p class="muted">Only send the parcel after checking the return instructions. Tracking details do not confirm the store has received or inspected it.</p>
+        <button class="btn" type="submit">Save return tracking</button>
+      </fieldset>
+    </form>
+    {{end}}
+    {{if .CanWithdraw}}<form class="after-sale-withdraw" method="post" action="{{$.RequestPath}}/{{$c.PublicID}}/actions">
+      <input type="hidden" name="request_key" value="{{.Form.RequestKey}}"><input type="hidden" name="expected_version" value="{{.Form.ExpectedVersion}}"><input type="hidden" name="action" value="withdraw">
+      <button class="btn" type="submit" {{if $.Disabled}}disabled{{end}}>Withdraw this request</button>
+    </form>{{end}}
+    <details class="after-sale-history"><summary>Request history</summary><ol>
+      {{range .Events}}<li><strong>{{.Label}}</strong> · {{if eq .Actor "customer"}}Customer{{else}}Store{{end}} · {{.CreatedAt}} (UTC)
+        {{if .Message}}<p class="order-address-text">{{.Message}}</p>{{end}}{{if .TrackingNumber}}<p class="order-address-text">{{.Carrier}} · {{.TrackingNumber}}</p>{{end}}
+      </li>{{end}}
+    </ol></details>
+  </section>
+  {{end}}
+  <p><a href="/order/{{.OrderID}}">Back to your order</a></p>
+</div>
+{{end}}

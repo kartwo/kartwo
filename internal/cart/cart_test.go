@@ -139,6 +139,57 @@ func TestCart_Errors(t *testing.T) {
 	}
 }
 
+func TestCartRemoveUnavailableLineIsScopedAndIdempotent(t *testing.T) {
+	svc, cat := setup(t)
+	ctx := context.Background()
+	variant, other := seedProduct(t, cat)
+	a, _, _ := svc.GetOrCreate(ctx, "")
+	b, _, _ := svc.GetOrCreate(ctx, "")
+	converted, _, _ := svc.GetOrCreate(ctx, "")
+	for _, row := range []struct {
+		cart    int64
+		variant string
+		qty     int64
+	}{{a, variant, 1}, {b, variant, 2}, {converted, other, 1}} {
+		if err := svc.AddItem(ctx, row.cart, row.variant, row.qty); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := svc.db.Exec("UPDATE variant SET deleted_at='2026-10-25T00:00:00Z' WHERE public_id=?", variant); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RemoveItem(ctx, a, variant); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RemoveItem(ctx, a, variant); err != nil {
+		t.Fatalf("replayed removal failed: %v", err)
+	}
+	if count, _ := svc.Count(ctx, a); count != 0 {
+		t.Fatal("own unavailable line retained")
+	}
+	if count, _ := svc.Count(ctx, b); count != 2 {
+		t.Fatal("another cart was modified")
+	}
+	if err := svc.SetQty(ctx, b, variant, 0); err != nil {
+		t.Fatal("zero-quantity removal blocked", err)
+	}
+	if count, _ := svc.Count(ctx, b); count != 0 {
+		t.Fatal("zero quantity did not remove unavailable line")
+	}
+	if _, err := svc.db.Exec("UPDATE cart SET status='converted' WHERE id=?", converted); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RemoveItem(ctx, converted, other); err != nil {
+		t.Fatal(err)
+	}
+	if count, _ := svc.Count(ctx, converted); count != 1 {
+		t.Fatal("converted cart line modified")
+	}
+	if err := svc.RemoveItem(ctx, a, "unknown-or-other-cart"); err != nil {
+		t.Fatal("missing removal should be idempotent")
+	}
+}
+
 func TestCart_OptionsAndThumb(t *testing.T) {
 	svc, cat := setup(t)
 	ctx := context.Background()

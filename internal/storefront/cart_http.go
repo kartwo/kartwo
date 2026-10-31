@@ -85,7 +85,7 @@ func (h *HTTP) cartSet(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	id, err := h.cartCtx(w, r)
+	id, err := h.existingCartID(r)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Something went wrong")
 		return
@@ -98,7 +98,7 @@ func (h *HTTP) cartSet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTP) cartRemove(w http.ResponseWriter, r *http.Request) {
-	id, err := h.cartCtx(w, r)
+	id, err := h.existingCartID(r)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Something went wrong")
 		return
@@ -110,9 +110,18 @@ func (h *HTTP) cartRemove(w http.ResponseWriter, r *http.Request) {
 	h.respondCount(w, r, id)
 }
 
+// existingCartID 读取现有车；浏览页面和空购物车角标不得产生新行或下发 Cookie。
+func (h *HTTP) existingCartID(r *http.Request) (int64, error) {
+	c, err := r.Cookie(cartCookie)
+	if err != nil {
+		return 0, nil
+	}
+	return h.cart.ActiveID(r.Context(), c.Value)
+}
+
 // cartData 返回购物车 JSON（供 JS 刷新抽屉/角标）。
 func (h *HTTP) cartData(w http.ResponseWriter, r *http.Request) {
-	id, err := h.cartCtx(w, r)
+	id, err := h.existingCartID(r)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "Something went wrong")
 		return
@@ -127,7 +136,7 @@ func (h *HTTP) cartData(w http.ResponseWriter, r *http.Request) {
 
 // cartPage 服务端渲染购物车页。
 func (h *HTTP) cartPage(w http.ResponseWriter, r *http.Request) {
-	id, err := h.cartCtx(w, r)
+	id, err := h.existingCartID(r)
 	if err != nil {
 		http.Error(w, "Something went wrong", http.StatusInternalServerError)
 		return
@@ -143,7 +152,7 @@ func (h *HTTP) cartPage(w http.ResponseWriter, r *http.Request) {
 		"Cart":     view,
 		"Money":    h.money(r.Context()),
 		"SEO": seo{
-			Title: "Cart — " + h.shopName(r.Context()), Description: "Your cart", Canonical: canonical, OGType: "website",
+			Title: "Cart — " + h.shopName(r.Context()), Description: "Your cart", NoIndex: true, Canonical: canonical, OGType: "website",
 		},
 	}
 	h.render(w, r, h.cartTmpl, data)

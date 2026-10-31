@@ -13,9 +13,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kartwo/kartwo/internal/auth"
 	"github.com/kartwo/kartwo/internal/backup"
 	"github.com/kartwo/kartwo/internal/config"
 	"github.com/kartwo/kartwo/internal/settings"
+	"github.com/kartwo/kartwo/internal/store/sqlcgen"
 )
 
 // BackupConfig 是启动时实际生效的备份配置。
@@ -174,82 +176,81 @@ func (h *HTTP) setBackupSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ac := authFrom(ctx)
 
-	wrote := false
-	if strings.TrimSpace(req.Interval) != "" && !h.backupCfg.IntervalEnv {
-		if _, err := config.ParseBackupInterval(req.Interval); err != nil {
-			writeErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if err := h.settings.SetPlain(ctx, config.BackupIntervalSetting, strings.TrimSpace(req.Interval)); err != nil {
-			writeErr(w, http.StatusInternalServerError, "保存失败")
-			return
-		}
-		wrote = true
+	// Validate and encrypt every submitted field before opening the write transaction.
+	// A rejected field or a later storage failure must never leave a partial policy.
+	var updates []sqlcgen.UpsertSettingParams
+	plain := func(key, value string) {
+		updates = append(updates, sqlcgen.UpsertSettingParams{Key: key, Value: value})
 	}
-	if strings.TrimSpace(req.Retention) != "" && !h.backupCfg.RetentionEnv {
-		if _, err := config.ParseBackupRetention(req.Retention); err != nil {
-			writeErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if err := h.settings.SetPlain(ctx, config.BackupRetentionSetting, strings.TrimSpace(req.Retention)); err != nil {
-			writeErr(w, http.StatusInternalServerError, "保存失败")
-			return
-		}
-		wrote = true
-	}
-	if req.WebDAVEnabled != nil && !h.backupCfg.WebDAVEnabledEnv {
-		if err := h.settings.SetPlain(ctx, config.BackupWebDAVEnabledSetting, strconv.FormatBool(*req.WebDAVEnabled)); err != nil {
-			writeErr(w, http.StatusInternalServerError, "保存失败")
-			return
-		}
-		wrote = true
-	}
-	if req.WebDAVURL != nil && strings.TrimSpace(*req.WebDAVURL) != "" && !h.backupCfg.WebDAVURLEnv {
-		if _, err := config.ParseBackupWebDAVURL(*req.WebDAVURL); err != nil {
-			writeErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if err := h.settings.SetPlain(ctx, config.BackupWebDAVURLSetting, strings.TrimSpace(*req.WebDAVURL)); err != nil {
-			writeErr(w, http.StatusInternalServerError, "保存失败")
-			return
-		}
-		wrote = true
-	}
-	if req.WebDAVPath != nil && strings.TrimSpace(*req.WebDAVPath) != "" && !h.backupCfg.WebDAVPathEnv {
-		if _, err := config.ParseBackupWebDAVPath(*req.WebDAVPath); err != nil {
-			writeErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if err := h.settings.SetPlain(ctx, config.BackupWebDAVPathSetting, strings.TrimSpace(*req.WebDAVPath)); err != nil {
-			writeErr(w, http.StatusInternalServerError, "保存失败")
-			return
-		}
-		wrote = true
-	}
-	if req.WebDAVUsername != nil && !h.backupCfg.WebDAVUsernameEnv {
-		if err := h.settings.SetPlain(ctx, config.BackupWebDAVUsernameSetting, strings.TrimSpace(*req.WebDAVUsername)); err != nil {
-			writeErr(w, http.StatusInternalServerError, "保存失败")
-			return
-		}
-		wrote = true
-	}
-	if req.WebDAVPassword != nil && !h.backupCfg.WebDAVPasswordEnv {
-		if *req.WebDAVPassword != "" {
-			kek, ok := h.svc.Key(ac.SessionToken)
-			if !ok {
-				writeErr(w, http.StatusInternalServerError, "会话密钥不可用，请重新登录")
+	for _, field := range []struct {
+		key, value string
+		validate   func(string) error
+	}{
+		{config.BackupIntervalSetting, req.Interval, func(value string) error { _, err := config.ParseBackupInterval(value); return err }},
+		{config.BackupRetentionSetting, req.Retention, func(value string) error { _, err := config.ParseBackupRetention(value); return err }},
+	} {
+		if value := strings.TrimSpace(field.value); value != "" {
+			if err := field.validate(value); err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
 				return
 			}
-			if err := h.settings.SetEncrypted(ctx, config.BackupWebDAVPasswordSetting, []byte(*req.WebDAVPassword), kek); err != nil {
-				writeErr(w, http.StatusInternalServerError, "保存失败")
-				return
-			}
-			wrote = true
+			plain(field.key, value)
 		}
 	}
-
-	if !wrote {
+	if req.WebDAVEnabled != nil {
+		plain(config.BackupWebDAVEnabledSetting, strconv.FormatBool(*req.WebDAVEnabled))
+	}
+	for _, field := range []struct {
+		key      string
+		value    *string
+		validate func(string) (string, error)
+	}{
+		{config.BackupWebDAVURLSetting, req.WebDAVURL, config.ParseBackupWebDAVURL},
+		{config.BackupWebDAVPathSetting, req.WebDAVPath, config.ParseBackupWebDAVPath},
+	} {
+		if field.value != nil && strings.TrimSpace(*field.value) != "" {
+			if _, err := field.validate(*field.value); err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			plain(field.key, strings.TrimSpace(*field.value))
+		}
+	}
+	if req.WebDAVUsername != nil {
+		plain(config.BackupWebDAVUsernameSetting, strings.TrimSpace(*req.WebDAVUsername))
+	}
+	if req.WebDAVPassword != nil && *req.WebDAVPassword != "" {
+		kek, ok := h.svc.Key(ac.SessionToken)
+		if !ok {
+			writeErr(w, http.StatusInternalServerError, "会话密钥不可用，请重新登录")
+			return
+		}
+		value, err := auth.Encrypt(kek, []byte(*req.WebDAVPassword))
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "保存失败")
+			return
+		}
+		updates = append(updates, sqlcgen.UpsertSettingParams{Key: config.BackupWebDAVPasswordSetting, Value: value, Encrypted: 1})
+	}
+	if len(updates) == 0 {
 		h.getBackupSettings(w, r)
+		return
+	}
+	tx, err := h.svc.db.BeginTx(ctx, nil)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "保存失败")
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := sqlcgen.New(tx)
+	for _, update := range updates {
+		if err := q.UpsertSetting(ctx, update); err != nil {
+			writeErr(w, http.StatusInternalServerError, "保存失败")
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		writeErr(w, http.StatusInternalServerError, "保存失败")
 		return
 	}
 	h.recordAudit(r, ac.AdminID, "backup.settings_update", "settings", "backup")

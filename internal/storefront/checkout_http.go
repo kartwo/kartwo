@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/kartwo/kartwo/internal/address"
 	"github.com/kartwo/kartwo/internal/order"
 	"github.com/kartwo/kartwo/internal/payment"
 )
@@ -19,72 +20,41 @@ func (h *HTTP) checkoutPage(w http.ResponseWriter, r *http.Request) {
 	h.renderCheckout(w, r, "")
 }
 
-// renderCheckout 渲染结算页（errMsg 非空时显示错误，保留购物车）。
-func (h *HTTP) renderCheckout(w http.ResponseWriter, r *http.Request, errMsg string) {
-	id, err := h.cartCtx(w, r)
-	if err != nil {
-		http.Error(w, "Something went wrong", http.StatusInternalServerError)
-		return
-	}
-	view, err := h.cart.View(r.Context(), id)
-	if err != nil {
-		http.Error(w, "Something went wrong", http.StatusInternalServerError)
-		return
-	}
-	var methods []string
-	if h.pay != nil {
-		methods = h.pay.AvailableMethods(r.Context())
-	}
-	countries, err := h.order.ShippingCountries(r.Context())
-	if err != nil {
-		http.Error(w, "Something went wrong", http.StatusInternalServerError)
-		return
-	}
-	data := map[string]any{
-		"ShopName":  h.shopName(r.Context()),
-		"Cart":      view,
-		"Error":     errMsg,
-		"Money":     h.money(r.Context()),
-		"Methods":   methods, // 可用支付方式（stripe/paypal）；>1 时结算页显示选择
-		"Countries": countries,
-		"SEO": seo{
-			Title: "Checkout — " + h.shopName(r.Context()), Description: "Checkout", Canonical: h.base(r) + "/checkout", OGType: "website",
-		},
-	}
-	h.render(w, r, h.ckoutTmpl, data)
-}
-
 func (h *HTTP) checkoutSubmit(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		h.renderCheckout(w, r, "表单解析失败")
+	if !parseCommerceForm(w, r) {
 		return
 	}
-	id, err := h.cartCtx(w, r)
+	id, err := h.existingCartID(r)
 	if err != nil {
 		http.Error(w, "Something went wrong", http.StatusInternalServerError)
+		return
+	}
+	values := checkoutValues(r)
+	switch r.PostFormValue("checkout_action") {
+	case "", "review":
+		// Reviewing delivery is read-only, even when an old form omits the action.
+		h.renderCheckout(w, r, "")
+		return
+	case "place":
+	default:
+		h.renderCheckoutStatus(w, r, "Please review delivery before placing your order.", "", http.StatusBadRequest)
 		return
 	}
 	info := order.CheckoutInfo{
-		Email:   r.PostFormValue("email"),
-		Name:    r.PostFormValue("name"),
-		Phone:   r.PostFormValue("phone"),
-		Address: r.PostFormValue("address"),
-		Country: r.PostFormValue("country"),
+		Email: values["email"], Name: values["name"], Phone: values["phone"], Country: values["country"],
+		AddressDetails: &address.Details{Line1: values["line1"], Line2: values["line2"], City: values["city"], District: values["district"], Region: values["region"], PostalCode: values["postal_code"]},
+		ExpectedQuote:  r.PostFormValue("quote"),
 	}
-	publicID, err := h.order.Checkout(r.Context(), id, info)
+	publicID, guestToken, err := h.order.CheckoutForGuest(r.Context(), id, info)
 	if err != nil {
-		switch {
-		case errors.Is(err, order.ErrEmptyCart):
-			h.renderCheckout(w, r, "Your cart is empty.")
-		case errors.Is(err, order.ErrOutOfStock):
-			h.renderCheckout(w, r, "Sorry, some items are no longer in stock. Please adjust your cart.")
-		case errors.Is(err, order.ErrInvalidInfo):
-			h.renderCheckout(w, r, "Please enter a valid email, full name and shipping address.")
-		default:
-			http.Error(w, "Something went wrong", http.StatusInternalServerError)
-		}
+		msg, field, status := checkoutError(err)
+		h.renderCheckoutStatus(w, r, msg, field, status)
 		return
 	}
+	// The grant is already committed atomically with this order. Use its scoped
+	// path even when immediately redirecting to a hosted payment provider.
+	r.SetPathValue("id", publicID)
+	h.setGuestCookie(w, r, guestAccessCookie, guestToken, order.GuestAccessTTL)
 	// 下单成功：清购物车 cookie（车已转换；下次购物自动新建）。
 	h.clearCartCookie(w, r)
 
@@ -142,26 +112,32 @@ func (h *HTTP) startPayment(r *http.Request, publicID, provider string) (string,
 
 // paypalReturn 顾客在 PayPal 批准后跳回：用 ?token=<paypal_order_id> 做同步 capture，成功即订单已付。
 func (h *HTTP) paypalReturn(w http.ResponseWriter, r *http.Request) {
+	// ServeMux also routes HEAD to GET handlers; a probe must never capture.
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	ppOrderID := r.URL.Query().Get("token")
 	if ppOrderID == "" || h.pay == nil {
-		// 缺 token / 支付未启用：记下原始 query 以便定位（PayPal 是否换了参数名/未带回）。
+		// 只记录固定状态，不记录查询参数、PayPal token 或网关响应。
 		slog.Warn("PayPal 跳回无法 capture：缺 token 或支付未启用",
-			"token_present", ppOrderID != "", "pay_enabled", h.pay != nil, "raw_query", r.URL.RawQuery)
+			"token_present", ppOrderID != "", "pay_enabled", h.pay != nil)
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 	orderRef, err := h.pay.CapturePayPal(r.Context(), ppOrderID)
 	if err != nil {
 		// capture 失败/不匹配：回订单页（若能定位），订单保持 pending。
-		slog.Error("PayPal 跳回 capture 失败", "paypal_order_id", ppOrderID, "order_ref", orderRef, "err", err)
+		slog.Error("PayPal 跳回 capture 失败", "reason", paymentErrorCode(err))
 		if orderRef != "" {
-			http.Redirect(w, r, "/order/"+orderRef+"?payment_error=1", http.StatusSeeOther)
+			http.Redirect(w, r, "/order/"+orderRef+"?payment_error="+paymentErrorCode(err), http.StatusSeeOther)
 			return
 		}
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	slog.Info("PayPal 跳回 capture 成功，订单已付", "paypal_order_id", ppOrderID, "order_ref", orderRef)
+	slog.Info("PayPal 跳回 capture 已确认")
 	http.Redirect(w, r, "/order/"+orderRef+"?paid=1", http.StatusSeeOther)
 }
 
@@ -172,6 +148,14 @@ func (h *HTTP) clearCartCookie(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
+	ok, authErr := h.guestAuthorized(w, r)
+	if authErr != nil {
+		return
+	}
+	if !ok {
+		h.renderGuestAccess(w, r, "")
+		return
+	}
 	o, err := h.order.Get(r.Context(), r.PathValue("id"))
 	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
@@ -186,12 +170,13 @@ func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
 		payMethods = h.pay.AvailableMethods(r.Context())
 	}
 	data := map[string]any{
-		"ShopName": h.shopName(r.Context()),
-		"Order":    o,
-		"Methods":  payMethods,
-		"Money":    h.money(r.Context()),
+		"ShopName":     h.shopName(r.Context()),
+		"Order":        o,
+		"PaymentError": paymentErrorMessage(r.URL.Query().Get("payment_error")),
+		"Methods":      payMethods,
+		"Money":        moneyFunc(o.Currency),
 		"SEO": seo{
-			Title: "Order — " + h.shopName(r.Context()), Description: "Order confirmation", Canonical: h.base(r) + "/order/" + o.PublicID, OGType: "website",
+			Title: "Order — " + h.shopName(r.Context()), Description: "Order confirmation", NoIndex: true, Canonical: h.base(r) + "/order/" + o.PublicID, OGType: "website",
 		},
 	}
 	h.render(w, r, h.orderTmpl, data)
@@ -199,8 +184,15 @@ func (h *HTTP) orderPage(w http.ResponseWriter, r *http.Request) {
 
 // orderPay 对未付订单重新发起收款（订单页「去支付」按钮）。
 func (h *HTTP) orderPay(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+	ok, authErr := h.guestAuthorized(w, r)
+	if authErr != nil {
+		return
+	}
+	if !ok {
+		http.Redirect(w, r, guestOrderPath(r.PathValue("id")), http.StatusSeeOther)
+		return
+	}
+	if !parseCommerceForm(w, r) {
 		return
 	}
 	publicID := r.PathValue("id")
@@ -225,8 +217,41 @@ func (h *HTTP) orderPay(w http.ResponseWriter, r *http.Request) {
 	provider := h.chosenMethod(r, methods)
 	url, perr := h.startPayment(r, publicID, provider)
 	if perr != nil {
-		http.Redirect(w, r, "/order/"+publicID+"?payment_error=1", http.StatusSeeOther)
+		http.Redirect(w, r, "/order/"+publicID+"?payment_error="+paymentErrorCode(perr), http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, url, http.StatusSeeOther)
+}
+
+// paymentErrorCode 只向店面公开固定错误类别，不泄漏网关原始响应或配置。
+func paymentErrorCode(err error) string {
+	switch {
+	case errors.Is(err, payment.ErrPaymentProcessing):
+		return "processing"
+	case errors.Is(err, payment.ErrCheckoutReplaced):
+		return "replaced"
+	case errors.Is(err, payment.ErrPaymentInProgress):
+		return "busy"
+	case errors.Is(err, payment.ErrPaymentConfigChanged):
+		return "config"
+	default:
+		return "1"
+	}
+}
+
+func paymentErrorMessage(code string) string {
+	switch code {
+	case "processing":
+		return "Your previous payment is complete or still being confirmed. Please wait or contact the store before paying again."
+	case "replaced":
+		return "This payment link is no longer active. Please return to your order and use the current payment option."
+	case "busy":
+		return "Your payment page is being prepared. Please wait a moment and try again."
+	case "config":
+		return "The store's payment settings changed. Please contact the store before paying this order."
+	case "1":
+		return "We could not open the payment page. Please try again; your existing payment attempt will be reused."
+	default:
+		return ""
+	}
 }

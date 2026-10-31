@@ -16,7 +16,7 @@ permissions:
   contents: write     # 建 Release 与上传 asset 所需
 
 env:
-  GO_VERSION: "1.26.9"
+  GO_VERSION: "1.27.3"
   NODE_VERSION: "24"
 
 jobs:
@@ -61,15 +61,18 @@ jobs:
             local goos="$1" goarch="$2" ext="${3:-}"
             local out="dist/kartwo-${goos}-${goarch}${ext}"
             echo "==> ${out}"
-            GOOS="${goos}" GOARCH="${goarch}" go build \
+            GOOS="${goos}" GOARCH="${goarch}" sh scripts/build.sh \
               -trimpath \
               -ldflags "-s -w -X main.Version=${VERSION}" \
-              -o "${out}" ./cmd/kartwo
+              -o "${out}"
           }
           build linux  amd64
           build linux  arm64
           build darwin arm64
           build windows amd64 .exe
+
+      - name: 校验两个Linux产物为严格静态ELF
+        run: sh scripts/check-static.sh dist/kartwo-linux-amd64 dist/kartwo-linux-arm64
 
       - name: 自检版本注入（linux/amd64 产物必须报出与 tag 一致的版本）
         run: |
@@ -136,8 +139,8 @@ jobs:
 
             ## 运行环境要求
 
-            - Linux 产物依赖 **glibc**（Ubuntu/Debian/CentOS 等主流发行版自带）。
-              **musl 系（Alpine）暂不支持**。
+            - Linux 产物使用内嵌 WASM 编解码并校验无动态加载器/共享库依赖，无需系统 glibc 或 libwebp。
+              Alpine/musl 的完整应用验收仍单独记录，静态链接检查不等于已验证所有发行版。
             - 最低配置 1C1G；需在云厂商安全组放行 80 / 443 入站。
 
             ## 校验下载完整性
