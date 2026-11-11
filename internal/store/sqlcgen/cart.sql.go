@@ -71,19 +71,21 @@ func (q *Queries) GetActiveCartByToken(ctx context.Context, token string) (GetAc
 }
 
 const listCartItems = `-- name: ListCartItems :many
-SELECT ci.variant_id, ci.quantity, v.public_id AS variant_public_id, v.sku, v.price_cents, p.id AS product_id, p.title AS product_title, p.slug AS product_slug, p.status AS product_status FROM cart_item ci JOIN variant v ON v.id = ci.variant_id JOIN product p ON p.id = v.product_id WHERE ci.cart_id = ? ORDER BY ci.id
+SELECT ci.variant_id, ci.quantity, v.public_id AS variant_public_id, v.sku, v.price_cents, p.id AS product_id, p.title AS product_title, p.slug AS product_slug, p.status AS product_status, p.deleted_at AS product_deleted_at, v.deleted_at AS variant_deleted_at FROM cart_item ci JOIN variant v ON v.id = ci.variant_id JOIN product p ON p.id = v.product_id WHERE ci.cart_id = ? ORDER BY ci.id
 `
 
 type ListCartItemsRow struct {
-	VariantID       int64          `db:"variant_id" json:"variant_id"`
-	Quantity        int64          `db:"quantity" json:"quantity"`
-	VariantPublicID string         `db:"variant_public_id" json:"variant_public_id"`
-	Sku             sql.NullString `db:"sku" json:"sku"`
-	PriceCents      int64          `db:"price_cents" json:"price_cents"`
-	ProductID       int64          `db:"product_id" json:"product_id"`
-	ProductTitle    string         `db:"product_title" json:"product_title"`
-	ProductSlug     string         `db:"product_slug" json:"product_slug"`
-	ProductStatus   string         `db:"product_status" json:"product_status"`
+	VariantID        int64          `db:"variant_id" json:"variant_id"`
+	Quantity         int64          `db:"quantity" json:"quantity"`
+	VariantPublicID  string         `db:"variant_public_id" json:"variant_public_id"`
+	Sku              sql.NullString `db:"sku" json:"sku"`
+	PriceCents       int64          `db:"price_cents" json:"price_cents"`
+	ProductID        int64          `db:"product_id" json:"product_id"`
+	ProductTitle     string         `db:"product_title" json:"product_title"`
+	ProductSlug      string         `db:"product_slug" json:"product_slug"`
+	ProductStatus    string         `db:"product_status" json:"product_status"`
+	ProductDeletedAt sql.NullString `db:"product_deleted_at" json:"product_deleted_at"`
+	VariantDeletedAt sql.NullString `db:"variant_deleted_at" json:"variant_deleted_at"`
 }
 
 func (q *Queries) ListCartItems(ctx context.Context, cartID int64) ([]ListCartItemsRow, error) {
@@ -105,6 +107,8 @@ func (q *Queries) ListCartItems(ctx context.Context, cartID int64) ([]ListCartIt
 			&i.ProductTitle,
 			&i.ProductSlug,
 			&i.ProductStatus,
+			&i.ProductDeletedAt,
+			&i.VariantDeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -164,6 +168,23 @@ type RemoveCartItemParams struct {
 func (q *Queries) RemoveCartItem(ctx context.Context, arg RemoveCartItemParams) error {
 	_, err := q.db.ExecContext(ctx, removeCartItem, arg.CartID, arg.VariantID)
 	return err
+}
+
+const removeOwnedCartItem = `-- name: RemoveOwnedCartItem :execrows
+DELETE FROM cart_item WHERE cart_id = ?1 AND variant_id IN (SELECT id FROM variant WHERE public_id = ?2) AND EXISTS (SELECT 1 FROM cart WHERE id = cart_item.cart_id AND status = 'active')
+`
+
+type RemoveOwnedCartItemParams struct {
+	CartID          int64  `db:"cart_id" json:"cart_id"`
+	VariantPublicID string `db:"variant_public_id" json:"variant_public_id"`
+}
+
+func (q *Queries) RemoveOwnedCartItem(ctx context.Context, arg RemoveOwnedCartItemParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, removeOwnedCartItem, arg.CartID, arg.VariantPublicID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const setCartItemQty = `-- name: SetCartItemQty :exec

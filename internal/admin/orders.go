@@ -37,6 +37,9 @@ func (h *HTTP) listOrders(w http.ResponseWriter, r *http.Request) {
 			"payment_provider": o.PaymentProvider, "created_at": o.CreatedAt,
 		})
 	}
+	if len(out) > 0 && !orderCustomerDataHidden(r) {
+		h.recordAudit(r, authFrom(r.Context()).AdminID, "order.customer_list_viewed", "orders", "orders")
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"orders": out})
 }
 
@@ -154,28 +157,53 @@ func (h *HTTP) getOrder(w http.ResponseWriter, r *http.Request) {
 		}
 		refunds = append(refunds, map[string]any{
 			"provider": rf.Provider, "provider_refund_id": providerRefundID,
-			"amount_cents": rf.AmountCents, "created_at": rf.CreatedAt,
+			"amount_cents": rf.AmountCents, "created_at": rf.CreatedAt, "observed_state": o.RefundStates[rf.Provider+":"+rf.ProviderRefundID],
 		})
+	}
+	receipts := make([]map[string]any, 0, len(o.Receipts))
+	for _, p := range o.Receipts {
+		ref := p.Reference
+		if orderCustomerDataHidden(r) {
+			ref = "已隐藏"
+		}
+		receipts = append(receipts, map[string]any{"provider": p.Provider, "reference": ref, "refund_reconciliation_required": p.RefundReconciliationRequired, "refund_checked_at": p.RefundCheckedAt, "currency": p.Currency, "amount_cents": p.AmountCents, "refunded_cents": p.RefundedCents, "review_reason": p.ReviewReason, "source": p.Source, "created_at": p.CreatedAt})
+	}
+	requests := make([]map[string]any, 0, len(o.RefundRequests))
+	for _, rr := range o.RefundRequests {
+		payRef, gatewayRef := rr.PaymentRef, rr.GatewayRef
+		if orderCustomerDataHidden(r) {
+			payRef, gatewayRef = "已隐藏", "已隐藏"
+		}
+		requests = append(requests, map[string]any{"public_id": rr.ID, "provider": rr.Provider, "payment_ref": payRef, "gateway_ref": gatewayRef, "currency": rr.Currency, "amount_cents": rr.AmountCents, "state": rr.State, "reason": rr.Reason, "created_at": rr.CreatedAt})
 	}
 	email, shipName, shipPhone, shipAddress := o.Email, o.ShipName, o.ShipPhone, o.ShipAddress
 	trackingNumber, trackingURL := o.TrackingNumber, o.TrackingURL
+	shipCountry := o.ShipCountry
+	shipDetails := o.ShipAddressDetails
 	if orderCustomerDataHidden(r) {
 		email, shipName, shipPhone, shipAddress = "已隐藏", "已隐藏", "已隐藏", "已隐藏"
 		trackingNumber, trackingURL = "已隐藏", ""
+		shipCountry = "已隐藏"
+		shipDetails = nil
+	}
+	if !orderCustomerDataHidden(r) {
+		h.recordAudit(r, authFrom(r.Context()).AdminID, "order.customer_data_viewed", "order", o.PublicID)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"public_id": o.PublicID, "status": o.Status, "email": email,
-		"ship_name": shipName, "ship_phone": shipPhone, "ship_address": shipAddress, "ship_country": o.ShipCountry,
-		"currency": o.Currency, "subtotal_cents": o.SubtotalCents, "total_cents": o.TotalCents,
+		"ship_name": shipName, "ship_phone": shipPhone, "ship_address": shipAddress, "ship_country": shipCountry,
+		"ship_address_details": shipDetails,
+		"currency":             o.Currency, "subtotal_cents": o.SubtotalCents, "total_cents": o.TotalCents,
 		"shipping_cents": o.ShippingCents, "shipping_rule_name": o.ShippingRuleName, "tracking_carrier": o.TrackingCarrier, "tracking_number": trackingNumber, "tracking_url": trackingURL,
 		"payment_provider": o.PaymentProvider, "created_at": o.CreatedAt,
-		"lines": lines, "refunds": refunds,
+		"lines": lines, "refunds": refunds, "receipts": receipts, "refund_requests": requests,
+		"payment_status": o.PaymentStatus, "fulfillment_status": o.FulfillmentStatus, "paid_cents": o.PaidCents, "refunded_cents": o.RefundedCents, "payment_review": o.PaymentReview,
 	})
 }
 
 func orderCustomerDataHidden(r *http.Request) bool {
 	ac := authFrom(r.Context())
-	return ac != nil && (ac.Role == "demo" || ac.Role == "staff" && !ac.Permissions["orders.customer_data"])
+	return ac == nil || (ac.Role != "owner" && (ac.Role != "staff" || !ac.Permissions["orders.customer_data"]))
 }
 
 func (h *HTTP) refundOrder(w http.ResponseWriter, r *http.Request) {
@@ -196,7 +224,7 @@ func (h *HTTP) refundOrder(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, sql.ErrNoRows):
 		writeErr(w, http.StatusNotFound, "订单不存在")
 	case errors.Is(err, payment.ErrNotRefundable):
-		writeErr(w, http.StatusConflict, "订单当前状态不可退款（仅已付订单可退）")
+		writeErr(w, http.StatusConflict, "当前无法整单退款：请核对订单状态、部分退款或重复收款记录")
 	case errors.Is(err, payment.ErrLocked):
 		writeErr(w, http.StatusServiceUnavailable, "收款密钥未解锁，请重新登录后重试")
 	default:
@@ -216,9 +244,9 @@ func (h *HTTP) fulfillOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.orders.Fulfill(r.Context(), r.PathValue("id"), req.Carrier, req.TrackingNumber, req.TrackingURL); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			writeErr(w, 409, "订单当前状态不可发货（仅已付款订单可发货）")
+			writeErr(w, 409, "订单当前不可发货：需已付款且没有待处理退款")
 		} else {
-			writeErr(w, 400, "发货信息无效")
+			shipmentError(w, err)
 		}
 		return
 	}

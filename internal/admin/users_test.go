@@ -113,6 +113,11 @@ func TestStaffInvitationPermissionsAndDisable(t *testing.T) {
 			t.Fatalf("敏感接口 %s 应拒绝员工: %d", path, resp.StatusCode)
 		}
 	}
+	for _, path := range []string{"/admin/api/orders/any/revoke-access", "/admin/api/orders/any/refund-check", "/admin/api/orders/any/refunds", "/admin/api/orders/any/refunds/any/refresh"} {
+		if resp := doJSON(t, mux, "POST", path, `{}`, staffAuth, staffCSRF); resp.StatusCode != 403 {
+			t.Fatalf("员工不能退款: %s %d", path, resp.StatusCode)
+		}
+	}
 	if resp := doJSON(t, mux, "POST", "/admin/api/products", `{}`, staffAuth, staffCSRF); resp.StatusCode != 403 {
 		t.Fatalf("只读员工不应创建商品: %d", resp.StatusCode)
 	}

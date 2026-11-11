@@ -184,6 +184,17 @@ func (c *KeyCache) secretKey() (string, bool) {
 	return c.sSecret, c.sSecret != ""
 }
 
+// stripeConnectionCredentials fixes the key and its configured mode in one snapshot.
+func (c *KeyCache) stripeConnectionCredentials() (secret, mode string, ok bool) {
+	if c.stripeEnv.active {
+		e := c.stripeEnv
+		return e.secret, orDefault(e.mode, "test"), e.secret != ""
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.sSecret, orDefault(c.sMode, "test"), c.sSecret != ""
+}
+
 // webhookSecret 返回 Stripe whsec_*；未解锁/未配置返回 false。env 覆盖优先。
 func (c *KeyCache) webhookSecret() (string, bool) {
 	if c.stripeEnv.active {

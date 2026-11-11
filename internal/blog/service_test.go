@@ -174,3 +174,29 @@ func TestRichTextToolbarFormatsAndVideoAllowlist(t *testing.T) {
 		t.Fatal("Vimeo 播放器地址应可用")
 	}
 }
+
+// Existing stored HTML is sanitized again on read, so old videos also gain the required policy.
+func TestVideoReferrerPolicyIsProviderScoped(t *testing.T) {
+	for _, tc := range []struct{ name, src, policy string }{
+		{"youtube", "https://www.youtube-nocookie.com/embed/M7lc1UVf-VE", "strict-origin"},
+		{"youtube uppercase scheme", "HTTPS://www.youtube-nocookie.com/embed/M7lc1UVf-VE", "strict-origin"},
+		{"youtube escaped path", "https://www.youtube-nocookie.com/em%62ed/M7lc1UVf-VE", "strict-origin"},
+		{"vimeo", "https://player.vimeo.com/video/123456", "no-referrer"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, supplied := range []string{"", ` referrerpolicy="no-referrer"`, ` referrerpolicy="unsafe-url"`} {
+				source := `<iframe src="` + tc.src + `"` + supplied + ` onload="bad()"></iframe>`
+				want := `<iframe src="` + tc.src + `" title="Video" loading="lazy" referrerpolicy="` + tc.policy + `" allowfullscreen></iframe>`
+				clean, visible := SanitizeHTML(source)
+				if !visible || clean != want || string(RenderHTML(source)) != want {
+					t.Fatalf("provider policy not applied on write and read: %s", clean)
+				}
+			}
+		})
+	}
+	for _, src := range []string{"https://www.youtube-nocookie.com.evil.invalid/embed/M7lc1UVf-VE", "https://www.youtube-nocookie.com/embed/M7lc1UVf-VE?x=1", "http://www.youtube-nocookie.com/embed/M7lc1UVf-VE"} {
+		if clean, visible := SanitizeHTML(`<iframe src="` + src + `" referrerpolicy="strict-origin"></iframe>`); visible || clean != "" {
+			t.Fatal("referrer policy must not expand the player allowlist")
+		}
+	}
+}

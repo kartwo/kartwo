@@ -50,16 +50,14 @@ func (h *HTTP) setTranslationSettings(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "会话密钥不可用，请重新登录")
 		return
 	}
-	if err := h.settings.SetPlain(r.Context(), translationPlanKey, plan); err != nil {
+	if err := h.saveSettings(r.Context(), []settingChange{
+		{translationPlanKey, plan, false},
+		{translationKeyKey, strings.TrimSpace(req.APIKey), true},
+	}, kek); err != nil {
 		writeErr(w, http.StatusInternalServerError, "保存失败")
 		return
 	}
-	if strings.TrimSpace(req.APIKey) != "" {
-		if err := h.settings.SetEncrypted(r.Context(), translationKeyKey, []byte(strings.TrimSpace(req.APIKey)), kek); err != nil {
-			writeErr(w, http.StatusInternalServerError, "保存失败")
-			return
-		}
-	}
+
 	h.recordAudit(r, ac.AdminID, "translation.settings_update", "settings", "translation")
 	h.getTranslationSettings(w, r)
 }

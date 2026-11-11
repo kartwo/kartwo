@@ -156,7 +156,60 @@ func temporaryPath(dir, pattern string) (string, error) {
 	return path, nil
 }
 
+type exportFile struct{ name, source string }
+
+// Plan before copying so an already oversized store does not consume a full
+// archive's CPU and disk space merely to be rejected by the final validator.
+func (e *Exporter) collectExportFiles(dbSnapshot string, manifest Manifest) ([]exportFile, error) {
+	body, err := json.Marshal(manifest)
+	if err != nil {
+		return nil, fmt.Errorf("backup: 编码 manifest.json 失败: %w", err)
+	}
+	total := uint64(len(body)) + 1 // json.Encoder.Encode appends a newline.
+	if total > maxRestoreFile {
+		return nil, fmt.Errorf("backup: 导出包条目过大: manifest.json")
+	}
+	var files []exportFile
+	add := func(name, source string) error {
+		if !validArchivePath(name) {
+			return fmt.Errorf("backup: 文件路径不受备份格式支持")
+		}
+		if len(files)+2 > maxRestoreEntries { // Include this file and manifest.json.
+			return fmt.Errorf("backup: 导出包条目数量不合法")
+		}
+		info, err := os.Lstat(source)
+		if err != nil {
+			return fmt.Errorf("backup: 读取 %s 信息失败: %w", name, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("backup: 导出包包含非普通文件: %s", name)
+		}
+		fileSize := info.Size()
+		if fileSize < 0 || fileSize > maxRestoreFile {
+			return fmt.Errorf("backup: 导出包条目过大: %s", name)
+		}
+		size := uint64(fileSize)
+		if size > maxRestoreTotal-total {
+			return fmt.Errorf("backup: 导出包解压后过大")
+		}
+		total += size
+		files = append(files, exportFile{name, source})
+		return nil
+	}
+	if err = add("shop.db", dbSnapshot); err != nil {
+		return nil, err
+	}
+	if err = e.walkMedia(add); err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
 func (e *Exporter) writeZIP(zipPath, dbSnapshot string, manifest Manifest) error {
+	files, err := e.collectExportFiles(dbSnapshot, manifest)
+	if err != nil {
+		return err
+	}
 	f, err := os.OpenFile(zipPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // zipPath 仅由 temporaryPath 在受控数据目录生成。
 	if err != nil {
 		return fmt.Errorf("backup: 创建导出包失败: %w", err)
@@ -167,15 +220,12 @@ func (e *Exporter) writeZIP(zipPath, dbSnapshot string, manifest Manifest) error
 		_ = f.Close()
 		return err
 	}
-	if err := writeFile(zw, "shop.db", dbSnapshot); err != nil {
-		_ = zw.Close()
-		_ = f.Close()
-		return err
-	}
-	if err := e.writeMedia(zw); err != nil {
-		_ = zw.Close()
-		_ = f.Close()
-		return err
+	for _, file := range files {
+		if err := writeFile(zw, file.name, file.source); err != nil {
+			_ = zw.Close()
+			_ = f.Close()
+			return err
+		}
 	}
 	if err := zw.Close(); err != nil {
 		_ = f.Close()
@@ -184,7 +234,19 @@ func (e *Exporter) writeZIP(zipPath, dbSnapshot string, manifest Manifest) error
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("backup: 关闭导出包失败: %w", err)
 	}
-	return nil
+	return validateCompletedExport(zipPath)
+}
+
+// Validate the final directory using the same format limits as restore. In
+// particular, media count and total bytes include the database and manifest.
+func validateCompletedExport(zipPath string) error {
+	zr, err := zip.OpenReader(zipPath) //nolint:gosec // zipPath 是本次在受控数据目录生成的私有临时包。
+	if err != nil {
+		return fmt.Errorf("backup: 校验已生成导出包失败: %w", err)
+	}
+	defer func() { _ = zr.Close() }()
+	_, err = validateRestoreArchive(zr.File)
+	return err
 }
 
 func writeJSON(zw *zip.Writer, name string, value any) error {
@@ -199,27 +261,46 @@ func writeJSON(zw *zip.Writer, name string, value any) error {
 }
 
 func writeFile(zw *zip.Writer, name, source string) error {
+	if !validArchivePath(name) {
+		return fmt.Errorf("backup: 文件路径不受备份格式支持")
+	}
 	in, err := os.Open(source) //nolint:gosec // source 仅来自受控数据目录或导出快照。
 	if err != nil {
 		return fmt.Errorf("backup: 打开 %s 失败: %w", name, err)
 	}
 	defer func() { _ = in.Close() }()
+	info, err := in.Stat()
+	if err != nil {
+		return fmt.Errorf("backup: 读取 %s 大小失败: %w", name, err)
+	}
+	if info.Size() > maxRestoreFile {
+		return fmt.Errorf("backup: 导出包条目过大: %s", name)
+	}
 	w, err := zw.Create(name)
 	if err != nil {
 		return fmt.Errorf("backup: 创建 %s 失败: %w", name, err)
 	}
-	if _, err := io.Copy(w, in); err != nil {
+	n, err := io.Copy(w, io.LimitReader(in, maxRestoreFile+1))
+	if err != nil {
 		return fmt.Errorf("backup: 写入 %s 失败: %w", name, err)
+	}
+	if n > maxRestoreFile {
+		return fmt.Errorf("backup: 导出包条目过大: %s", name)
 	}
 	return nil
 }
 
-func (e *Exporter) writeMedia(zw *zip.Writer) error {
+func (e *Exporter) walkMedia(visit func(name, source string) error) error {
 	root := filepath.Join(e.dataDir, "media")
-	if _, err := os.Stat(root); os.IsNotExist(err) {
+	// Inspect the directory entry itself so a dangling link is not mistaken for no media.
+	info, err := os.Lstat(root)
+	if os.IsNotExist(err) {
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("backup: 读取媒体目录失败: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("backup: 媒体路径不是目录")
 	}
 	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -238,6 +319,6 @@ func (e *Exporter) writeMedia(zw *zip.Writer) error {
 		if err != nil {
 			return fmt.Errorf("backup: 计算媒体相对路径失败: %w", err)
 		}
-		return writeFile(zw, "media/"+strings.ReplaceAll(rel, string(filepath.Separator), "/"), path)
+		return visit("media/"+strings.ReplaceAll(rel, string(filepath.Separator), "/"), path)
 	})
 }

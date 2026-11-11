@@ -10,11 +10,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	stdmail "net/mail"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/kartwo/kartwo/internal/address"
 	"github.com/kartwo/kartwo/internal/settings"
 	"github.com/kartwo/kartwo/internal/store/sqlcgen"
 )
@@ -22,6 +24,8 @@ import (
 var (
 	// ErrEmptyCart 购物车为空，不能结算。
 	ErrEmptyCart = errors.New("order: 购物车为空")
+	// ErrCartConverted 同一购物车已结算，拒绝重复建单和预留库存。
+	ErrCartConverted = errors.New("order: 该购物车已完成结算")
 	// ErrOutOfStock 某变体库存不足（防超卖拦截）。
 	ErrOutOfStock = errors.New("order: 库存不足")
 	// ErrInvalidInfo 结算信息非法。
@@ -42,11 +46,13 @@ func New(db *sql.DB, settingsSvc *settings.Service) *Service {
 
 // CheckoutInfo 为访客结算填写的信息。
 type CheckoutInfo struct {
-	Email   string
-	Name    string
-	Phone   string
-	Address string
-	Country string
+	Email          string
+	Name           string
+	Phone          string
+	Address        string
+	Country        string
+	AddressDetails *address.Details
+	ExpectedQuote  string
 }
 
 // OrderLine 订单行视图。
@@ -61,25 +67,32 @@ type OrderLine struct {
 
 // Order 订单视图。
 type Order struct {
-	PublicID         string
-	Status           string
-	Email            string
-	ShipName         string
-	ShipPhone        string
-	ShipAddress      string
-	ShipCountry      string
-	Currency         string
-	SubtotalCents    int64
-	TotalCents       int64
-	ShippingCents    int64
-	ShippingRuleName string
-	TrackingCarrier  string
-	TrackingNumber   string
-	TrackingURL      string
-	PaymentProvider  string
-	CreatedAt        string
-	Lines            []OrderLine
-	Refunds          []RefundView // 仅后台详情填充
+	RefundStates                     map[string]string
+	PublicID                         string
+	Status                           string
+	Email                            string
+	ShipName                         string
+	ShipPhone                        string
+	ShipAddress                      string
+	ShipCountry                      string
+	ShipAddressDetails               *address.Details
+	Currency                         string
+	SubtotalCents                    int64
+	TotalCents                       int64
+	ShippingCents                    int64
+	ShippingRuleName                 string
+	TrackingCarrier                  string
+	TrackingNumber                   string
+	TrackingURL                      string
+	PaymentProvider                  string
+	CreatedAt                        string
+	Lines                            []OrderLine
+	Refunds                          []RefundView  // 仅后台详情填充
+	Receipts                         []ReceiptView // 仅后台详情填充
+	PaymentStatus, FulfillmentStatus string
+	PaidCents, RefundedCents         int64
+	PaymentReview                    bool
+	RefundRequests                   []RefundRequestView
 }
 
 // OrderSummary 后台订单列表项。
@@ -124,53 +137,58 @@ type RefundView struct {
 	CreatedAt        string
 }
 
-func (in CheckoutInfo) validate() error {
-	if !strings.Contains(in.Email, "@") || strings.TrimSpace(in.Email) == "" {
-		return fmt.Errorf("%w: 邮箱非法", ErrInvalidInfo)
+func validOrderEmail(email string) bool {
+	if len(email) > 320 || strings.ContainsAny(email, "\r\n") {
+		return false
 	}
-	if strings.TrimSpace(in.Name) == "" {
-		return fmt.Errorf("%w: 收货人不能为空", ErrInvalidInfo)
-	}
-	if strings.TrimSpace(in.Address) == "" {
-		return fmt.Errorf("%w: 收货地址不能为空", ErrInvalidInfo)
-	}
-	if strings.TrimSpace(in.Country) == "" {
-		return fmt.Errorf("%w: 国家不能为空", ErrInvalidInfo)
-	}
-	return nil
+	value := strings.TrimSpace(email)
+	parsed, err := stdmail.ParseAddress(value)
+	return err == nil && parsed.Name == "" && parsed.Address == value
 }
 
-// Checkout 由购物车结算生成订单。事务内：原子预留库存（防超卖）→ 建客户/订单/订单行 → 转换购物车。
+// Checkout 由购物车结算生成订单。事务内：认领购物车 → 原子预留库存 → 建客户/订单/订单行。
 // 任一变体库存不足则整单回滚（释放本次已预留）。
 func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo) (string, error) {
-	if err := info.validate(); err != nil {
-		return "", err
-	}
-	items, err := s.q.ListCartItems(ctx, cartID)
-	if err != nil {
-		return "", fmt.Errorf("order: 读购物车失败: %w", err)
-	}
-	if len(items) == 0 {
-		return "", ErrEmptyCart
-	}
+	return s.checkout(ctx, cartID, info, "")
+}
 
-	// 货币与配送规则在开事务前解析（事务持有唯一连接时再查会死锁）。
-	currency := s.settings.Currency(ctx)
-	var subtotal int64
-	for _, item := range items {
-		subtotal += item.PriceCents * item.Quantity
-	}
-	shipping, rule, err := s.shippingFor(ctx, info.Country, subtotal)
+func (s *Service) checkout(ctx context.Context, cartID int64, info CheckoutInfo, guestHash string) (string, error) {
+	info, err := info.normalized()
 	if err != nil {
 		return "", err
 	}
-
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", fmt.Errorf("order: 开启事务失败: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := s.q.WithTx(tx)
+
+	// 原子认领购物车，与建单和库存预留同事务；失败回滚后仍可重试。
+	// HTTP 层可能有多个请求提前取得同一个 active cart，必须在服务层再次校验。
+	claimed, err := q.MarkCartConverted(ctx, cartID)
+	if err != nil {
+		return "", fmt.Errorf("order: 认领购物车失败: %w", err)
+	}
+	if claimed == 0 {
+		var state string
+		if err := tx.QueryRowContext(ctx, "SELECT status FROM cart WHERE id=?", cartID).Scan(&state); errors.Is(err, sql.ErrNoRows) {
+			return "", ErrEmptyCart
+		} else if err != nil {
+			return "", err
+		}
+		return "", ErrCartConverted
+	}
+	// Claim first to acquire SQLite's writer before reading prices/settings.
+	// The reviewed amount and final stock/order snapshot share this transaction.
+	quote, items, err := quoteSnapshot(ctx, tx, cartID, info.Country)
+	if err != nil {
+		return "", err
+	}
+	if info.ExpectedQuote != "" && info.ExpectedQuote != quote.Fingerprint {
+		return "", ErrQuoteChanged
+	}
+	currency, subtotal, shipping, rule := quote.Currency, quote.SubtotalCents, quote.ShippingCents, quote.ShippingRuleName
 
 	// 1) 原子预留库存（防超卖）。任一不足即整单失败、回滚释放。
 	for _, it := range items {
@@ -212,29 +230,28 @@ func (s *Service) Checkout(ctx context.Context, cartID int64, info CheckoutInfo)
 	if _, err := tx.ExecContext(ctx, "UPDATE \"order\" SET shipping_cents=?, shipping_rule_name=? WHERE id=?", shipping, rule, orderID); err != nil {
 		return "", fmt.Errorf("order: 写配送快照: %w", err)
 	}
-
-	// 4) 订单行（快照：标题/规格/单价）。
-	for _, it := range items {
-		label, err := s.variantLabel(ctx, q, it.VariantID)
-		if err != nil {
-			return "", err
-		}
-		sku := ""
-		if it.Sku.Valid {
-			sku = it.Sku.String
-		}
-		if err := q.CreateOrderItem(ctx, sqlcgen.CreateOrderItemParams{
-			OrderID: orderID, VariantID: it.VariantID, ProductTitle: it.ProductTitle,
-			VariantLabel: label, Sku: sku, UnitCents: it.PriceCents, Quantity: it.Quantity,
-			LineCents: it.PriceCents * it.Quantity,
-		}); err != nil {
-			return "", fmt.Errorf("order: 建订单行失败: %w", err)
+	if details := info.AddressDetails; details != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE \"order\" SET ship_address_version=1,ship_address_line1=?,ship_address_line2=?,ship_city=?,ship_district=?,ship_region=?,ship_postal_code=? WHERE id=?", details.Line1, details.Line2, details.City, details.District, details.Region, details.PostalCode, orderID); err != nil {
+			return "", fmt.Errorf("order: 保存结构化地址失败: %w", err)
 		}
 	}
 
-	// 5) 购物车转换为已下单。
-	if err := q.MarkCartConverted(ctx, cartID); err != nil {
-		return "", fmt.Errorf("order: 转换购物车失败: %w", err)
+	if guestHash != "" {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO order_guest_access(token_hash,order_id,expires_at) VALUES(?,?,?)`, guestHash, orderID, time.Now().Add(GuestAccessTTL).Unix()); err != nil {
+			return "", fmt.Errorf("order: 保存访问凭证失败: %w", err)
+		}
+	}
+
+	// 4) 订单行（快照：标题/规格/单价）。
+	for index, it := range items {
+		line := quote.Lines[index]
+		if err := q.CreateOrderItem(ctx, sqlcgen.CreateOrderItemParams{
+			OrderID: orderID, VariantID: it.VariantID, ProductTitle: it.ProductTitle,
+			VariantLabel: line.Spec, Sku: line.SKU, UnitCents: line.UnitCents, Quantity: line.Quantity,
+			LineCents: line.LineCents,
+		}); err != nil {
+			return "", fmt.Errorf("order: 建订单行失败: %w", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -255,6 +272,9 @@ func (s *Service) Get(ctx context.Context, publicID string) (*Order, error) {
 		PublicID: o.PublicID, Status: o.Status, Email: o.Email, ShipName: o.ShipName, ShipPhone: o.ShipPhone,
 		ShipAddress: o.ShipAddress, ShipCountry: o.ShipCountry, Currency: o.Currency,
 		SubtotalCents: o.SubtotalCents, TotalCents: o.TotalCents, PaymentProvider: o.PaymentProvider, CreatedAt: o.CreatedAt,
+	}
+	if o.ShipAddressVersion == 1 {
+		out.ShipAddressDetails = &address.Details{Line1: o.ShipAddressLine1, Line2: o.ShipAddressLine2, City: o.ShipCity, District: o.ShipDistrict, Region: o.ShipRegion, PostalCode: o.ShipPostalCode}
 	}
 	its, err := s.q.ListOrderItems(ctx, o.ID)
 	if err != nil {
@@ -333,14 +353,23 @@ func (s *Service) AdminGet(ctx context.Context, publicID string) (*Order, error)
 			Provider: r.Provider, ProviderRefundID: r.ProviderRefundID, AmountCents: r.AmountCents, CreatedAt: r.CreatedAt,
 		})
 	}
+	if err := s.loadFinancials(ctx, o.ID, out); err != nil {
+		return nil, fmt.Errorf("order: 读取资金视图: %w", err)
+	}
+	if err := s.loadRefundStates(ctx, o.ID, out); err != nil {
+		return nil, err
+	}
+	if err := s.loadRefundRequests(ctx, o.ID, out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
 // DashboardStats 概览订单聚合：今日 / 近 7 日订单数与销售额、待处理数、展示货币。
 //   - 时间口径（D1）：按服务器本地自然日——今日=[本地今日零点, 现在]；近 7 日=[本地(今日-6天)零点, 现在]。
 //     本地零点换算为 UTC ISO8601 与库内 created_at（UTC）按字符串字典序比较（下界 .000，词法比较安全）。
-//   - 销售额口径（D6）：仅计 paid/fulfilled 合计；refunded 单转 refunded 状态、天然不计入（=全额扣除），
-//     且不依赖 refund 记录（webhook 同步的退款可能无记录）。部分退款是 v1 之后，届时改按 refund.amount_cents 扣减。
+//   - 销售额口径：有收款账本时计正常收款减已退金额；迟到/重复/历史待核对款不计销售额。
+//     无支付引用的历史订单仍沿用 paid/fulfilled 金额；此值为订单窗口净销售额，不代表银行结算到账。
 //   - 只读、无事务：单连接上顺序跑 3 个聚合查询（不开事务再发独立查询，见 DECISIONS 单连接纪律）。
 type DashboardStats struct {
 	TodayCount         int64
@@ -388,7 +417,7 @@ func (s *Service) DashboardStats(ctx context.Context) (DashboardStats, error) {
 }
 
 // variantLabel 把变体选项拼为快照文字（如 尺码:S · 颜色:黑）。
-func (s *Service) variantLabel(ctx context.Context, q *sqlcgen.Queries, variantID int64) (string, error) {
+func variantLabel(ctx context.Context, q *sqlcgen.Queries, variantID int64) (string, error) {
 	opts, err := q.ListOptionsForVariant(ctx, variantID)
 	if err != nil {
 		return "", fmt.Errorf("order: 取变体选项失败: %w", err)

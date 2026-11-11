@@ -42,6 +42,45 @@ type AdminUser struct {
 	LastLoginAt  sql.NullString `db:"last_login_at" json:"last_login_at"`
 }
 
+type AfterSale struct {
+	ID                   int64         `db:"id" json:"id"`
+	PublicID             string        `db:"public_id" json:"public_id"`
+	OrderID              int64         `db:"order_id" json:"order_id"`
+	ClientKey            string        `db:"client_key" json:"client_key"`
+	Kind                 string        `db:"kind" json:"kind"`
+	State                string        `db:"state" json:"state"`
+	Version              int64         `db:"version" json:"version"`
+	AmountCents          int64         `db:"amount_cents" json:"amount_cents"`
+	Currency             string        `db:"currency" json:"currency"`
+	Reason               string        `db:"reason" json:"reason"`
+	PolicyConfigured     int64         `db:"policy_configured" json:"policy_configured"`
+	ReturnWindowDays     int64         `db:"return_window_days" json:"return_window_days"`
+	ReturnShippingPayer  string        `db:"return_shipping_payer" json:"return_shipping_payer"`
+	SupportEmail         string        `db:"support_email" json:"support_email"`
+	MerchantMessage      string        `db:"merchant_message" json:"merchant_message"`
+	ReturnInstructions   string        `db:"return_instructions" json:"return_instructions"`
+	ReturnCarrier        string        `db:"return_carrier" json:"return_carrier"`
+	ReturnTrackingNumber string        `db:"return_tracking_number" json:"return_tracking_number"`
+	RefundRequestID      sql.NullInt64 `db:"refund_request_id" json:"refund_request_id"`
+	CreatedAt            string        `db:"created_at" json:"created_at"`
+	UpdatedAt            string        `db:"updated_at" json:"updated_at"`
+}
+
+type AfterSaleEvent struct {
+	ID             int64  `db:"id" json:"id"`
+	AfterSaleID    int64  `db:"after_sale_id" json:"after_sale_id"`
+	Version        int64  `db:"version" json:"version"`
+	ClientKey      string `db:"client_key" json:"client_key"`
+	RequestHash    string `db:"request_hash" json:"request_hash"`
+	Actor          string `db:"actor" json:"actor"`
+	Action         string `db:"action" json:"action"`
+	State          string `db:"state" json:"state"`
+	Message        string `db:"message" json:"message"`
+	Carrier        string `db:"carrier" json:"carrier"`
+	TrackingNumber string `db:"tracking_number" json:"tracking_number"`
+	CreatedAt      string `db:"created_at" json:"created_at"`
+}
+
 type AuditEvent struct {
 	ID                    int64  `db:"id" json:"id"`
 	PublicID              string `db:"public_id" json:"public_id"`
@@ -97,6 +136,23 @@ type Category struct {
 	CreatedAt string         `db:"created_at" json:"created_at"`
 	UpdatedAt string         `db:"updated_at" json:"updated_at"`
 	DeletedAt sql.NullString `db:"deleted_at" json:"deleted_at"`
+}
+
+type CheckoutCapture struct {
+	AttemptID   string `db:"attempt_id" json:"attempt_id"`
+	OrderID     int64  `db:"order_id" json:"order_id"`
+	State       string `db:"state" json:"state"`
+	FirstSentAt int64  `db:"first_sent_at" json:"first_sent_at"`
+	CreatedAt   string `db:"created_at" json:"created_at"`
+	UpdatedAt   string `db:"updated_at" json:"updated_at"`
+}
+
+type CheckoutLock struct {
+	OrderID    int64  `db:"order_id" json:"order_id"`
+	LeaseToken string `db:"lease_token" json:"lease_token"`
+	LeaseUntil int64  `db:"lease_until" json:"lease_until"`
+	CreatedAt  string `db:"created_at" json:"created_at"`
+	UpdatedAt  string `db:"updated_at" json:"updated_at"`
 }
 
 type ContactMessage struct {
@@ -242,6 +298,35 @@ type Order struct {
 	ShippingCents        int64  `db:"shipping_cents" json:"shipping_cents"`
 	ShippingRuleName     string `db:"shipping_rule_name" json:"shipping_rule_name"`
 	ReservationExpiresAt string `db:"reservation_expires_at" json:"reservation_expires_at"`
+	ShipAddressVersion   int64  `db:"ship_address_version" json:"ship_address_version"`
+	ShipAddressLine1     string `db:"ship_address_line1" json:"ship_address_line1"`
+	ShipAddressLine2     string `db:"ship_address_line2" json:"ship_address_line2"`
+	ShipCity             string `db:"ship_city" json:"ship_city"`
+	ShipDistrict         string `db:"ship_district" json:"ship_district"`
+	ShipRegion           string `db:"ship_region" json:"ship_region"`
+	ShipPostalCode       string `db:"ship_postal_code" json:"ship_postal_code"`
+}
+
+type OrderGuestAccess struct {
+	TokenHash string `db:"token_hash" json:"token_hash"`
+	OrderID   int64  `db:"order_id" json:"order_id"`
+	ExpiresAt int64  `db:"expires_at" json:"expires_at"`
+	CreatedAt string `db:"created_at" json:"created_at"`
+	UpdatedAt string `db:"updated_at" json:"updated_at"`
+}
+
+type OrderGuestChallenge struct {
+	PublicID    string `db:"public_id" json:"public_id"`
+	OrderID     int64  `db:"order_id" json:"order_id"`
+	BrowserHash string `db:"browser_hash" json:"browser_hash"`
+	CodeHash    string `db:"code_hash" json:"code_hash"`
+	OutboxID    int64  `db:"outbox_id" json:"outbox_id"`
+	ExpiresAt   int64  `db:"expires_at" json:"expires_at"`
+	Attempts    int64  `db:"attempts" json:"attempts"`
+	ConsumedAt  int64  `db:"consumed_at" json:"consumed_at"`
+	RequestedAt int64  `db:"requested_at" json:"requested_at"`
+	CreatedAt   string `db:"created_at" json:"created_at"`
+	UpdatedAt   string `db:"updated_at" json:"updated_at"`
 }
 
 type OrderItem struct {
@@ -254,6 +339,45 @@ type OrderItem struct {
 	UnitCents    int64  `db:"unit_cents" json:"unit_cents"`
 	Quantity     int64  `db:"quantity" json:"quantity"`
 	LineCents    int64  `db:"line_cents" json:"line_cents"`
+}
+
+type PaymentAttempt struct {
+	ID                int64  `db:"id" json:"id"`
+	PublicID          string `db:"public_id" json:"public_id"`
+	OrderID           int64  `db:"order_id" json:"order_id"`
+	Provider          string `db:"provider" json:"provider"`
+	ConfigFingerprint string `db:"config_fingerprint" json:"config_fingerprint"`
+	RequestJson       string `db:"request_json" json:"request_json"`
+	State             string `db:"state" json:"state"`
+	ProviderReference string `db:"provider_reference" json:"provider_reference"`
+	RedirectUrl       string `db:"redirect_url" json:"redirect_url"`
+	LeaseToken        string `db:"lease_token" json:"lease_token"`
+	LeaseUntil        int64  `db:"lease_until" json:"lease_until"`
+	CreatedAt         string `db:"created_at" json:"created_at"`
+	UpdatedAt         string `db:"updated_at" json:"updated_at"`
+}
+
+type PaymentReceipt struct {
+	ID            int64  `db:"id" json:"id"`
+	OrderID       int64  `db:"order_id" json:"order_id"`
+	Provider      string `db:"provider" json:"provider"`
+	PaymentRef    string `db:"payment_ref" json:"payment_ref"`
+	AmountCents   int64  `db:"amount_cents" json:"amount_cents"`
+	Currency      string `db:"currency" json:"currency"`
+	RefundedCents int64  `db:"refunded_cents" json:"refunded_cents"`
+	ReviewReason  string `db:"review_reason" json:"review_reason"`
+	Source        string `db:"source" json:"source"`
+	CreatedAt     string `db:"created_at" json:"created_at"`
+	UpdatedAt     string `db:"updated_at" json:"updated_at"`
+}
+
+type PaymentRefund struct {
+	ID          int64  `db:"id" json:"id"`
+	ReceiptID   int64  `db:"receipt_id" json:"receipt_id"`
+	Provider    string `db:"provider" json:"provider"`
+	RefundRef   string `db:"refund_ref" json:"refund_ref"`
+	AmountCents int64  `db:"amount_cents" json:"amount_cents"`
+	CreatedAt   string `db:"created_at" json:"created_at"`
 }
 
 type Product struct {
@@ -305,6 +429,52 @@ type Refund struct {
 	CreatedAt        string `db:"created_at" json:"created_at"`
 }
 
+type RefundCheck struct {
+	ID          int64  `db:"id" json:"id"`
+	PublicID    string `db:"public_id" json:"public_id"`
+	ReceiptID   int64  `db:"receipt_id" json:"receipt_id"`
+	BeforeCents int64  `db:"before_cents" json:"before_cents"`
+	AfterCents  int64  `db:"after_cents" json:"after_cents"`
+	Pending     int64  `db:"pending" json:"pending"`
+	RefundsJson string `db:"refunds_json" json:"refunds_json"`
+	CreatedAt   string `db:"created_at" json:"created_at"`
+}
+
+type RefundReconciliation struct {
+	ID            int64  `db:"id" json:"id"`
+	PublicID      string `db:"public_id" json:"public_id"`
+	ReceiptID     int64  `db:"receipt_id" json:"receipt_id"`
+	Provider      string `db:"provider" json:"provider"`
+	RefundRef     string `db:"refund_ref" json:"refund_ref"`
+	AmountCents   int64  `db:"amount_cents" json:"amount_cents"`
+	ObservedState string `db:"observed_state" json:"observed_state"`
+	State         string `db:"state" json:"state"`
+	CreatedAt     string `db:"created_at" json:"created_at"`
+	UpdatedAt     string `db:"updated_at" json:"updated_at"`
+}
+
+type RefundRequest struct {
+	ID                   int64  `db:"id" json:"id"`
+	PublicID             string `db:"public_id" json:"public_id"`
+	ClientKey            string `db:"client_key" json:"client_key"`
+	OrderID              int64  `db:"order_id" json:"order_id"`
+	ReceiptID            int64  `db:"receipt_id" json:"receipt_id"`
+	Provider             string `db:"provider" json:"provider"`
+	PaymentRef           string `db:"payment_ref" json:"payment_ref"`
+	AmountCents          int64  `db:"amount_cents" json:"amount_cents"`
+	Currency             string `db:"currency" json:"currency"`
+	InitialRefundedCents int64  `db:"initial_refunded_cents" json:"initial_refunded_cents"`
+	ConfigFingerprint    string `db:"config_fingerprint" json:"config_fingerprint"`
+	State                string `db:"state" json:"state"`
+	GatewayRef           string `db:"gateway_ref" json:"gateway_ref"`
+	Reason               string `db:"reason" json:"reason"`
+	FirstSentAt          int64  `db:"first_sent_at" json:"first_sent_at"`
+	LeaseToken           string `db:"lease_token" json:"lease_token"`
+	LeaseUntil           int64  `db:"lease_until" json:"lease_until"`
+	CreatedAt            string `db:"created_at" json:"created_at"`
+	UpdatedAt            string `db:"updated_at" json:"updated_at"`
+}
+
 type Session struct {
 	ID        int64  `db:"id" json:"id"`
 	Token     string `db:"token" json:"token"`
@@ -328,6 +498,34 @@ type Shipment struct {
 	TrackingNumber string `db:"tracking_number" json:"tracking_number"`
 	TrackingUrl    string `db:"tracking_url" json:"tracking_url"`
 	ShippedAt      string `db:"shipped_at" json:"shipped_at"`
+}
+
+type ShipmentNotice struct {
+	ID            int64         `db:"id" json:"id"`
+	PublicID      string        `db:"public_id" json:"public_id"`
+	RevisionID    int64         `db:"revision_id" json:"revision_id"`
+	Sequence      int64         `db:"sequence" json:"sequence"`
+	RequestKey    string        `db:"request_key" json:"request_key"`
+	Origin        string        `db:"origin" json:"origin"`
+	OutboxID      int64         `db:"outbox_id" json:"outbox_id"`
+	PreviousID    sql.NullInt64 `db:"previous_id" json:"previous_id"`
+	Resolution    string        `db:"resolution" json:"resolution"`
+	ResolutionKey string        `db:"resolution_key" json:"resolution_key"`
+	SendingAt     int64         `db:"sending_at" json:"sending_at"`
+	ResolvedAt    string        `db:"resolved_at" json:"resolved_at"`
+	CreatedAt     string        `db:"created_at" json:"created_at"`
+}
+
+type ShipmentRevision struct {
+	ID             int64  `db:"id" json:"id"`
+	PublicID       string `db:"public_id" json:"public_id"`
+	ShipmentID     int64  `db:"shipment_id" json:"shipment_id"`
+	Version        int64  `db:"version" json:"version"`
+	Carrier        string `db:"carrier" json:"carrier"`
+	TrackingNumber string `db:"tracking_number" json:"tracking_number"`
+	TrackingUrl    string `db:"tracking_url" json:"tracking_url"`
+	Legacy         int64  `db:"legacy" json:"legacy"`
+	CreatedAt      string `db:"created_at" json:"created_at"`
 }
 
 type ShippingZone struct {

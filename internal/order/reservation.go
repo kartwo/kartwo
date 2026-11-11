@@ -157,6 +157,9 @@ func (s *Service) ExpireDue(ctx context.Context, now time.Time) (int, error) {
 
 func (s *Service) RunReservationExpiry(ctx context.Context, logger *slog.Logger) {
 	run := func() {
+		if err := s.CleanGuestAccess(ctx, time.Now()); err != nil && ctx.Err() == nil {
+			logger.Warn("过期游客凭证清理失败")
+		}
 		for {
 			count, err := s.ExpireDue(ctx, time.Now())
 			if err != nil {

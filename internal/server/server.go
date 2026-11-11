@@ -11,12 +11,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	adminui "github.com/kartwo/kartwo/web/admin"
 
 	"github.com/kartwo/kartwo/internal/admin"
 	"github.com/kartwo/kartwo/internal/config"
+	"github.com/kartwo/kartwo/internal/httpx"
 	"github.com/kartwo/kartwo/internal/payment"
 	"github.com/kartwo/kartwo/internal/store"
 	"github.com/kartwo/kartwo/internal/storefront"
@@ -93,6 +95,11 @@ func securityHeaders(hstsEnabled bool) func(http.Handler) http.Handler {
 			h.Set("X-Content-Type-Options", "nosniff")
 			h.Set("X-Frame-Options", "DENY")
 			h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			// Include unknown paths and method errors, before ServeMux dispatch.
+			path := r.URL.Path
+			if strings.HasPrefix(path, "/admin/api/") || strings.HasPrefix(path, "/order/") || strings.HasPrefix(path, "/paypal/") || path == "/checkout" || path == "/cart" || strings.HasPrefix(path, "/cart/") {
+				httpx.PrivateHeaders(w)
+			}
 			// script 严格 'self'（Vue 生产构建无需 eval/inline）；style 放开内联（Vue 内联 style 属性）；图片含本地 /media。
 			h.Set("Content-Security-Policy",
 				"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src https://www.youtube-nocookie.com https://player.vimeo.com; frame-ancestors 'none'; base-uri 'self'")

@@ -9,6 +9,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+
+	"github.com/kartwo/kartwo/internal/httpx"
 )
 
 type ctxKey int
@@ -18,6 +20,7 @@ const authCtxKey ctxKey = 0
 // requireAuth 校验会话 cookie；非安全方法额外校验 CSRF（双提交）。失败即拦截。
 func (h *HTTP) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpx.PrivateHeaders(w)
 		c, err := r.Cookie(sessionCookie)
 		if err != nil {
 			writeErr(w, http.StatusUnauthorized, "未登录")

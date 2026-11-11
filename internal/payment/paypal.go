@@ -7,6 +7,7 @@ package payment
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -137,7 +138,7 @@ func (p *PayPalProvider) CreatePayment(ctx context.Context, ord OrderForPayment)
 			},
 		},
 	}
-	raw, err := p.doJSON(ctx, token, http.MethodPost, "/v2/checkout/orders", reqBody)
+	raw, err := p.doJSON(ctx, token, http.MethodPost, "/v2/checkout/orders", reqBody, ord.IdempotencyKey)
 	if err != nil {
 		return PaymentSession{}, err
 	}
@@ -158,7 +159,7 @@ func (p *PayPalProvider) CreatePayment(ctx context.Context, ord OrderForPayment)
 			break
 		}
 	}
-	if href == "" {
+	if !validCheckoutURL(href) {
 		return PaymentSession{}, fmt.Errorf("payment: PayPal 未返回审批链接")
 	}
 	return PaymentSession{RedirectURL: href, Reference: out.ID}, nil
@@ -170,7 +171,7 @@ func (p *PayPalProvider) Capture(ctx context.Context, paypalOrderID string) (Cap
 	if err != nil {
 		return CaptureResult{}, err
 	}
-	raw, err := p.doJSON(ctx, token, http.MethodPost, "/v2/checkout/orders/"+url.PathEscape(paypalOrderID)+"/capture", map[string]any{})
+	raw, err := p.doJSON(ctx, token, http.MethodPost, "/v2/checkout/orders/"+url.PathEscape(paypalOrderID)+"/capture", map[string]any{}, fmt.Sprintf("%x", sha256.Sum256([]byte("capture:"+paypalOrderID)))[:32])
 	if err != nil {
 		return CaptureResult{}, err
 	}
@@ -181,6 +182,7 @@ func (p *PayPalProvider) Capture(ctx context.Context, paypalOrderID string) (Cap
 			Payments struct {
 				Captures []struct {
 					ID       string `json:"id"`
+					Status   string `json:"status"`
 					CustomID string `json:"custom_id"` // PayPal capture 响应把 custom_id 回填在 capture 对象上
 					Amount   struct {
 						CurrencyCode string `json:"currency_code"`
@@ -193,15 +195,22 @@ func (p *PayPalProvider) Capture(ctx context.Context, paypalOrderID string) (Cap
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return CaptureResult{}, fmt.Errorf("payment: 解析 PayPal capture 响应失败: %w", err)
 	}
-	res := CaptureResult{Completed: out.Status == "COMPLETED"}
+	res := CaptureResult{}
+	if len(out.PurchaseUnits) != 1 || len(out.PurchaseUnits[0].Payments.Captures) != 1 {
+		return res, ErrMismatch
+	}
 	if len(out.PurchaseUnits) > 0 {
 		pu := out.PurchaseUnits[0]
 		res.OrderRef = pu.CustomID
 		if len(pu.Payments.Captures) > 0 {
 			cap0 := pu.Payments.Captures[0]
+			res.Completed = out.Status == "COMPLETED" && cap0.Status == "COMPLETED"
 			res.CaptureID = cap0.ID
 			res.Currency = cap0.Amount.CurrencyCode
-			res.AmountCents, _ = decimalToCents(cap0.Amount.Value)
+			res.AmountCents, err = decimalToCents(cap0.Amount.Value)
+			if err != nil {
+				return CaptureResult{}, err
+			}
 			// capture 响应里 custom_id 通常在 capture 对象、而非 purchase_unit 顶层；顶层缺失时回退取此处。
 			if res.OrderRef == "" {
 				res.OrderRef = cap0.CustomID
@@ -209,29 +218,6 @@ func (p *PayPalProvider) Capture(ctx context.Context, paypalOrderID string) (Cap
 		}
 	}
 	return res, nil
-}
-
-// Refund 对 capture 整单全额退款：POST /v2/payments/captures/{capture}/refund（空 body=全额）。返回退款 ID。
-// v1 仅全额，故忽略 amountCents（空 body 让 PayPal 退全部已捕获金额）。
-func (p *PayPalProvider) Refund(ctx context.Context, captureID string, _ int64) (string, error) {
-	if captureID == "" {
-		return "", fmt.Errorf("payment: 缺 capture 引用，无法退款")
-	}
-	token, err := p.accessToken(ctx)
-	if err != nil {
-		return "", err
-	}
-	raw, err := p.doJSON(ctx, token, http.MethodPost, "/v2/payments/captures/"+url.PathEscape(captureID)+"/refund", map[string]any{})
-	if err != nil {
-		return "", err
-	}
-	var out struct {
-		ID string `json:"id"`
-	}
-	if err := json.Unmarshal(raw, &out); err != nil || out.ID == "" {
-		return "", fmt.Errorf("payment: 解析 PayPal 退款响应失败")
-	}
-	return out.ID, nil
 }
 
 // VerifyWebhook 接口占位——PayPal webhook 多头验签走 VerifyWebhookPayPal（不同签名），不经此通用接口。
@@ -291,6 +277,9 @@ func parsePayPalEvent(payload []byte) (WebhookEvent, error) {
 				Value        string `json:"value"`
 				CurrencyCode string `json:"currency_code"`
 			} `json:"amount"`
+			Breakdown struct {
+				Total paypalMoney `json:"total_refunded_amount"`
+			} `json:"seller_payable_breakdown"`
 			Links []struct {
 				Href string `json:"href"`
 				Rel  string `json:"rel"`
@@ -302,12 +291,25 @@ func parsePayPalEvent(payload []byte) (WebhookEvent, error) {
 	}
 	out := WebhookEvent{ID: ev.ID, Type: ev.Type, OrderRef: ev.Resource.CustomID, Currency: ev.Resource.Amount.CurrencyCode}
 	if ev.Resource.Amount.Value != "" {
-		out.AmountCents, _ = decimalToCents(ev.Resource.Amount.Value)
+		var err error
+		out.AmountCents, err = decimalToCents(ev.Resource.Amount.Value)
+		if err != nil {
+			return WebhookEvent{}, err
+		}
 	}
 	switch ev.Type {
 	case "PAYMENT.CAPTURE.COMPLETED":
 		out.PaymentRef = ev.Resource.ID // capture id
-	case "PAYMENT.CAPTURE.REFUNDED":
+	case "PAYMENT.CAPTURE.REFUNDED", "PAYMENT.REFUND.PENDING", "PAYMENT.REFUND.FAILED":
+		out.RefundRef = ev.Resource.ID
+		out.RefundRequestID = ev.Resource.CustomID
+		if ev.Resource.Breakdown.Total.Value != "" {
+			var err error
+			out.RefundedCents, err = decimalToCents(ev.Resource.Breakdown.Total.Value)
+			if err != nil || !strings.EqualFold(ev.Resource.Breakdown.Total.Currency, out.Currency) {
+				return WebhookEvent{}, ErrMismatch
+			}
+		}
 		out.PaymentRef = captureIDFromLinks(ev.Resource.Links) // 退款事件：从 links 取 capture id
 	}
 	return out, nil
@@ -331,7 +333,7 @@ func captureIDFromLinks(links []struct {
 }
 
 // doJSON 发一个带 Bearer 的 JSON 请求，返回响应体（4xx+ 视为错误）。
-func (p *PayPalProvider) doJSON(ctx context.Context, token, method, path string, payload any) ([]byte, error) {
+func (p *PayPalProvider) doJSON(ctx context.Context, token, method, path string, payload any, idempotencyKey ...string) ([]byte, error) {
 	buf, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("payment: 编码 PayPal 请求失败: %w", err)
@@ -342,6 +344,9 @@ func (p *PayPalProvider) doJSON(ctx context.Context, token, method, path string,
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
+	if len(idempotencyKey) > 0 && idempotencyKey[0] != "" {
+		req.Header.Set("PayPal-Request-Id", idempotencyKey[0])
+	}
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("payment: 调用 PayPal 失败: %w", err)
@@ -366,23 +371,28 @@ func centsToDecimal(cents int64) string {
 // decimalToCents 小数字符串 → 整数分（2 位小数）。
 func decimalToCents(s string) (int64, error) {
 	s = strings.TrimSpace(s)
-	parts := strings.SplitN(s, ".", 2)
-	whole, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("payment: 金额解析失败 %q", s)
+	parts := strings.Split(s, ".")
+	if len(parts) > 2 || parts[0] == "" {
+		return 0, ErrMismatch
 	}
 	frac := "00"
 	if len(parts) == 2 {
-		frac = (parts[1] + "00")[:2]
+		if len(parts[1]) == 0 || len(parts[1]) > 2 {
+			return 0, ErrMismatch
+		}
+		frac = (parts[1] + "0")[:2]
 	}
-	f, err := strconv.ParseInt(frac, 10, 64)
+	digits := parts[0] + frac
+	for _, c := range digits {
+		if c < '0' || c > '9' {
+			return 0, ErrMismatch
+		}
+	}
+	value, err := strconv.ParseInt(digits, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("payment: 金额解析失败 %q", s)
+		return 0, ErrMismatch
 	}
-	if whole < 0 {
-		return whole*100 - f, nil
-	}
-	return whole*100 + f, nil
+	return value, nil
 }
 
 func paypalErrMsg(body []byte) string {

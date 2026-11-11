@@ -1,58 +1,63 @@
 {{define "content"}}
-{{$c := .Cart}}
 <h1>Checkout</h1>
-{{if .Error}}<p class="err" style="color:#dc2626">{{.Error}}</p>{{end}}
-{{if not $c.Lines}}
-  <p class="muted">Your cart is empty. <a href="/">Continue shopping</a></p>
+{{if .Error}}<p class="contact-error" role="alert" tabindex="-1" id="checkout-error">{{.Error}}</p>{{end}}
+{{if not .Cart.Lines}}
+<p class="muted">Your cart is empty. <a href="/">Continue shopping</a></p>
 {{else}}
-<div class="detail">
-  <div>
-    <h3>Shipping details</h3>
-    <form method="post" action="/checkout">
-      <label>Email *</label>
-      <input type="email" name="email" required style="width:100%" />
-      <label>Full name *</label>
-      <input type="text" name="name" required style="width:100%" />
-      <label>Phone</label>
-      <input type="text" name="phone" style="width:100%" />
-      <label>Shipping address *</label>
-      <textarea name="address" rows="3" required style="width:100%"></textarea>
-      <label>Country/Region *</label>
-      <select name="country" required style="width:100%">
+<div class="detail checkout-layout">
+  <section class="checkout-card" aria-labelledby="shipping-heading">
+    <h2 id="shipping-heading">Shipping details</h2>
+    <form method="post" action="/checkout" id="checkout-form">
+      <label for="checkout-country">Country / region *</label>
+      <select id="checkout-country" name="country" autocomplete="shipping country" required aria-describedby="delivery-help" {{if eq .InvalidField "country"}}aria-invalid="true"{{end}}>
         <option value="">Select your country or region</option>
-        {{range .Countries}}<option value="{{.Code}}">{{.Name}} ({{.Code}})</option>{{end}}
+        {{if and .Values.country (not .SelectedEnabled)}}<option value="{{.Values.country}}" selected>{{.Values.country}} — delivery unavailable</option>{{end}}
+        {{range .Countries}}<option value="{{.Code}}"{{if eq $.Values.country .Code}} selected{{end}}>{{.Name}} ({{.Code}})</option>{{end}}
       </select>
+      <p id="delivery-help" class="contact-note">Select your destination, then review delivery to see its address requirements and full total.</p>
+      {{if not .Countries}}<p class="contact-error">Delivery destinations have not been configured. Please <a href="/contact">contact the store</a> before ordering.</p>{{end}}
+      <button class="btn checkout-review" type="submit" name="checkout_action" value="review" formnovalidate>Review delivery</button>
+      <label for="checkout-email">Email *</label>
+      <input id="checkout-email" type="email" name="email" autocomplete="email" maxlength="254" value="{{.Values.email}}" required />
+      <label for="checkout-name">Full name *</label>
+      <input id="checkout-name" name="name" autocomplete="shipping name" maxlength="200" value="{{.Values.name}}" required />
+      <label for="checkout-phone">Phone (optional)</label>
+      <input id="checkout-phone" type="tel" name="phone" autocomplete="shipping tel" maxlength="64" value="{{.Values.phone}}" />
+      {{range .Fields}}
+      <label for="checkout-{{.Key}}">{{.Label}}{{if .Required}} *{{end}}</label>
+      <input id="checkout-{{.Key}}" name="{{.Key}}" autocomplete="shipping {{.Autocomplete}}" maxlength="{{.MaxBytes}}" value="{{.Value}}"{{if .Required}} required{{end}}{{if .Invalid}} aria-invalid="true" aria-describedby="checkout-error"{{end}} />
+      {{if and (eq .Key "postal_code") $.PostalExample}}<p class="contact-note">Format example: {{$.PostalExample}}</p>{{end}}
+      {{if and (not .Used) (not .Required)}}<p class="contact-note">Retained from your previous input; optional for this destination. You can clear it.</p>{{end}}
+      {{end}}
       {{if gt (len .Methods) 1}}
-      <label style="margin-top:1rem">Payment method</label>
-      {{range $i, $m := .Methods}}
-      <label style="display:block;font-weight:normal">
-        <input type="radio" name="payment_method" value="{{$m}}"{{if eq $i 0}} checked{{end}} />
-        {{if eq $m "stripe"}}Credit / debit card{{else if eq $m "paypal"}}PayPal{{else}}{{$m}}{{end}}
-      </label>
-      {{end}}
-      {{else if eq (len .Methods) 1}}
-      <input type="hidden" name="payment_method" value="{{index .Methods 0}}" />
-      {{end}}
-      <div style="margin-top:1rem"><button class="btn" type="submit">
-        {{if .Methods}}Continue to payment{{else}}Place order{{end}}
-      </button></div>
-      {{if not .Methods}}<p class="muted" style="font-size:.8rem">Placing the order reserves your items. Online payment is being set up.</p>{{end}}
+      <fieldset class="checkout-payment"><legend>Payment method</legend>
+        {{range .Methods}}<label><input type="radio" name="payment_method" value="{{.}}"{{if eq $.ChosenMethod .}} checked{{end}} /> {{if eq . "stripe"}}Credit / debit card{{else if eq . "paypal"}}PayPal{{else}}{{.}}{{end}}</label>{{end}}
+      </fieldset>
+      {{else if eq (len .Methods) 1}}<input type="hidden" name="payment_method" value="{{.ChosenMethod}}" />{{end}}
+      <input type="hidden" name="quote" value="{{if .Quote}}{{.Quote.Fingerprint}}{{end}}" />
+      <p class="contact-note" id="quote-status" role="status">{{if .Quote}}Review the delivery charge and total before confirming.{{else}}Review delivery before placing your order.{{end}}</p>
+      <button class="btn" id="checkout-place" type="submit" name="checkout_action" value="place"{{if not .CanPlace}} disabled{{end}}>{{if .Methods}}Continue to payment{{else}}Place order{{end}}</button>
+      {{if not .Methods}}<p class="contact-note">Placing the order reserves your items. Online payment is being set up.</p>{{end}}
     </form>
-  </div>
-  <div>
-    <h3>Order summary</h3>
-    <table class="cart-table">
-      <tbody>
-        {{range $c.Lines}}
-        <tr>
-          <td>{{.ProductTitle}}<br><span class="muted" style="font-size:.85rem">{{range $i,$o := .Options}}{{if $i}} · {{end}}{{$o.Name}}: {{$o.Value}}{{end}} × {{.Quantity}}</span></td>
-          <td style="text-align:right">{{call $.Money .LineCents}}</td>
-        </tr>
-        {{end}}
-      </tbody>
-    </table>
-    <div class="cart-foot"><div class="total">Total: <strong>{{call $.Money $c.TotalCents}}</strong></div></div>
-  </div>
+  </section>
+  <section class="checkout-card checkout-summary" aria-labelledby="summary-heading">
+    <h2 id="summary-heading">Order summary</h2>
+    {{if .Quote}}
+    <p class="muted">Delivery to {{.Quote.Country}} · {{.Quote.Currency}}</p>
+    <table class="checkout-summary-table"><caption class="checkout-visually-hidden">Products and delivery total</caption><tbody>
+      {{range .Quote.Lines}}<tr><th scope="row">{{.Title}}<span class="checkout-item-note">{{.Spec}} × {{.Quantity}}</span></th><td>{{call $.Money .LineCents}}</td></tr>{{end}}
+    </tbody><tfoot>
+      <tr><th scope="row">Subtotal</th><td>{{call .Money .Quote.SubtotalCents}}</td></tr>
+      <tr><th scope="row">Shipping<span class="checkout-item-note">{{.Quote.ShippingRuleName}}</span></th><td>{{call .Money .Quote.ShippingCents}}</td></tr>
+      <tr class="checkout-total"><th scope="row">Total ({{.Quote.Currency}})</th><td>{{call .Money .Quote.TotalCents}}</td></tr>
+    </tfoot></table>
+    {{else}}
+    <p class="muted">The total will be shown after delivery is confirmed.</p>
+    <ul>{{range .Cart.Lines}}<li>{{.ProductTitle}} × {{.Quantity}}</li>{{end}}</ul>
+    {{end}}
+    <a href="/cart">Edit cart</a>
+  </section>
 </div>
+<script src="/static/checkout.js" defer></script>
 {{end}}
 {{end}}

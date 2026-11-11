@@ -31,11 +31,12 @@ import (
 type fakeGateway struct {
 	methods []string
 	url     string
+	err     error
 }
 
 func (f fakeGateway) AvailableMethods(context.Context) []string { return f.methods }
 func (f fakeGateway) StartCheckout(context.Context, string, payment.OrderForPayment) (string, error) {
-	return f.url, nil
+	return f.url, f.err
 }
 func (f fakeGateway) CapturePayPal(context.Context, string) (string, error) { return "", nil }
 
@@ -57,8 +58,11 @@ func TestOrderPayPendingOnly(t *testing.T) {
 	mux := http.NewServeMux()
 	h.Register(mux)
 
+	grant := authorizeGuestTest(t, h, "ORD1")
 	pay := func() (int, string) {
 		req := httptest.NewRequest("POST", "/order/ORD1/pay", strings.NewReader("payment_method=stripe"))
+		req.AddCookie(grant)
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
@@ -71,7 +75,9 @@ func TestOrderPayPendingOnly(t *testing.T) {
 	}
 	// 订单页应渲染「Pay now」。
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/order/ORD1", nil))
+	pageRequest := httptest.NewRequest("GET", "/order/ORD1", nil)
+	pageRequest.AddCookie(grant)
+	mux.ServeHTTP(rec, pageRequest)
 	if !strings.Contains(rec.Body.String(), "Pay now") {
 		t.Fatal("未付订单页应有 Pay now 按钮")
 	}
@@ -347,10 +353,16 @@ func TestJSONLDValid(t *testing.T) {
 // 对购物车 cookie 而言，prod 明文态（HTTP-only 评估态 / 裸 IP 逃生路）下顾客每次请求
 // 都拿到新的空车 —— 加购不生效。清除路径同理：那条 Max-Age=-1 根本不会被处理。
 func TestCartCookieSecureFollowsRequestTLS(t *testing.T) {
-	// cartSet 触发 cartCtx 下发新车 cookie；返回该响应里的购物车 cookie。
-	cartCookieFrom := func(t *testing.T, mux http.Handler, tls bool) *http.Cookie {
+	// 真实加购才下发新购物车 Cookie；只浏览空购物车不会写数据库。
+	cartCookieFrom := func(t *testing.T, h *HTTP, mux http.Handler, tls bool) *http.Cookie {
 		t.Helper()
-		req := httptest.NewRequest("GET", "/cart", nil)
+		var variant string
+		if err := h.svc.db.QueryRow(`SELECT public_id FROM variant LIMIT 1`).Scan(&variant); err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest("POST", "/cart/items", strings.NewReader(`{"variant":"`+variant+`","quantity":1}`))
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		req.Header.Set("Content-Type", "application/json")
 		if tls {
 			req.TLS = &cryptotls.ConnectionState{} // httptest 默认 r.TLS==nil
 		}
@@ -377,8 +389,8 @@ func TestCartCookieSecureFollowsRequestTLS(t *testing.T) {
 			{"明文请求 → 不带 Secure（否则顾客加购不生效）", false, false},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				_, mux := newHTTP(t)
-				c := cartCookieFrom(t, mux, tc.tls)
+				h, mux := newHTTP(t)
+				c := cartCookieFrom(t, h, mux, tc.tls)
 				if c.Secure != tc.want {
 					t.Fatalf("Secure=%v，期望 %v", c.Secure, tc.want)
 				}
@@ -405,6 +417,7 @@ func TestCartCookieSecureFollowsRequestTLS(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				h := &HTTP{} // clearCartCookie 只用 w/r，不碰其它字段
 				req := httptest.NewRequest("POST", "/checkout", nil)
+				req.Header.Set("Sec-Fetch-Site", "same-origin")
 				if tc.tls {
 					req.TLS = &cryptotls.ConnectionState{}
 				}
@@ -430,4 +443,46 @@ func TestCartCookieSecureFollowsRequestTLS(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestOrderPayExplainsRetryAndConfigErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		err           error
+		code, message string
+	}{
+		{"busy", payment.ErrPaymentInProgress, "busy", "payment page is being prepared"},
+		{"config", payment.ErrPaymentConfigChanged, "config", "payment settings changed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sf, _, db := setup(t)
+			if _, err := db.Exec(`INSERT INTO customer(public_id,email,name) VALUES('retry-customer','a@example.com','A')`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`INSERT INTO "order"(public_id,customer_id,status,email,ship_name,ship_address,currency,subtotal_cents,total_cents) SELECT 'retry-order',id,'pending',email,name,'Address','USD',1000,1000 FROM customer WHERE public_id='retry-customer'`); err != nil {
+				t.Fatal(err)
+			}
+			cfg := settings.New(db)
+			h := NewHTTP(sf, cart.New(db), order.New(db, cfg), cfg, fakeGateway{methods: []string{"stripe"}, err: tc.err}, redirect.New(db), "Shop", "https://shop", nil)
+			mux := http.NewServeMux()
+			h.Register(mux)
+			grant := authorizeGuestTest(t, h, "retry-order")
+			r := httptest.NewRequest(http.MethodPost, "/order/retry-order/pay", strings.NewReader("payment_method=stripe"))
+			r.AddCookie(grant)
+			r.Header.Set("Sec-Fetch-Site", "same-origin")
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+			mux.ServeHTTP(w, r)
+			if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/order/retry-order?payment_error="+tc.code {
+				t.Fatalf("code=%d location=%s", w.Code, w.Header().Get("Location"))
+			}
+			page := httptest.NewRecorder()
+			pageRequest := httptest.NewRequest(http.MethodGet, w.Header().Get("Location"), nil)
+			pageRequest.AddCookie(grant)
+			mux.ServeHTTP(page, pageRequest)
+			if page.Code != 200 || !strings.Contains(page.Body.String(), tc.message) || strings.Contains(page.Body.String(), tc.err.Error()) {
+				t.Fatalf("safe user-facing explanation missing: status=%d", page.Code)
+			}
+		})
+	}
 }
