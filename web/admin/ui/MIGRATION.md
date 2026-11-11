@@ -49,7 +49,7 @@
 | A2 下单与支付幂等 | 同车并发/原事务、持久支付尝试及跨通道切换；`attempt_test.go`、`checkout_switch_test.go` 与跨模块回归 | Stripe/PayPal 真实沙箱的断线恢复、重复与切换 |
 | A3 异步入账与退款 | 独立到账/退款账本、指定收款退款、持久请求及事件/完整清单核对；`refund_request/events/check/worker` 回归与 React 操作锁 | 真实沙箱异步付款、部分退款及平台状态核对 |
 | A4 订单隐私与权限 | 私密响应头、订单范围凭证/验证码、店主撤销及角色/对象隔离的实际 HTTP 回归 | 真实邮箱跨设备恢复和适用人工；没有以订单号代替授权 |
-| 唯一 React 后台 | 30 个原视图、32 个旧地址、307 React + 3 工具测试；店主/员工/演示与手机专项证据见各节；图片保存重开与 ZIP 下载已获商家确认；10 月 31 日开发端已完成常驻后台 CSV 原生文件选择与预览 | 实际改密/邀请等未追认为原生通过；完整键盘与业务人工仍待 |
+| 唯一 React 后台 | 30 个原视图、32 个旧地址、307 React + 3 工具测试；店主/员工/演示与手机专项证据见各节；图片保存重开与 ZIP 下载已获商家确认；常驻 CSV 及独立库商品图片/Logo 原生文件选择已通过 | 实际改密/邀请等未追认为原生通过；完整键盘与业务人工仍待 |
 | B1–B4 经营闭环 | 订单工作台、发货通知、多国地址和基础售后均已接线；售后六步原生与实际 Go/CSP 验证、配送回执恢复等已过 | 常驻库适用人工、实际收件与资金；装箱单/批处理等后续范围未追认完成 |
 | D 交付与容量 | 完整备份/恢复/升级保护、临时凭证失效；新增 `make capacity` 实际 Linux 程序的 1CPU/1GiB 容器检查 | 真实 VPS 的磁盘/网络/持续负载、完整 30 分钟开店、历史真实 WebDAV及远端发布门禁 |
 | 后续增长/商业 | 依路线图在交易经营稳定后推进；AI 密钥来源/额度等业务选择待确认 | 不提前写 SaaS 控制面、计费专属内核逻辑或另起一套内核 |
@@ -65,6 +65,16 @@ CSV 原生文件选择及预览现已由开发端使用持久虚构样例验证�
 本次文件选择工具实际耗时约 40 分钟后才返回完成；这不是应用上传或预览耗时，不能据此判断程序性能。没有因观察超时重发选择、提交或重启服务；之前 Chrome 文件选择未完成及商家“尚未测试”的记录仍保留，不追认为当时已通过。数据库核对脚本最初误用 `format` 列，按实际 `source_format` 修正；初次严格差异检查发现自增序列变化后，完成上述独立序列核对，未改应用或重复预览。
 
 本批只更新验收文档，无业务源码、依赖、数据库迁移或正式资源变更，无需为此重跑相同本地业务测试或重启后台。完整账号安全操作、真实支付/SMTP、跨设备恢复及适用 VPS/HTTPS 仍需各自证据；没有将这一项替代整体发布门槛。
+
+### 商品图片与 Logo 原生文件选择（2026-11-11）
+
+使用新的全 UUID 本机主机和独立持久虚构库，从干净 `d39e69c`、Go 1.27.4 构建正式程序，核对实际 Go/CSP/embed。只预置虚构账号和演示商品；通过正常登录、真实页面及受支持的 filechooser/setFiles 选择本轮生成的 480×240 PNG，未使用真实商家的商品、账号或品牌配置。
+
+商品图片上传后新增预览，保存英文 alt、离开再重新打开，两者均保留；浏览器图片完整解码，缩略图为 200×100。Logo 同样实际选择上传，480×240 图片离页重开仍显示；上传过程中未保存的店名草稿保持，离页后恢复原已保存名称。该标签捕获的 warn/error 为零，截图及浏览器/数据库证明留在开发端。
+
+SQLite 核对仅媒体、派生、设置、审计和退出登录的会话五表变化，其余 44 表保持，商品/变体/库存及订单、退款、邮件不受影响。媒体由一张增为两张，派生由三份增为五份：小图按既有“不放大”规则跳过 800px 档，只生成 200×100 缩略图和 480×240 主图。落盘 PNG 去元数据重编码后与输入像素一致；派生及 Logo 均为实际 WebP。Logo 上传审计一次、店名保存审计零、退出后会话零；独立服务优雅退出 0，标签与临时明文凭据/外置钥匙文件已清理。
+
+两次文件选择工具均长时间等待后实际返回 completed，等待时间不能当作应用上传耗时；没有因此重传或重启。核对脚本曾误把小图派生数及重编码原图字节当作固定预期，依据生产规则修正后再核实；这些是验收脚本问题，未修改产品代码。此批仅更新验收记录，无业务、依赖、迁移或正式资源变化，仍需适用人工及真实支付、SMTP、VPS 验收。
 
 ### HTML 解析依赖安全更新（2026-10-31）
 
@@ -496,10 +506,10 @@ CGO=0 构建及实际版本 `dev-backup-capacity-20261026` 已核对。本机 31
 | PaymentSettings | 原生空密钥保存/员工拒绝/演示只读及390px已核对；真实通道待 | `getPayment`、`setPayment`、`testStripeConnection` |
 | PaymentWizard | 原生识别预置配置已核对；新配置/跳过及外部支付验收待 | `wizardPaymentSkip` |
 | PolicySettings | 原生时效校验/七草稿/重复跳过、员工授权/演示只读及390px已核对；覆盖仅取消 | `generateFooterPages`、`getPolicyProfile`、`setPolicyProfile` |
-| ProductEdit | 隔离原生店主/只读员工/演示及390px已核对；文件选择/其余人工待 | `createProduct`、`deleteMedia`、`getProduct`、`getTranslation`、`listCategories`、`listMedia`、`setInventory`、`setPrice`、`translateText`、`updateMediaAlt`、`updateProduct`、`uploadMedia` |
+| ProductEdit | 隔离原生店主/只读员工/演示及390px已核对；11月11日真实文件选择、图片及alt保存重开已过，其余人工待 | `createProduct`、`deleteMedia`、`getProduct`、`getTranslation`、`listCategories`、`listMedia`、`setInventory`、`setPrice`、`translateText`、`updateMediaAlt`、`updateProduct`、`uploadMedia` |
 | ProductList | 隔离原生店主/演示列表及390px已核对；其余人工待 | `deleteProduct`、`listProducts`、`setProductFeatured` |
 | ShippingSettings | 原生四国/整数分/已保存读失败恢复、员工授权/演示只读及390px已核对；删除仅取消 | `createShippingZone`、`deleteShippingZone`、`listShippingCountries`、`listShippingZones`、`saveDefaultShippingZone`、`saveShippingCountries`、`updateShippingZone` |
-| ShopSettings | 隔离店主保存/演示只读/员工拒绝及390px已核对；Logo选择/其余人工待 | `deleteShopLogo`、`getShop`、`setShop`、`uploadShopLogo` |
+| ShopSettings | 隔离店主保存/演示只读/员工拒绝及390px已核对；11月11日Logo真实选择、草稿保护及重开已过，其余人工待 | `deleteShopLogo`、`getShop`、`setShop`、`uploadShopLogo` |
 | SmtpSettings | 原生校验/空密码保存、员工拒绝/演示只读及390px已核对；实发待 | `getSmtp`、`setSmtp`、`smtpTest` |
 | SmtpWizard | 原生保存虚构配置/完成推进已核对；真实发信待 | `wizardSmtpSkip` |
 | TranslationSettings | 原生空密钥保存/员工拒绝/演示只读及最终390px长选项已核对；实连待 | `getTranslation`、`setTranslation` |
