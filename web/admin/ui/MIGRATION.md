@@ -45,7 +45,7 @@
 
 | 要求 | 当前证据 | 剩余验收 |
 |---|---|---|
-| A1 安全依赖 | Go 1.27.4 安全补丁同步项目/CI/Release，保留 x/net v0.62.0 与唯一 React 构建；验证记录见下文 | 以 [PR #31](https://github.com/kartwo/kartwo/pull/31) 当前 HEAD 检查为准；既有未导入模块告警保留，无豁免 |
+| A1 安全依赖 | Go 1.27.4 安全补丁同步项目/CI/Release，x/net v0.62.0、Vite 6.4.6 与唯一 React 构建；验证记录见下文 | 以 [PR #31](https://github.com/kartwo/kartwo/pull/31) 当前 HEAD 检查为准；既有未导入模块告警保留，无豁免 |
 | A2 下单与支付幂等 | 同车并发/原事务、持久支付尝试及跨通道切换；`attempt_test.go`、`checkout_switch_test.go` 与跨模块回归 | Stripe/PayPal 真实沙箱的断线恢复、重复与切换 |
 | A3 异步入账与退款 | 独立到账/退款账本、指定收款退款、持久请求及事件/完整清单核对；`refund_request/events/check/worker` 回归与 React 操作锁 | 真实沙箱异步付款、部分退款及平台状态核对 |
 | A4 订单隐私与权限 | 私密响应头、订单范围凭证/验证码、店主撤销及角色/对象隔离的实际 HTTP 回归 | 真实邮箱跨设备恢复和适用人工；没有以订单号代替授权 |
@@ -88,7 +88,17 @@ CSV 验收文档提交 `8245094` 的 CI 110 检出新可达漏洞 [GO-2026-6860 
 
 本地模块完整性、Linux/AMD64 同标签 vet/lint 均通过；以 Go 1.27.4 重建的固定版本检查工具完成宿主 macOS/ARM64 与 Linux/AMD64 扫描，可达代码及导入包漏洞为零，既有一个未导入模块告警保留。HTTP 上传/CSV 请求、正文大小上限、私密响应和安全头共 7 个重点主用例的竞态回归全部通过（总流程 29.194s），保留原断言；四平台编译及两个 Linux 实际 ELF 检查通过，构建信息均为 Go 1.27.4，只有 Linux 带 `nodynamic`、四平台均 CGO=0。候选来自提交前工作区，modified=true 如实保留。
 
-这些定向回归不替代整体验收：新提交 CI 仍须使用原 `-race -count=1 -timeout=20m ./...` 命令完成生产 Linux 全仓测试，并通过前端与安全门禁，结论以 PR 当前 HEAD 的实际结果为准。本机原进程在恢复目标时已停止；新程序将在完整备份核对后继续使用原账号和数据，不重复 CSV 或图文/ZIP 已过项目。
+提交 `92a9be2` 的 [CI 112](https://github.com/kartwo/kartwo/actions/runs/43012933883) 四项全部成功。原始 Linux 日志确认 Go 1.27.4、`go test -tags=nodynamic -race -count=1 -timeout=20m ./...`、24 个包通过及实际静态 ELF，后台包 270.471s。前端原配置 307 React + 3 工具、TS 和构建通过；安全扫描可达/导入包为零，既有未导入模块告警保留，297 个提交的密钥扫描零泄漏。定向回归没有替代完整门禁。
+
+干净 `92a9be2` 本机候选 `dev-go1274-security-review-20261111` 已在完整 33 文件/49 表备份归档逐文件校验后恢复，Go 1.27.4、VCS modified=false。原 49 表记录、媒体/配置和外置钥匙保持，90 个内嵌资源的字节/MIME、规范索引跳转及三个匿名接口保护核对通过；凭证自动解锁，新增迁移零。自动备份正常轮换，原包保留在手工归档内；无需重填配置或重复 CSV、图文与 ZIP 已过项目。
+
+### Vite 开发依赖安全补丁（2026-11-11）
+
+复核 CI 112 原始 npm 审计时发现一个中危告警：[GHSA-8g5g-mxqh-grgj](https://github.com/vitejs/vite/security/advisories/GHSA-8g5g-mxqh-grgj) 影响 Vite 6.4.4 开发服务器的 `server.fs.deny`，官方修复为 6.4.5；[6.4.6 变更记录](https://github.com/vitejs/vite/blob/v6.4.6/packages/vite/CHANGELOG.md)另修复虚拟模块 ID 转义。原 `--audit-level=high` 门禁允许中危通过，因此 CI 112 全绿不等于 npm 零告警。正式店面与后台由 Go 托管静态资源，不运行 Vite 开发服务器。
+
+精确开发依赖及锁文件最小升级至 6.4.6，不使用 `audit fix --force`、不升级主版本，其他依赖保持。官方 npm JSON 审计已返回各等级漏洞零；完整原前端测试、类型检查及构建仍按原命令验证。首次受限沙箱运行在 Vitest 启动阶段因 localhost 解析失败退出，未执行 React 用例，原日志保留；不通过降低断言、扩大预算或替换配置绕过。
+
+允许本机回环后，相同原命令完成 307 React + 3 工具、严格 TypeScript 和正式 Vite 构建，全部通过（总流程 82.944s，Vite 2.65s）。90 个产物文件的相对路径与 SHA256 均和更新前完全一致，因此无正式资源改动，不需要重启已验证的 Go 1.27.4 本机后台或重复 UI 验收。该开发依赖补丁另提交并独立核对当前 HEAD 的 CI，不沿用 CI 112 代替。
 
 ### 店铺名称草稿与 Logo 响应（2026-10-27）
 

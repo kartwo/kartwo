@@ -32,7 +32,7 @@
 | Ant Design 6.6.7 | 新后台表单、菜单、抽屉、反馈和设计主题；https://github.com/ant-design/ant-design | MIT | 已引入（正式 Admin） |
 | React Router 7.18.4 | 保留 hash 路由；https://github.com/remix-run/react-router | MIT | 已引入（正式 Admin） |
 | TypeScript 7.0.2 | 构建期严格类型检查；https://github.com/microsoft/TypeScript | Apache-2.0 | 已引入 |
-| Vite / React 插件 | 前端构建期工具；https://github.com/vitejs/vite | MIT | 已引入 |
+| Vite 6.4.6 / React 插件 4.7.0 | 前端构建期工具；https://github.com/vitejs/vite | MIT | 已引入；2026-11-11 Vite 同版本线安全补丁，许可保持 |
 | Vitest / Testing Library / jsdom | 构建期会话与 DOM 交互测试；https://github.com/vitest-dev/vitest · https://github.com/testing-library/react-testing-library · https://github.com/jsdom/jsdom | MIT | 已引入 |
 | modernc.org/sqlite | 纯 Go SQLite 驱动（默认数据库） | BSD-3-Clause | 已引入 |
 | github.com/google/uuid | 外部 ID（UUIDv7）生成 | BSD-3-Clause | 已引入 |
